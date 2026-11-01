@@ -9,10 +9,12 @@ use std::process::Command;
 use std::sync::Mutex;
 
 use ibexwall_proto::UnitAction;
+use serde::{Deserialize, Serialize};
 
 use crate::log::OpLog;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Enabled {
     Enabled,
     Disabled,

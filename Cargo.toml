@@ -30,6 +30,7 @@ tokio = { version = "1", features = [
   "fs",
   "signal",
 ] }
+tokio-stream = { version = "0.1", features = ["sync"] }
 zbus = { version = "6", default-features = false, features = ["tokio"] }
 rusqlite = { version = "0.41", features = ["bundled"] }
 rustix = { version = "1", features = ["fs", "net", "process", "system"] }

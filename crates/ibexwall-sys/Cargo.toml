@@ -16,5 +16,6 @@ ibexwall-proto.workspace = true
 rustix.workspace = true
 tokio.workspace = true
 zbus.workspace = true
+serde.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true

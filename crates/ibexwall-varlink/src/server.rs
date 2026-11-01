@@ -16,12 +16,21 @@ use tokio_stream::{StreamExt, wrappers::ReceiverStream};
 
 use crate::wire::{self, Reply as WireReply, Request, TransportError, VarlinkError};
 
-/// One method call handed to a [`Handler`].
+/// One method call handed to a [`Handler`], including the connection's
+/// peer credentials (SO_PEERCRED, ADR-0025).
 #[derive(Debug, Clone)]
 pub struct Call {
     pub method: String,
     pub parameters: Value,
     pub more: bool,
+    pub peer: Peer,
+}
+
+/// Unix credentials of the connected peer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Peer {
+    pub uid: u32,
+    pub pid: u32,
 }
 
 /// A reply pushed by the handler (result frame or error frame).
@@ -147,6 +156,9 @@ async fn connection(
     info: ServiceInfo,
     handler: Arc<dyn Handler>,
 ) -> anyhow::Result<()> {
+    let peer = ibexwall_sys::peer_credentials(&stream)
+        .map(|(uid, pid)| Peer { uid, pid })
+        .unwrap_or_default();
     let (mut reader, mut writer) = stream.into_split();
     // One read may deliver several frames; the framer buffers the rest.
     let mut framer = wire::Framer::new();
@@ -189,6 +201,7 @@ async fn connection(
             method: request.method.clone(),
             parameters: request.parameters.clone(),
             more: request.more,
+            peer,
         };
         let dispatch = handler.handle(call, tx);
         let mut stream = ReceiverStream::new(rx);

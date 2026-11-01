@@ -1,0 +1,16 @@
+[package]
+name = "ibexwall-core"
+description = "IbexWall system daemon (ibexwalld)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "ibexwalld"
+path = "src/main.rs"

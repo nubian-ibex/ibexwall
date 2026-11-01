@@ -1,0 +1,12 @@
+[package]
+name = "ibexwall-sdk"
+description = "IbexWall plugin SDK"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "Apache-2.0 OR MIT"
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true

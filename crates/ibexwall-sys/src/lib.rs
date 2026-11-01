@@ -19,7 +19,7 @@ pub mod systemd;
 
 pub use clock::{Clock, FakeClock, RealClock, format_rfc3339};
 pub use fs::{FakeFs, FileMeta, Fs, RealFs};
-pub use identity::{Identity, peer_credentials, proc_start_time};
+pub use identity::{Identity, current_uid, peer_credentials, proc_start_time};
 pub use polkit::{Decision, FakePolkit, Polkit, RealPolkit};
 pub use sysctl::{FakeSysctl, RealSysctl, Sysctl};
 pub use systemd::{Enabled, FakeSystemd, RealSystemd, Systemd, UnitSnapshot};

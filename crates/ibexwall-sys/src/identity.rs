@@ -9,6 +9,17 @@ use std::io;
 
 use tokio::net::UnixStream;
 
+/// Effective uid of this process (no libc, no unsafe).
+pub fn current_uid() -> u32 {
+    let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
+    status
+        .lines()
+        .find_map(|line| line.strip_prefix("Uid:"))
+        .and_then(|rest| rest.split_whitespace().next())
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0)
+}
+
 /// Identity of a connected caller.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Identity {

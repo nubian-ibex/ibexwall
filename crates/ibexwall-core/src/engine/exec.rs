@@ -33,8 +33,20 @@ pub fn execute(op: &Op, sys: &SysBundle) -> Result<()> {
             })?;
             let uid = resolve_user(owner)?;
             let gid = resolve_group(group)?;
+            // Ownership changes need root; unprivileged sandbox runs
+            // keep the creating user's ownership.
+            let owner = if ibexwall_sys::current_uid() == 0 {
+                Some((uid, gid))
+            } else {
+                None
+            };
+            // Drop-in directories may legitimately not exist yet
+            // (e.g. resolved.conf.d on minimal systems).
+            if let Some(parent) = Path::new(path).parent() {
+                sys.fs.create_dir_all(parent).map_err(anyhow::Error::from)?;
+            }
             sys.fs
-                .write_atomic(Path::new(path), content.as_bytes(), mode, Some((uid, gid)))
+                .write_atomic(Path::new(path), content.as_bytes(), mode, owner)
                 .map_err(anyhow::Error::from)
                 .with_context(|| format!("writing {path}"))?;
             Ok(())

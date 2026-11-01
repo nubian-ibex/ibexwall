@@ -28,6 +28,9 @@ pub struct Supervisor {
     plugins: BTreeMap<String, PluginEntry>,
     processes: Mutex<BTreeMap<String, Child>>,
     dev_key: Option<PathBuf>,
+    /// Root the sandbox was discovered under; passed to plugin
+    /// processes so they bind their sockets in the same tree.
+    root: PathBuf,
 }
 
 impl Supervisor {
@@ -75,6 +78,7 @@ impl Supervisor {
             plugins,
             processes: Mutex::new(BTreeMap::new()),
             dev_key,
+            root: root.to_path_buf(),
         })
     }
 
@@ -143,9 +147,8 @@ impl Supervisor {
             .get(id)
             .ok_or_else(|| anyhow::anyhow!("plugin `{id}` not found"))?;
         let bin = resolve_binary(&entry.binary, &entry.manifest)?;
-        let env_root = names::root();
         let child = Command::new(&bin)
-            .env(names::ENV_ROOT, &env_root)
+            .env(names::ENV_ROOT, &self.root)
             .stdin(Stdio::null())
             .spawn()
             .with_context(|| format!("spawning {}", bin.display()))?;

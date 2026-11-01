@@ -52,11 +52,8 @@ impl Api {
         }
     }
 
-    pub fn with_polkit(core: Core, polkit: Arc<dyn Polkit>) -> Self {
-        Self {
-            core: Arc::new(core),
-            polkit,
-        }
+    pub fn with_polkit(core: Arc<Core>, polkit: Arc<dyn Polkit>) -> Self {
+        Self { core, polkit }
     }
 
     pub fn core(&self) -> Arc<Core> {
@@ -604,7 +601,7 @@ async fn apply(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkErr
                 &crate::audit::ops_digest(&ops),
                 "apply-failed",
             );
-            return Err(err("Conflict", json!({ "reason": e.to_string() })));
+            return Err(err("Conflict", json!({ "reason": format!("{e:#}") })));
         }
     };
     let _ = snapshot;

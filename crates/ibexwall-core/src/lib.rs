@@ -95,7 +95,7 @@ impl Core {
         let mut core = Self {
             config,
             state,
-            engine: engine::Engine::new(),
+            engine: engine::Engine::with(engine::SysBundle::real_under(&root)),
             plugins,
             events,
         };

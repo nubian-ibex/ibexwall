@@ -42,22 +42,53 @@ pub trait Fs: Send + Sync {
     fn create_dir_all(&self, path: &Path) -> io::Result<()>;
 }
 
-#[derive(Debug, Default)]
-pub struct RealFs;
+/// Real filesystem with sandbox translation: operation paths arrive in
+/// production form (`/etc/...`); under a sandbox root they are mapped
+/// below it, so unprivileged runs never touch the host.
+#[derive(Debug, Clone)]
+pub struct RealFs {
+    root: PathBuf,
+}
+
+impl Default for RealFs {
+    fn default() -> Self {
+        Self {
+            root: ibexwall_proto::names::root(),
+        }
+    }
+}
+
+impl RealFs {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_root(root: PathBuf) -> Self {
+        Self { root }
+    }
+
+    fn translate(&self, path: &Path) -> PathBuf {
+        if self.root == Path::new("/") {
+            path.to_path_buf()
+        } else {
+            self.root.join(path.strip_prefix("/").unwrap_or(path))
+        }
+    }
+}
 
 impl Fs for RealFs {
     fn exists(&self, path: &Path) -> bool {
-        path.exists()
+        self.translate(path).exists()
     }
 
     fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
         let mut buf = Vec::new();
-        File::open(path)?.read_to_end(&mut buf)?;
+        File::open(self.translate(path))?.read_to_end(&mut buf)?;
         Ok(buf)
     }
 
     fn metadata(&self, path: &Path) -> io::Result<FileMeta> {
-        let meta = std::fs::metadata(path)?;
+        let meta = std::fs::metadata(self.translate(path))?;
         Ok(FileMeta {
             mode: meta.mode() & 0o7777,
             uid: meta.uid(),
@@ -72,6 +103,7 @@ impl Fs for RealFs {
         mode: u32,
         owner: Option<(u32, u32)>,
     ) -> io::Result<()> {
+        let path = &self.translate(path);
         let parent = path.parent().ok_or_else(|| {
             io::Error::other(format!("write_atomic: `{}` has no parent", path.display()))
         })?;
@@ -90,7 +122,8 @@ impl Fs for RealFs {
             OFlags::DIRECTORY | OFlags::RDONLY,
             Mode::empty(),
             ResolveFlags::NO_SYMLINKS,
-        )?;
+        )
+        .map_err(|e| io::Error::other(format!("openat2 parent {}: {e}", parent.display())))?;
 
         // Write the content to a fresh temp file, fsync, then rename.
         let tmp_name = format!(
@@ -103,22 +136,27 @@ impl Fs for RealFs {
             &tmp_name,
             OFlags::CREATE | OFlags::EXCL | OFlags::WRONLY,
             Mode::from_bits_truncate(mode),
-        )?;
+        )
+        .map_err(|e| io::Error::other(format!("openat tmp: {e}")))?;
         {
             let mut file = File::from(tmp_fd);
-            file.write_all(content)?;
-            file.sync_all()?;
+            file.write_all(content)
+                .map_err(|e| io::Error::other(format!("write_all: {e}")))?;
+            file.sync_all()
+                .map_err(|e| io::Error::other(format!("sync_all: {e}")))?;
         }
         if let Some((uid, gid)) = owner {
-            std::os::unix::fs::chown(path, Some(uid), Some(gid))?;
+            std::os::unix::fs::chown(path, Some(uid), Some(gid))
+                .map_err(|e| io::Error::other(format!("chown {uid}:{gid}: {e}")))?;
         }
-        rfs::renameat(&dir_fd, &tmp_name, &dir_fd, name)?;
-        rfs::fsync(dir_fd.as_fd())?;
+        rfs::renameat(&dir_fd, &tmp_name, &dir_fd, name)
+            .map_err(|e| io::Error::other(format!("renameat: {e}")))?;
+        rfs::fsync(dir_fd.as_fd()).map_err(|e| io::Error::other(format!("fsync dir: {e}")))?;
         Ok(())
     }
 
     fn remove(&self, path: &Path) -> io::Result<()> {
-        match std::fs::remove_file(path) {
+        match std::fs::remove_file(self.translate(path)) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
             Err(e) => Err(e),
@@ -126,7 +164,7 @@ impl Fs for RealFs {
     }
 
     fn create_dir_all(&self, path: &Path) -> io::Result<()> {
-        std::fs::create_dir_all(path)
+        std::fs::create_dir_all(self.translate(path))
     }
 }
 
@@ -249,18 +287,23 @@ mod tests {
     fn real_fs_writes_atomically_with_mode() {
         let dir = tempdir();
         let target = dir.join("90-ibexwall.conf");
-        RealFs
-            .write_atomic(&target, b"kernel.kptr_restrict = 2\n", 0o644, None)
+        let fs = RealFs::new();
+        fs.write_atomic(&target, b"kernel.kptr_restrict = 2\n", 0o644, None)
             .unwrap();
-        assert_eq!(RealFs.read(&target).unwrap(), b"kernel.kptr_restrict = 2\n");
-        assert_eq!(RealFs.metadata(&target).unwrap().mode, 0o644);
+        assert_eq!(
+            RealFs::new().read(&target).unwrap(),
+            b"kernel.kptr_restrict = 2\n"
+        );
+        assert_eq!(RealFs::new().metadata(&target).unwrap().mode, 0o644);
 
         // Overwrite in place (rename replaces).
-        RealFs
-            .write_atomic(&target, b"vm.swappiness = 10\n", 0o600, None)
+        fs.write_atomic(&target, b"vm.swappiness = 10\n", 0o600, None)
             .unwrap();
-        assert_eq!(RealFs.read(&target).unwrap(), b"vm.swappiness = 10\n");
-        assert_eq!(RealFs.metadata(&target).unwrap().mode, 0o600);
+        assert_eq!(
+            RealFs::new().read(&target).unwrap(),
+            b"vm.swappiness = 10\n"
+        );
+        assert_eq!(RealFs::new().metadata(&target).unwrap().mode, 0o600);
 
         // No temp leftovers.
         let leftovers: Vec<_> = std::fs::read_dir(&dir)
@@ -279,7 +322,7 @@ mod tests {
         let link = dir.join("link");
         std::os::unix::fs::symlink(&real, &link).unwrap();
 
-        let err = RealFs.write_atomic(&link.join("evil.conf"), b"x\n", 0o644, None);
+        let err = RealFs::new().write_atomic(&link.join("evil.conf"), b"x\n", 0o644, None);
         assert!(err.is_err(), "writing through a symlinked parent must fail");
         assert!(!real.join("evil.conf").exists());
         std::fs::remove_dir_all(&dir).unwrap();
@@ -305,10 +348,22 @@ mod tests {
     }
 
     #[test]
+    fn nested_sandbox_shape_writes() {
+        let dir = tempdir();
+        let nested = dir.join("root/etc/sysctl.d");
+        std::fs::create_dir_all(&nested).unwrap();
+        let target = Path::new("/etc/sysctl.d/probe.conf");
+        let fs = RealFs::with_root(dir.join("root"));
+        fs.write_atomic(target, b"probe\n", 0o644, None).unwrap();
+        assert_eq!(fs.read(target).unwrap(), b"probe\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn remove_is_idempotent_when_missing() {
         let dir = tempdir();
         let target = dir.join("missing.conf");
-        RealFs.remove(&target).unwrap();
+        RealFs::new().remove(&target).unwrap();
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

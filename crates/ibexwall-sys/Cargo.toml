@@ -10,3 +10,11 @@ publish = false
 
 [lints]
 workspace = true
+
+[dependencies]
+ibexwall-proto.workspace = true
+rustix.workspace = true
+tokio.workspace = true
+zbus.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true

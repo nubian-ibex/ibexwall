@@ -1,8 +1,371 @@
 // SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! IbexWall command line interface (ibexctl) (placeholder; lands with its phase, see docs/plans/).
+//! `ibexctl` — the IbexWall command line (F1 surface: status, plugins,
+//! check, findings, plan, apply, confirm, rollback, history, audit
+//! verify, events). Exit codes: 0 ok · 1 error · 2 usage · 3 permission
+//! denied · 4 locked by org · 5 awaiting confirmation · 10 findings
+//! present.
+
+use std::path::PathBuf;
+
+use anyhow::{Context, Result};
+use clap::{Parser, Subcommand};
+use ibexwall_proto::names;
+use ibexwall_varlink::VarlinkError;
+
+const EXIT_ERROR: i32 = 1;
+const EXIT_PERMISSION_DENIED: i32 = 3;
+const EXIT_LOCKED: i32 = 4;
+const EXIT_AWAITING_CONFIRM: i32 = 5;
+const EXIT_FINDINGS: i32 = 10;
+
+#[derive(Parser)]
+#[command(
+    name = "ibexctl",
+    version,
+    about = "IbexWall control CLI",
+    disable_help_subcommand = true
+)]
+struct Cli {
+    /// Emit machine-readable JSON for every command.
+    #[arg(long, global = true)]
+    json: bool,
+
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Daemon and host information.
+    Status,
+    /// Plugin management.
+    Plugins {
+        #[command(subcommand)]
+        action: PluginsAction,
+    },
+    /// Run checks (all enabled plugins, or one).
+    Check { plugin: Option<String> },
+    /// List findings.
+    Findings {
+        #[arg(long)]
+        plugin: Option<String>,
+    },
+    /// Simulate a change: build a previewable plan from a patch.
+    Plan {
+        plugin: String,
+        /// Setting for the plugin config, e.g. --set template=dropin.
+        #[arg(long = "set", value_name = "KEY=VALUE")]
+        sets: Vec<String>,
+    },
+    /// Apply a plan.
+    Apply {
+        plan_id: String,
+        /// Confirmation window in seconds for network-risk plans.
+        #[arg(long)]
+        confirm_timeout: Option<i64>,
+    },
+    /// Confirm a pending transaction.
+    Confirm { transaction_id: String },
+    /// Roll back a transaction.
+    Rollback { target: String },
+    /// Recent transactions.
+    History,
+    /// Validate the audit hash chain.
+    AuditVerify,
+    /// Live events.
+    Events {
+        #[arg(long)]
+        follow: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum PluginsAction {
+    List,
+    Info { id: String },
+    Enable { id: String },
+    Disable { id: String },
+}
 
 fn main() {
-    println!("{} {}", env!("CARGO_BIN_NAME"), env!("CARGO_PKG_VERSION"));
+    let cli = Cli::parse();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let code = runtime.block_on(run(cli));
+    std::process::exit(code);
+}
+
+async fn run(cli: Cli) -> i32 {
+    let socket = names::core_socket();
+    let mut client = match ibexwall_varlink::Client::connect(&socket).await {
+        Ok(client) => client,
+        Err(err) => {
+            eprintln!(
+                "ibexctl: cannot reach ibexwalld at {}: {err}",
+                socket.display()
+            );
+            return EXIT_ERROR;
+        }
+    };
+    match dispatch(&cli, &mut client).await {
+        Ok(Finish::Done) => 0,
+        Ok(Finish::AwaitingConfirm(transaction)) => {
+            if cli.json {
+                println!("{{\"awaiting_confirmation\":true,\"transaction\":\"{transaction}\"}}");
+            } else {
+                println!("applied; awaiting confirmation for {transaction}");
+                println!("run `ibexctl confirm {transaction}` to keep the changes");
+            }
+            EXIT_AWAITING_CONFIRM
+        }
+        Ok(Finish::Findings(count)) => {
+            if !cli.json {
+                println!("{count} finding(s) present");
+            }
+            EXIT_FINDINGS
+        }
+        Err(CliError::Varlink(err)) => {
+            report_varlink(&err, cli.json);
+            match err.name.as_str() {
+                "com.ibexwall.Core.PermissionDenied" => EXIT_PERMISSION_DENIED,
+                "com.ibexwall.Core.Locked" => EXIT_LOCKED,
+                _ => EXIT_ERROR,
+            }
+        }
+        Err(CliError::Other(err)) => {
+            eprintln!("ibexctl: {err:#}");
+            EXIT_ERROR
+        }
+    }
+}
+
+enum Finish {
+    Done,
+    AwaitingConfirm(String),
+    Findings(usize),
+}
+
+enum CliError {
+    Varlink(VarlinkError),
+    Other(anyhow::Error),
+}
+
+impl From<VarlinkError> for CliError {
+    fn from(err: VarlinkError) -> Self {
+        CliError::Varlink(err)
+    }
+}
+
+impl From<anyhow::Error> for CliError {
+    fn from(err: anyhow::Error) -> Self {
+        CliError::Other(err)
+    }
+}
+
+async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Finish, CliError> {
+    let json = cli.json;
+    match &cli.command {
+        Command::Status => {
+            let value = client
+                .call("com.ibexwall.Core.GetInfo", serde_json::json!({}))
+                .await?;
+            emit(value, json);
+            Ok(Finish::Done)
+        }
+        Command::Plugins { action } => plugins(client, action, json).await,
+        Command::Check { plugin } => {
+            let params = serde_json::json!({ "plugin": plugin });
+            let value = client.call("com.ibexwall.Core.RunChecks", params).await?;
+            let count = value["findings"].as_array().map(Vec::len).unwrap_or(0);
+            emit(value, json);
+            Ok(if count > 0 {
+                Finish::Findings(count)
+            } else {
+                Finish::Done
+            })
+        }
+        Command::Findings { plugin } => {
+            let params = serde_json::json!({ "plugin": plugin });
+            let value = client
+                .call("com.ibexwall.Core.ListFindings", params)
+                .await?;
+            emit(value, json);
+            Ok(Finish::Done)
+        }
+        Command::Plan { plugin, sets } => {
+            let mut config = serde_json::Map::new();
+            for set in sets {
+                let (key, value) = set
+                    .split_once('=')
+                    .with_context(|| format!("--set expects KEY=VALUE, got `{set}`"))
+                    .map_err(CliError::Other)?;
+                config.insert(key.into(), serde_json::Value::String(value.into()));
+            }
+            let params = serde_json::json!({ "plugin": plugin, "patch": config });
+            let value = client.call("com.ibexwall.Core.PlanChange", params).await?;
+            if !json {
+                let plan = &value["plan"];
+                println!(
+                    "plan {} for {} ({} op(s))",
+                    plan["id"],
+                    plan["plugin"],
+                    plan["ops"].as_array().map(Vec::len).unwrap_or(0)
+                );
+                println!("apply with: ibexctl apply {}", plan["id"]);
+            }
+            Ok(Finish::Done)
+        }
+        Command::Apply {
+            plan_id,
+            confirm_timeout,
+        } => {
+            let params = serde_json::json!({
+                "plan_id": plan_id,
+                "confirm_timeout_s": confirm_timeout,
+            });
+            let value = client.call("com.ibexwall.Core.Apply", params).await?;
+            let state = value["transaction"]["state"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+            let id = value["transaction"]["id"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+            emit(value, json);
+            if state == "pending_confirm" {
+                Ok(Finish::AwaitingConfirm(id))
+            } else {
+                Ok(Finish::Done)
+            }
+        }
+        Command::Confirm { transaction_id } => {
+            let params = serde_json::json!({ "transaction_id": transaction_id });
+            client.call("com.ibexwall.Core.Confirm", params).await?;
+            if !json {
+                println!("confirmed {transaction_id}");
+            }
+            Ok(Finish::Done)
+        }
+        Command::Rollback { target } => {
+            let params = serde_json::json!({ "target": target });
+            let value = client.call("com.ibexwall.Core.Rollback", params).await?;
+            emit(value, json);
+            if !json {
+                println!("rolled back {target}");
+            }
+            Ok(Finish::Done)
+        }
+        Command::History => {
+            let value = client
+                .call("com.ibexwall.Core.History", serde_json::json!({}))
+                .await?;
+            emit(value, json);
+            Ok(Finish::Done)
+        }
+        Command::AuditVerify => {
+            let value = client
+                .call("com.ibexwall.Core.AuditVerify", serde_json::json!({}))
+                .await?;
+            emit(value, json);
+            Ok(Finish::Done)
+        }
+        Command::Events { follow } => {
+            if !*follow {
+                let value = client
+                    .call("com.ibexwall.Core.RecentEvents", serde_json::json!({}))
+                    .await?;
+                emit(value, json);
+                return Ok(Finish::Done);
+            }
+            let mut stream = client
+                .call_more("com.ibexwall.Core.Subscribe", serde_json::json!({}))
+                .await?;
+            while let Some(event) = stream.next_reply().await? {
+                println!("{}", serde_json::to_string(&event).unwrap_or_default());
+            }
+            Ok(Finish::Done)
+        }
+    }
+}
+
+async fn plugins(
+    client: &mut ibexwall_varlink::Client,
+    action: &PluginsAction,
+    json: bool,
+) -> Result<Finish, CliError> {
+    match action {
+        PluginsAction::List => {
+            let value = client
+                .call("com.ibexwall.Core.ListPlugins", serde_json::json!({}))
+                .await?;
+            emit(value, json);
+            Ok(Finish::Done)
+        }
+        PluginsAction::Info { id } => {
+            let value = client
+                .call("com.ibexwall.Core.ListPlugins", serde_json::json!({}))
+                .await?;
+            let plugin = value["plugins"]
+                .as_array()
+                .and_then(|list| list.iter().find(|p| p["id"] == id.as_str()))
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!({ "id": id, "error": "not found" }));
+            emit(serde_json::json!({ "plugin": plugin }), json);
+            Ok(Finish::Done)
+        }
+        PluginsAction::Enable { id } | PluginsAction::Disable { id } => {
+            let enable = matches!(action, PluginsAction::Enable { .. });
+            let params = serde_json::json!({ "id": id, "enabled": enable });
+            client
+                .call("com.ibexwall.Core.SetPluginEnabled", params)
+                .await?;
+            if !json {
+                println!("{} {id}", if enable { "enabled" } else { "disabled" });
+            }
+            Ok(Finish::Done)
+        }
+    }
+}
+
+fn emit(value: serde_json::Value, json: bool) {
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&value).unwrap_or_default()
+        );
+    }
+}
+
+fn report_varlink(err: &VarlinkError, json: bool) {
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "error": err.name,
+                "parameters": err.parameters,
+            }))
+            .unwrap_or_default()
+        );
+    } else {
+        let hint = match err.name.as_str() {
+            "com.ibexwall.Core.PermissionDenied" => {
+                format!(
+                    ": try with sudo, or ask an administrator (action {})",
+                    err.parameters["action"]
+                )
+            }
+            _ => String::new(),
+        };
+        eprintln!("ibexctl: {}{hint}", err.name);
+    }
+}
+
+#[allow(dead_code)]
+fn default_socket() -> PathBuf {
+    names::core_socket()
 }

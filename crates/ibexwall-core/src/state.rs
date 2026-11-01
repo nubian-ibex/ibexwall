@@ -332,6 +332,20 @@ impl State {
         })
     }
 
+    pub fn list_events(&self, limit: usize) -> Result<Vec<serde_json::Value>> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare("SELECT json FROM events ORDER BY seq DESC LIMIT ?1")?;
+            let rows = stmt.query_map(rusqlite::params![limit as i64], |row| {
+                row.get::<_, String>(0)
+            })?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(serde_json::from_str(&row?)?);
+            }
+            Ok(out)
+        })
+    }
+
     pub fn set_plugin_enabled(&self, id: &str, enabled: bool) -> Result<()> {
         self.with_conn(|conn| {
             conn.execute(

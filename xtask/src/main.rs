@@ -3,6 +3,7 @@
 
 //! Developer tasks: `cargo xtask <command>`.
 
+mod devkey;
 mod idl;
 mod schemas;
 mod vm;
@@ -17,6 +18,8 @@ Commands:
                      (--check fails if committed files differ)
   vm-test [--distro <distro>]
                      Boot a QEMU/KVM VM and run the smoke test (F0: fedora)
+  devkey             Generate the dev plugin-signing key and sign
+                     plugins/*/plugin.toml (dev builds only)
 ";
 
 fn main() {
@@ -37,6 +40,12 @@ fn main() {
                 _ => "fedora".into(),
             };
             if let Err(err) = vm::run(&distro) {
+                eprintln!("error: {err:#}");
+                std::process::exit(1);
+            }
+        }
+        Some("devkey") => {
+            if let Err(err) = devkey::run() {
                 eprintln!("error: {err:#}");
                 std::process::exit(1);
             }

@@ -1,0 +1,42 @@
+# Development plugin exercising the whole operation surface (spec §5.6,
+# F1). Never shipped in packages.
+id = "dev.echo"
+version = "1.0.0"
+api = 1
+category = "dev"
+kinds = ["check", "control"]
+origin = "local"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-echo"
+default_enabled = true
+
+[name]
+en = "Echo (dev test plugin)"
+pt-BR = "Echo (plugin de teste)"
+
+[description]
+en = "Exercises every typed operation for engine and CLI tests."
+
+[privileges]
+write_paths = ["/etc/sysctl.d", "/etc/NetworkManager/conf.d", "/etc/ibexwall-tests"]
+units = ["ibexwall-test.service"]
+unit_actions = ["start", "stop", "restart"]
+sysctl_keys = ["kernel.ibexwall_test", "net.ibexwall_test"]
+exec = [{ path = "/usr/bin/sleep", args = ["10"] }]
+nft_prefix = "dev_echo"
+
+[sandbox]
+user = "dynamic"
+capabilities = []
+read_paths = []
+network = false
+
+[risk]
+affects = []
+reversible = "immediate"
+confirm_timeout = false
+may_affect = []
+
+[ui]
+icon = "flask"
+order = 99

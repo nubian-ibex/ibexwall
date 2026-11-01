@@ -39,6 +39,10 @@ method ListProposals(status: ?string) -> (proposals: []Proposal)
 method CreateProposal(plugin: string, patch: object, justification: string) -> (proposal: Proposal)
 method DecideProposal(id: string, decision: string, patch: ?object) -> (transaction: ?Transaction)
 
+# Added in v1 (additive): audit chain validation and event history.
+method AuditVerify() -> (valid: bool, entries: int, reason: ?string)
+method RecentEvents(limit: ?int) -> (events: []Event)
+
 error PermissionDenied (action: string)
 error NotFound (kind: string, id: string)
 error Locked (keys: []string, source: string)

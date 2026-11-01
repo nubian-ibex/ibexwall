@@ -115,8 +115,8 @@ impl Supervisor {
                 bail!("no embedded release key yet; use --dev-key in dev builds")
             }
         };
-        let public_key = PublicKey::from_base64(&anchor)
-            .map_err(|e| anyhow::anyhow!("bad public key: {e:?}"))?;
+        let public_key =
+            PublicKey::decode(&anchor).map_err(|e| anyhow::anyhow!("bad public key: {e:?}"))?;
         let signature_text = std::fs::read_to_string(&sig_path)
             .with_context(|| format!("reading {}", sig_path.display()))?;
         let signature = Signature::decode(&signature_text)

@@ -44,8 +44,26 @@ pub trait Systemd: Send + Sync {
     fn apply(&self, unit: &str, action: UnitAction, now: bool) -> anyhow::Result<()>;
 }
 
-#[derive(Debug, Default)]
-pub struct RealSystemd;
+/// Real systemd control via `systemctl`. Disabled under a sandbox root:
+/// unit operations would affect the dev host.
+#[derive(Debug, Clone)]
+pub struct RealSystemd {
+    enabled: bool,
+}
+
+impl Default for RealSystemd {
+    fn default() -> Self {
+        Self {
+            enabled: ibexwall_proto::names::root() == std::path::Path::new("/"),
+        }
+    }
+}
+
+impl RealSystemd {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
 
 fn systemctl(args: &[&str]) -> anyhow::Result<String> {
     let output = Command::new("systemctl").args(args).output()?;
@@ -62,6 +80,10 @@ fn systemctl(args: &[&str]) -> anyhow::Result<String> {
 
 impl Systemd for RealSystemd {
     fn snapshot(&self, unit: &str) -> anyhow::Result<UnitSnapshot> {
+        anyhow::ensure!(
+            self.enabled,
+            "systemd control is disabled under IBEXWALL_ROOT"
+        );
         let enabled = match systemctl(&["is-enabled", unit]) {
             Ok(text) => match text.trim() {
                 "enabled" => Enabled::Enabled,
@@ -79,6 +101,10 @@ impl Systemd for RealSystemd {
     }
 
     fn apply(&self, unit: &str, action: UnitAction, now: bool) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.enabled,
+            "systemd control is disabled under IBEXWALL_ROOT"
+        );
         let verb = match action {
             UnitAction::Start => "start",
             UnitAction::Stop => "stop",

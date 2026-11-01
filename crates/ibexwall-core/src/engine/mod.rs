@@ -42,12 +42,20 @@ impl Default for SysBundle {
 
 impl SysBundle {
     pub fn real() -> Self {
+        Self::real_under(&ibexwall_proto::names::root())
+    }
+
+    /// Real implementations bound to a sandbox root: file and sysctl
+    /// paths are translated under it; systemd and system executors are
+    /// refused unless the root is the real `/`.
+    pub fn real_under(root: &std::path::Path) -> Self {
+        let real_root = root == std::path::Path::new("/");
         Self {
-            fs: Arc::new(RealFs),
-            systemd: Arc::new(RealSystemd),
-            sysctl: Arc::new(RealSysctl::default()),
+            fs: Arc::new(RealFs::with_root(root.to_path_buf())),
+            systemd: Arc::new(RealSystemd::new()),
+            sysctl: Arc::new(RealSysctl::with_root(root.to_path_buf())),
             clock: Arc::new(RealClock),
-            allow_system_executors: ibexwall_proto::names::root() == std::path::Path::new("/"),
+            allow_system_executors: real_root,
         }
     }
 }

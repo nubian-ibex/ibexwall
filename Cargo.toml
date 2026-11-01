@@ -1,0 +1,28 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "xtask"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/nubian-ibex/ibexwall"
+homepage = "https://ibexwall.com"
+
+[workspace.dependencies]
+ibexwall-proto = { path = "crates/ibexwall-proto" }
+ibexwall-sdk = { path = "crates/ibexwall-sdk" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = "1"
+thiserror = "2"
+anyhow = "1"
+
+# SEC-07: no unsafe anywhere; designated modules will be carved out via
+# dedicated crates with SAFETY comments when eBPF/FFI lands.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }

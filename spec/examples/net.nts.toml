@@ -1,0 +1,52 @@
+# Reference plugin manifest example (net.nts). The schema lives in
+# spec/schemas/Manifest.schema.json. Validated by ibexwall-proto tests.
+id = "net.nts"
+version = "1.0.0"
+api = 1
+category = "network"
+kinds = ["check", "control"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-nts"
+config_schema = "schema.json"
+default_enabled = false
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "Secure time (NTS)"
+pt-BR = "Hora segura (NTS)"
+
+[description]
+en = "Keeps the clock right using authenticated time servers."
+pt-BR = "Mantém o relógio certo com servidores de hora autenticados."
+
+[requires]
+commands = ["chronyc"]
+packages = { fedora = ["chrony"], debian = ["chrony"], ubuntu = ["chrony"], arch = ["chrony"] }
+
+[conflicts]
+units = ["systemd-timesyncd.service"]
+
+[privileges]
+write_paths = ["/etc/chrony.d/ibexwall.conf", "/etc/chrony/conf.d/ibexwall.conf"]
+units = ["chronyd.service", "chrony.service", "systemd-timesyncd.service"]
+unit_actions = ["start", "stop", "restart", "enable", "disable"]
+sysctl_keys = []
+exec = [{ path = "/usr/bin/chronyc", args = ["-N", "authdata"] }]
+nft_prefix = "net_nts"
+
+[sandbox]
+user = "dynamic"
+capabilities = []
+read_paths = ["/etc/chrony.conf", "/etc/chrony", "/etc/chrony.d", "/run/chrony"]
+network = false
+
+[risk]
+affects = ["time"]
+reversible = "immediate"
+confirm_timeout = false
+may_affect = ["nts-may-affect-firewall-4460"]
+
+[ui]
+icon = "clock"
+order = 40

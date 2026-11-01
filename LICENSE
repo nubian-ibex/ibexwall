@@ -1,0 +1,19 @@
+IbexWall — Security Center for Linux
+Copyright (C) 2026 Nubian Ibex and IbexWall contributors
+
+Licensing summary (authoritative texts live in LICENSES/):
+
+- The IbexWall client as a whole is GPL-3.0-or-later
+  (LICENSES/GPL-3.0-or-later.txt).
+- ibexwall-proto and ibexwall-sdk are dual-licensed Apache-2.0 OR MIT
+  (LICENSES/Apache-2.0.txt, LICENSES/MIT.txt) so that proprietary plugins
+  and third-party plugins may link them.
+- ibexwall-ebpf programs are dual-licensed GPL-2.0-only OR MIT
+  (LICENSES/GPL-2.0-only.txt, LICENSES/MIT.txt).
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+more details.
+
+SPDX-License-Identifier: GPL-3.0-or-later

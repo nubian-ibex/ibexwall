@@ -1,0 +1,305 @@
+// SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+//! Client-facing API types (interface `com.ibexwall.Core`).
+
+use std::collections::BTreeMap;
+
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+use crate::op::{Reversible, RiskFlag};
+use crate::plugin::PluginOrigin;
+
+/// Finding severity. Weights drive the posture score (spec §5.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Severity {
+    Info,
+    Low,
+    Medium,
+    High,
+    Critical,
+}
+
+impl Severity {
+    /// Score weight: critical 10, high 6, medium 3, low 1, info 0.
+    pub fn weight(self) -> u8 {
+        match self {
+            Severity::Info => 0,
+            Severity::Low => 1,
+            Severity::Medium => 3,
+            Severity::High => 6,
+            Severity::Critical => 10,
+        }
+    }
+}
+
+/// Daemon and host information (`GetInfo`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Info {
+    pub version: String,
+    pub api: u32,
+    pub distro: String,
+    pub kernel: String,
+    pub features: Vec<String>,
+    pub degraded: Vec<String>,
+}
+
+/// State of one protection as shown on the overview screen.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProtectionStatus {
+    pub plugin: String,
+    pub state: String,
+    pub summary_key: String,
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
+/// Posture score and per-protection snapshot.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Posture {
+    pub score: u8,
+    pub generated_at: String,
+    pub protections: Vec<ProtectionStatus>,
+    pub open_findings: u32,
+}
+
+/// Reference to a control in an external framework (own wording only;
+/// never copy protected norm texts).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Reference {
+    pub framework: String,
+    pub id: String,
+    #[serde(default)]
+    pub url: Option<String>,
+}
+
+/// Remediation metadata for a finding.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Remediation {
+    /// Plan template id the core can render into a previewable plan.
+    #[serde(default)]
+    pub plan_template: Option<String>,
+    /// Fluent keys for the "may affect" callout.
+    #[serde(default)]
+    pub may_affect_keys: Vec<String>,
+}
+
+/// Lifecycle of a finding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingStatus {
+    Open,
+    AcceptedRisk,
+    Resolved,
+}
+
+/// A check result (spec §5.4).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Finding {
+    pub id: String,
+    pub plugin: String,
+    pub severity: Severity,
+    pub title_key: String,
+    pub summary_key: String,
+    #[serde(default)]
+    pub args: BTreeMap<String, String>,
+    #[serde(default)]
+    pub references: Vec<Reference>,
+    #[serde(default)]
+    pub remediation: Option<Remediation>,
+    pub status: FindingStatus,
+    pub detected_at: String,
+}
+
+/// Plugin card data.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PluginInfo {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub kinds: Vec<String>,
+    pub enabled: bool,
+    pub origin: PluginOrigin,
+    pub status: String,
+    pub compatible: bool,
+    pub conflicts: Vec<String>,
+    pub locked: bool,
+}
+
+/// One operation as previewed to the user (op kind + target + diff).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct OpPreview {
+    pub op: String,
+    pub target: String,
+    #[serde(default)]
+    pub diff: Option<String>,
+    #[serde(default)]
+    pub risk: Vec<RiskFlag>,
+}
+
+/// A previewable, expiring plan produced by `PlanChange`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Plan {
+    pub id: String,
+    pub plugin: String,
+    pub ops: Vec<OpPreview>,
+    #[serde(default)]
+    pub risk: Vec<RiskFlag>,
+    pub reversible: Reversible,
+    #[serde(default)]
+    pub may_affect_keys: Vec<String>,
+    pub requires_confirm: bool,
+    pub expires_at: String,
+}
+
+/// Change-engine transaction states (spec §4.5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TransactionState {
+    Planned,
+    Approved,
+    Applying,
+    Applied,
+    PendingConfirm,
+    Committed,
+    RolledBack,
+    Failed,
+}
+
+/// A transaction (apply) of a plan.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Transaction {
+    pub id: String,
+    pub plan_id: String,
+    pub state: TransactionState,
+    pub started_at: String,
+    #[serde(default)]
+    pub confirm_deadline: Option<String>,
+    pub restore_point: String,
+}
+
+/// Audit/history row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct HistoryEntry {
+    pub seq: u64,
+    pub ts: String,
+    pub actor: String,
+    pub plugin: String,
+    #[serde(default)]
+    pub transaction: Option<String>,
+    pub result: String,
+}
+
+/// Event on the bus. `data` is structured by source; `untrusted` carries
+/// externally controlled values (domains, SSIDs, process names...) that
+/// consumers must treat as data, never as instructions or interpolations.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Event {
+    pub ts: String,
+    pub source: String,
+    pub kind: String,
+    pub severity: Severity,
+    #[serde(default)]
+    pub app: Option<String>,
+    #[serde(default)]
+    pub data: Value,
+    #[serde(default)]
+    pub untrusted: Value,
+}
+
+/// Lifecycle of an AI/client proposal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProposalStatus {
+    Pending,
+    Approved,
+    Rejected,
+    Expired,
+}
+
+/// A change proposed through the API (e.g. by the MCP assistant);
+/// approval is always human.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Proposal {
+    pub id: String,
+    pub client: String,
+    pub plugin: String,
+    pub plan_id: String,
+    pub justification: String,
+    pub status: ProposalStatus,
+    pub created_at: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn severity_weights_match_the_score_formula() {
+        assert_eq!(Severity::Critical.weight(), 10);
+        assert_eq!(Severity::High.weight(), 6);
+        assert_eq!(Severity::Medium.weight(), 3);
+        assert_eq!(Severity::Low.weight(), 1);
+        assert_eq!(Severity::Info.weight(), 0);
+    }
+
+    #[test]
+    fn finding_roundtrip() {
+        let finding = Finding {
+            id: "posture.secure-boot".into(),
+            plugin: "system.posture".into(),
+            severity: Severity::Medium,
+            title_key: "posture-secure-boot-title".into(),
+            summary_key: "posture-secure-boot-summary".into(),
+            args: BTreeMap::from([("mode".into(), "setup".into())]),
+            references: vec![Reference {
+                framework: "ANSSI-BP-028".into(),
+                id: "1.2".into(),
+                url: None,
+            }],
+            remediation: Some(Remediation {
+                plan_template: Some("posture.enable-secure-boot".into()),
+                may_affect_keys: vec!["secure-boot-may-affect-reboot".into()],
+            }),
+            status: FindingStatus::Open,
+            detected_at: "2026-11-01T12:00:00Z".into(),
+        };
+        let value = serde_json::to_value(&finding).unwrap();
+        let back: Finding = serde_json::from_value(value).unwrap();
+        assert_eq!(finding, back);
+    }
+
+    #[test]
+    fn transaction_state_serializes_snake_case() {
+        let value = serde_json::to_value(TransactionState::PendingConfirm).unwrap();
+        assert_eq!(value, serde_json::json!("pending_confirm"));
+    }
+
+    #[test]
+    fn unknown_fields_are_rejected() {
+        let err = serde_json::from_value::<Posture>(serde_json::json!({
+            "score": 100,
+            "generated_at": "2026-11-01T12:00:00Z",
+            "protections": [],
+            "open_findings": 0,
+            "surprise": true,
+        }));
+        assert!(err.is_err());
+    }
+}

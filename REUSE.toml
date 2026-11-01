@@ -1,0 +1,28 @@
+# REUSE.spec-info: https://reuse.software/spec-3.2/
+# Specific blocks come first (closest precedence wins).
+version = 1
+
+[[annotations]]
+path = ["crates/ibexwall-proto/**", "crates/ibexwall-sdk/**"]
+precedence = "closest"
+SPDX-FileCopyrightText = "Nubian Ibex and IbexWall contributors"
+SPDX-License-Identifier = "Apache-2.0 OR MIT"
+
+[[annotations]]
+path = ["crates/ibexwall-ebpf/**"]
+precedence = "closest"
+SPDX-FileCopyrightText = "Nubian Ibex and IbexWall contributors"
+SPDX-License-Identifier = "GPL-2.0-only OR MIT"
+
+[[annotations]]
+path = [
+  "spec/**",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "Nubian Ibex and IbexWall contributors"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+[[annotations]]
+path = ["**"]
+SPDX-FileCopyrightText = "Nubian Ibex and IbexWall contributors"
+SPDX-License-Identifier = "GPL-3.0-or-later"

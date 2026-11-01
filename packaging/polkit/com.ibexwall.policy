@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD polkit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>Nubian Ibex</vendor>
+  <action id="com.ibexwall.read">
+    <description>Read IbexWall status, findings and events</description>
+    <defaults><allow_active>yes</allow_active></defaults>
+  </action>
+  <action id="com.ibexwall.plan">
+    <description>Simulate IbexWall changes</description>
+    <defaults><allow_active>yes</allow_active></defaults>
+  </action>
+  <action id="com.ibexwall.apply">
+    <description>Apply and confirm IbexWall changes</description>
+    <defaults><allow_active>auth_admin_keep</allow_active></defaults>
+  </action>
+  <action id="com.ibexwall.rollback">
+    <description>Roll back IbexWall changes</description>
+    <defaults><allow_active>auth_admin_keep</allow_active></defaults>
+  </action>
+  <action id="com.ibexwall.plugins.manage">
+    <description>Enable or disable IbexWall plugins</description>
+    <defaults><allow_active>auth_admin_keep</allow_active></defaults>
+  </action>
+  <action id="com.ibexwall.apps.decide">
+    <description>Answer an IbexWall application network prompt</description>
+    <defaults><allow_any>no</allow_any><allow_inactive>no</allow_inactive><allow_active>yes</allow_active></defaults>
+  </action>
+  <action id="com.ibexwall.proposals.create">
+    <description>Create IbexWall change proposals</description>
+    <defaults><allow_any>no</allow_any><allow_inactive>no</allow_inactive><allow_active>yes</allow_active></defaults>
+  </action>
+  <action id="com.ibexwall.proposals.decide">
+    <description>Approve or reject IbexWall change proposals</description>
+    <defaults><allow_any>no</allow_any><allow_inactive>no</allow_inactive><allow_active>auth_admin_keep</allow_active></defaults>
+  </action>
+  <action id="com.ibexwall.policy.provider">
+    <description>Provide IbexWall organization policy</description>
+    <defaults><allow_any>no</allow_any><allow_inactive>no</allow_inactive><allow_active>no</allow_active></defaults>
+  </action>
+  <action id="com.ibexwall.export">
+    <description>Export IbexWall configuration and data</description>
+    <defaults><allow_any>no</allow_any><allow_inactive>no</allow_inactive><allow_active>yes</allow_active></defaults>
+  </action>
+</policyconfig>

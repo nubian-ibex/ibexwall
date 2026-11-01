@@ -28,6 +28,8 @@ async fn run() -> anyhow::Result<()> {
     if let Some(parent) = socket.parent() {
         std::fs::create_dir_all(parent)?;
     }
+    // A killed predecessor leaves its socket file behind.
+    let _ = std::fs::remove_file(&socket);
     let listener = tokio::net::UnixListener::bind(&socket)?;
     let mut interfaces = std::collections::HashMap::new();
     interfaces.insert(

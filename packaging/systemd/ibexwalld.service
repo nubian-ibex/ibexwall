@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+[Unit]
+Description=IbexWall security daemon
+Documentation=https://docs.ibexwall.com man:ibexwalld(8)
+After=dbus.service polkit.service
+Before=network-pre.target
+Requires=ibexwalld.socket
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/ibexwalld
+Restart=on-failure
+WatchdogSec=30s
+NoNewPrivileges=yes
+ProtectSystem=strict
+# Broad on purpose: the engine validates every path against plugin
+# manifests (spike S1-c evaluates a transient-unit executor).
+ReadWritePaths=/etc /var/lib/ibexwall /run/ibexwall
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+# sysctl.set writes /proc/sys.
+ProtectKernelTunables=no
+# Reads cgroups for app identity (F4).
+ProtectControlGroups=no
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_CHOWN CAP_FOWNER CAP_DAC_READ_SEARCH
+StateDirectory=ibexwall
+RuntimeDirectory=ibexwall
+RuntimeDirectoryPreserve=yes
+ConfigurationDirectory=ibexwall
+
+[Install]
+WantedBy=multi-user.target

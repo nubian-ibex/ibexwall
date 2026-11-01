@@ -13,34 +13,6 @@ use anyhow::{Result, bail};
 
 use super::vm::{Vm, run_capture};
 
-const POLICY_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD polkit Policy Configuration 1.0//EN"
- "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
-<policyconfig>
-  <vendor>Nubian Ibex</vendor>
-  <action id="com.ibexwall.read">
-    <description>Read IbexWall status, findings and events</description>
-    <defaults><allow_active>yes</allow_active></defaults>
-  </action>
-  <action id="com.ibexwall.plan">
-    <description>Simulate IbexWall changes</description>
-    <defaults><allow_active>yes</allow_active></defaults>
-  </action>
-  <action id="com.ibexwall.apply">
-    <description>Apply and confirm IbexWall changes</description>
-    <defaults><allow_active>auth_admin_keep</allow_active></defaults>
-  </action>
-  <action id="com.ibexwall.rollback">
-    <description>Roll back IbexWall changes</description>
-    <defaults><allow_active>auth_admin_keep</allow_active></defaults>
-  </action>
-  <action id="com.ibexwall.plugins.manage">
-    <description>Enable or disable IbexWall plugins</description>
-    <defaults><allow_active>auth_admin_keep</allow_active></defaults>
-  </action>
-</policyconfig>
-"#;
-
 pub fn run(vm: &Vm, workspace: &Path) -> Result<()> {
     println!("== f1: build + devkey ==");
     run_capture(
@@ -94,12 +66,28 @@ pub fn run(vm: &Vm, workspace: &Path) -> Result<()> {
     pipe_file(
         vm,
         &workspace.join("target/devkey/dev.pub"),
-        "sudo tee /root/ibexwall-dev.pub >/dev/null",
+        "sudo mkdir -p /etc/ibexwall/trust && sudo tee /etc/ibexwall/trust/dev.pub >/dev/null",
     )?;
     pipe_data(
         vm,
-        POLICY_XML,
+        include_str!("../../packaging/polkit/com.ibexwall.policy"),
         "sudo tee /usr/share/polkit-1/actions/com.ibexwall.policy >/dev/null",
+    )?;
+    pipe_data(
+        vm,
+        include_str!("../../packaging/systemd/ibexwalld.service"),
+        "sudo tee /etc/systemd/system/ibexwalld.service >/dev/null",
+    )?;
+    pipe_data(
+        vm,
+        include_str!("../../packaging/systemd/ibexwalld.socket"),
+        "sudo tee /etc/systemd/system/ibexwalld.socket >/dev/null",
+    )?;
+    // Test-only drop-in: trust the dev plugin key (not packaged).
+    pipe_data(
+        vm,
+        "[Service]\nExecStart=\nExecStart=/usr/bin/ibexwalld --dev-key=/etc/ibexwall/trust/dev.pub\n",
+        "sudo mkdir -p /etc/systemd/system/ibexwalld.service.d && sudo tee /etc/systemd/system/ibexwalld.service.d/dev.conf >/dev/null",
     )?;
     start_daemon(vm)?;
 
@@ -128,7 +116,7 @@ set -e
 F=/etc/sysctl.d/90-ibexwall-test.conf
 sudo rm -f $F
 P=$(sudo ibexctl plan dev.echo --set template=dropin_file --json | tee /dev/stderr | python3 -c 'import json,sys;print(json.load(sys.stdin)["plan"]["id"])')
-OUT=$(sudo ibexctl apply $P --json 2>&1) || { echo "APPLY FAILED: $OUT" >&2; sudo tail -15 /tmp/ibexwalld.log >&2; exit 1; }
+OUT=$(sudo ibexctl apply $P --json 2>&1) || { echo "APPLY FAILED: $OUT" >&2; sudo journalctl -u ibexwalld -n 15 --no-pager >&2; exit 1; }
 echo "$OUT" | grep -q '"state": "committed"'
 sudo test -f $F
 TX=$(echo "$OUT" | python3 -c 'import json,sys;print(json.load(sys.stdin)["transaction"]["id"])')
@@ -142,7 +130,7 @@ sudo test ! -f $F
         r#"
 set -e
 P=$(sudo ibexctl plan dev.echo --set template=sysctl --json | tee /dev/stderr | python3 -c 'import json,sys;print(json.load(sys.stdin)["plan"]["id"])')
-OUT=$(sudo ibexctl apply $P --json 2>&1) || { echo "APPLY FAILED: $OUT" >&2; sudo tail -15 /tmp/ibexwalld.log >&2; exit 1; }
+OUT=$(sudo ibexctl apply $P --json 2>&1) || { echo "APPLY FAILED: $OUT" >&2; sudo journalctl -u ibexwalld -n 15 --no-pager >&2; exit 1; }
 echo "$OUT" | grep -q committed
 grep -q 'vm.swappiness = 10' /etc/sysctl.d/90-ibexwall-test.conf
 [ "$(cat /proc/sys/vm/swappiness)" = "10" ]
@@ -159,10 +147,10 @@ set -e
 P=$(sudo ibexctl plan dev.echo --set template=slow --json | tee /dev/stderr | python3 -c 'import json,sys;print(json.load(sys.stdin)["plan"]["id"])')
 (sudo ibexctl apply $P --json >/tmp/apply.out 2>&1 &)
 sleep 2
-sudo kill -9 "$(pgrep -x ibexwalld)"
+sudo kill -9 "$(systemctl show -p MainPID --value ibexwalld.service)"
 sleep 1
-sudo sh -c 'nohup /usr/bin/ibexwalld --dev-key=/root/ibexwall-dev.pub >/tmp/ibexwalld.log 2>&1 &'
-sleep 3
+# systemd restarts the service (Restart=on-failure) or the socket
+# re-activates it on the next call; recovery runs at startup.
 for i in $(seq 1 20); do sudo ibexctl status --json >/dev/null 2>&1 && break; sleep 1; done
 sudo ibexctl history --json | grep -q rolled_back
 "#
@@ -224,16 +212,22 @@ RC=$?
 }
 
 fn start_daemon(vm: &Vm) -> Result<()> {
-    vm.ssh("sudo sh -c 'nohup /usr/bin/ibexwalld --dev-key=/root/ibexwall-dev.pub >/tmp/ibexwalld.log 2>&1 &'")?;
+    vm.ssh("sudo systemctl daemon-reload && sudo systemctl start ibexwalld.socket")?;
     for _ in 0..30 {
         if vm.ssh("sudo ibexctl status --json").is_ok() {
-            println!("daemon is up");
+            println!("daemon is up (socket activation)");
+            let analysis = vm
+                .ssh("systemd-analyze security ibexwalld.service --no-pager 2>&1 | tail -4")
+                .unwrap_or_default();
+            println!("systemd-analyze security ibexwalld.service:\n{analysis}");
             return Ok(());
         }
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
-    let log = vm.ssh("cat /tmp/ibexwalld.log").unwrap_or_default();
-    bail!("daemon did not come up; log:\n{log}");
+    let log = vm
+        .ssh("sudo journalctl -u ibexwalld -n 30 --no-pager")
+        .unwrap_or_default();
+    bail!("daemon did not come up; journal:\n{log}");
 }
 
 fn pipe_file(vm: &Vm, local: &Path, remote_cmd: &str) -> Result<()> {
@@ -289,5 +283,19 @@ fn run_script(vm: &Vm, name: &str, script: &str) -> bool {
             String::from_utf8_lossy(&output.stderr)
         );
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn polkit_policy_declares_every_action_in_names() {
+        let policy = include_str!("../../packaging/polkit/com.ibexwall.policy");
+        for action in ibexwall_proto::names::polkit_actions() {
+            assert!(
+                policy.contains(&format!("<action id=\"{action}\">")),
+                "packaging/polkit is missing `{action}`"
+            );
+        }
     }
 }

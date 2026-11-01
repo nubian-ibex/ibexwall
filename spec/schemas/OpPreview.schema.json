@@ -1,0 +1,46 @@
+{
+  "$defs": {
+    "RiskFlag": {
+      "description": "Risk flags attached to plans and transactions (spec §4.5).",
+      "enum": [
+        "network",
+        "auth",
+        "boot",
+        "reboot_to_revert",
+        "irreversible"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One operation as previewed to the user (op kind + target + diff).",
+  "properties": {
+    "diff": {
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "op": {
+      "type": "string"
+    },
+    "risk": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/RiskFlag"
+      },
+      "type": "array"
+    },
+    "target": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "op",
+    "target"
+  ],
+  "title": "OpPreview",
+  "type": "object"
+}

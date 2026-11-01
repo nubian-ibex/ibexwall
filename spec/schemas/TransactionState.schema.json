@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Change-engine transaction states (spec §4.5).",
+  "enum": [
+    "planned",
+    "approved",
+    "applying",
+    "applied",
+    "pending_confirm",
+    "committed",
+    "rolled_back",
+    "failed"
+  ],
+  "title": "TransactionState",
+  "type": "string"
+}

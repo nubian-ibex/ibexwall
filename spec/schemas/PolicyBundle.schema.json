@@ -1,0 +1,112 @@
+{
+  "$defs": {
+    "BundleSignature": {
+      "additionalProperties": false,
+      "properties": {
+        "alg": {
+          "type": "string"
+        },
+        "key_id": {
+          "type": "string"
+        },
+        "value": {
+          "description": "ed25519 over JCS(bundle without `signature`), base64.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "alg",
+        "key_id",
+        "value"
+      ],
+      "type": "object"
+    },
+    "OrgIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "ReportSpec": {
+      "additionalProperties": false,
+      "description": "Which sections the generated report may include. The report schema has\nno fields for browsing/DNS history, files, screen, passwords or\nkeystrokes (spec §4.14).",
+      "properties": {
+        "include": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "expires_at": {
+      "type": "string"
+    },
+    "issued_at": {
+      "type": "string"
+    },
+    "locks": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "org": {
+      "$ref": "#/$defs/OrgIdentity"
+    },
+    "report": {
+      "$ref": "#/$defs/ReportSpec",
+      "default": {
+        "include": []
+      }
+    },
+    "schema": {
+      "type": "string"
+    },
+    "settings": true,
+    "signature": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BundleSignature"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Detached for the signed representation (JCS excludes this field)."
+    },
+    "version": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema",
+    "org",
+    "version",
+    "issued_at",
+    "expires_at",
+    "settings"
+  ],
+  "title": "PolicyBundle",
+  "type": "object"
+}

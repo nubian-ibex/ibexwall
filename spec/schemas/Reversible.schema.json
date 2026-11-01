@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "How easily an operation reverses.",
+  "enum": [
+    "immediate",
+    "reboot",
+    "irreversible"
+  ],
+  "title": "Reversible",
+  "type": "string"
+}

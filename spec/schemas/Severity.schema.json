@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Finding severity. Weights drive the posture score (spec §5.4).",
+  "enum": [
+    "info",
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "title": "Severity",
+  "type": "string"
+}

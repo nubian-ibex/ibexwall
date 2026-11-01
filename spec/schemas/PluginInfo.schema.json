@@ -1,0 +1,67 @@
+{
+  "$defs": {
+    "PluginOrigin": {
+      "enum": [
+        "official",
+        "community",
+        "local"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Plugin card data.",
+  "properties": {
+    "compatible": {
+      "type": "boolean"
+    },
+    "conflicts": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "id": {
+      "type": "string"
+    },
+    "kinds": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "locked": {
+      "type": "boolean"
+    },
+    "name": {
+      "type": "string"
+    },
+    "origin": {
+      "$ref": "#/$defs/PluginOrigin"
+    },
+    "status": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "version",
+    "kinds",
+    "enabled",
+    "origin",
+    "status",
+    "compatible",
+    "conflicts",
+    "locked"
+  ],
+  "title": "PluginInfo",
+  "type": "object"
+}

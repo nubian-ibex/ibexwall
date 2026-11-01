@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Lifecycle of a finding.",
+  "enum": [
+    "open",
+    "accepted_risk",
+    "resolved"
+  ],
+  "title": "FindingStatus",
+  "type": "string"
+}

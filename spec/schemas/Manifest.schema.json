@@ -1,0 +1,353 @@
+{
+  "$defs": {
+    "Conflicts": {
+      "additionalProperties": false,
+      "properties": {
+        "units": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ExecAllow": {
+      "additionalProperties": false,
+      "description": "Exact exec allowlist entry: binary plus fixed argv pattern.",
+      "properties": {
+        "args": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "PluginKind": {
+      "enum": [
+        "check",
+        "control",
+        "monitor"
+      ],
+      "type": "string"
+    },
+    "PluginOrigin": {
+      "enum": [
+        "official",
+        "community",
+        "local"
+      ],
+      "type": "string"
+    },
+    "Privileges": {
+      "additionalProperties": false,
+      "description": "What the core may execute on the plugin's behalf.",
+      "properties": {
+        "exec": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ExecAllow"
+          },
+          "type": "array"
+        },
+        "nft_prefix": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sysctl_keys": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "unit_actions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/UnitAction"
+          },
+          "type": "array"
+        },
+        "units": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "write_paths": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Requires": {
+      "additionalProperties": false,
+      "properties": {
+        "commands": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "packages": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "default": {},
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "Reversible": {
+      "description": "How easily an operation reverses.",
+      "enum": [
+        "immediate",
+        "reboot",
+        "irreversible"
+      ],
+      "type": "string"
+    },
+    "RiskInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "affects": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "confirm_timeout": {
+          "default": false,
+          "type": "boolean"
+        },
+        "may_affect": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "reversible": {
+          "$ref": "#/$defs/Reversible"
+        }
+      },
+      "required": [
+        "reversible"
+      ],
+      "type": "object"
+    },
+    "Sandbox": {
+      "additionalProperties": false,
+      "description": "How the plugin process is sandboxed (reflected into its unit).",
+      "properties": {
+        "capabilities": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "network": {
+          "default": false,
+          "type": "boolean"
+        },
+        "read_paths": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "user": {
+          "$ref": "#/$defs/SandboxUser"
+        }
+      },
+      "required": [
+        "user"
+      ],
+      "type": "object"
+    },
+    "SandboxUser": {
+      "oneOf": [
+        {
+          "const": "dynamic",
+          "description": "`DynamicUser=yes`; the default and the goal whenever possible.",
+          "type": "string"
+        },
+        {
+          "const": "root",
+          "description": "Requires justification, surfaced in the plugin index.",
+          "type": "string"
+        }
+      ]
+    },
+    "Ui": {
+      "additionalProperties": false,
+      "properties": {
+        "icon": {
+          "type": "string"
+        },
+        "order": {
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "icon",
+        "order"
+      ],
+      "type": "object"
+    },
+    "UnitAction": {
+      "description": "Allowed systemd unit actions.",
+      "enum": [
+        "start",
+        "stop",
+        "restart",
+        "enable",
+        "disable",
+        "mask",
+        "unmask"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "api": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "binary": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string"
+    },
+    "config_schema": {
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "conflicts": {
+      "$ref": "#/$defs/Conflicts",
+      "default": {
+        "units": []
+      }
+    },
+    "default_enabled": {
+      "default": false,
+      "type": "boolean"
+    },
+    "description": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "distros": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "id": {
+      "description": "`<category>.<name>`, e.g. `net.dns`.",
+      "type": "string"
+    },
+    "kinds": {
+      "items": {
+        "$ref": "#/$defs/PluginKind"
+      },
+      "type": "array"
+    },
+    "license": {
+      "type": "string"
+    },
+    "name": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "origin": {
+      "$ref": "#/$defs/PluginOrigin"
+    },
+    "privileges": {
+      "$ref": "#/$defs/Privileges"
+    },
+    "requires": {
+      "$ref": "#/$defs/Requires",
+      "default": {
+        "commands": [],
+        "packages": {}
+      }
+    },
+    "risk": {
+      "$ref": "#/$defs/RiskInfo"
+    },
+    "sandbox": {
+      "$ref": "#/$defs/Sandbox"
+    },
+    "ui": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Ui"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "version",
+    "api",
+    "category",
+    "kinds",
+    "origin",
+    "license",
+    "binary",
+    "name",
+    "privileges",
+    "sandbox",
+    "risk"
+  ],
+  "title": "Manifest",
+  "type": "object"
+}

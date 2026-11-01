@@ -43,6 +43,13 @@ pub struct Core {
 pub async fn serve(socket: &std::path::Path, dev_key: Option<PathBuf>) -> Result<()> {
     let listener =
         UnixListener::bind(socket).with_context(|| format!("binding {}", socket.display()))?;
+    // The socket is world-connectable; authorization is per method via
+    // polkit (ibexwalld.socket uses SocketMode=0666).
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o666))
+            .with_context(|| format!("chmod {}", socket.display()))?;
+    }
     serve_listener(listener, dev_key).await
 }
 

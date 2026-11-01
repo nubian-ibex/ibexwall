@@ -34,6 +34,12 @@ fn run() -> Result<()> {
             path
         }
     };
+    // Direct-bind mode (dev/VM): a crashed daemon leaves the socket
+    // file behind and bind(2) would fail. systemd socket activation
+    // (LISTEN_FDS) does not go through this path.
+    if std::env::var_os("LISTEN_FDS").is_none() {
+        let _ = std::fs::remove_file(&socket);
+    }
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()

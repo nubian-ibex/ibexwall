@@ -44,7 +44,6 @@ impl Drop for TempDir {
 
 struct Sandbox {
     root: PathBuf,
-    socket: PathBuf,
     _dir: TempDir,
 }
 
@@ -151,11 +150,7 @@ fn prepare_sandbox() -> Sandbox {
 
     let socket = root.join("run/ibexwall/core.sock");
     let _ = std::fs::remove_file(&socket);
-    Sandbox {
-        root,
-        socket,
-        _dir: dir,
-    }
+    Sandbox { root, _dir: dir }
 }
 
 fn set_mode(path: &Path, mode: u32) {

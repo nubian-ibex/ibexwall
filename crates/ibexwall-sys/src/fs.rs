@@ -131,6 +131,8 @@ impl Fs for RealFs {
             name.to_string_lossy(),
             std::process::id()
         );
+        // A leftover from a crashed earlier write must not block us.
+        let _ = rfs::unlinkat(&dir_fd, &tmp_name, rfs::AtFlags::empty());
         let tmp_fd = rfs::openat(
             &dir_fd,
             &tmp_name,
@@ -138,19 +140,30 @@ impl Fs for RealFs {
             Mode::from_bits_truncate(mode),
         )
         .map_err(|e| io::Error::other(format!("openat tmp: {e}")))?;
-        {
+        let staged = (|| -> io::Result<()> {
             let mut file = File::from(tmp_fd);
             file.write_all(content)
                 .map_err(|e| io::Error::other(format!("write_all: {e}")))?;
+            // The creation mode is subject to umask; set it exactly.
+            file.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(mode))
+                .map_err(|e| io::Error::other(format!("chmod: {e}")))?;
+            if let Some((uid, gid)) = owner {
+                // fchown on the staged fd: the final path may not exist yet.
+                std::os::unix::fs::fchown(&file, Some(uid), Some(gid))
+                    .map_err(|e| io::Error::other(format!("chown {uid}:{gid}: {e}")))?;
+            }
             file.sync_all()
                 .map_err(|e| io::Error::other(format!("sync_all: {e}")))?;
+            Ok(())
+        })();
+        if let Err(e) = staged {
+            let _ = rfs::unlinkat(&dir_fd, &tmp_name, rfs::AtFlags::empty());
+            return Err(e);
         }
-        if let Some((uid, gid)) = owner {
-            std::os::unix::fs::chown(path, Some(uid), Some(gid))
-                .map_err(|e| io::Error::other(format!("chown {uid}:{gid}: {e}")))?;
+        if let Err(e) = rfs::renameat(&dir_fd, &tmp_name, &dir_fd, name) {
+            let _ = rfs::unlinkat(&dir_fd, &tmp_name, rfs::AtFlags::empty());
+            return Err(io::Error::other(format!("renameat: {e}")));
         }
-        rfs::renameat(&dir_fd, &tmp_name, &dir_fd, name)
-            .map_err(|e| io::Error::other(format!("renameat: {e}")))?;
         rfs::fsync(dir_fd.as_fd()).map_err(|e| io::Error::other(format!("fsync dir: {e}")))?;
         Ok(())
     }

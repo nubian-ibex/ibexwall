@@ -1,0 +1,18 @@
+{
+  "plugin": "net.nts",
+  "ops": [
+    {
+      "op": "file.write",
+      "path": "/etc/chrony.d/ibexwall.conf",
+      "mode": "0644",
+      "owner": "root",
+      "group": "root",
+      "content": "# managed by IbexWall\nserver time.cloudflare.com iburst nts\nserver nts.netnod.se iburst nts\n"
+    },
+    { "op": "systemd.unit", "unit": "systemd-timesyncd.service", "action": "disable", "now": true },
+    { "op": "systemd.unit", "unit": "chronyd.service", "action": "enable", "now": true },
+    { "op": "systemd.unit", "unit": "chronyd.service", "action": "restart" }
+  ],
+  "risk": ["network"],
+  "may_affect_keys": ["nts-may-affect-firewall-4460"]
+}

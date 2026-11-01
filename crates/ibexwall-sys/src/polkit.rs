@@ -25,6 +25,12 @@ pub trait Polkit: Send + Sync {
     fn check(&self, action: String, identity: Identity) -> CheckFuture;
 }
 
+impl Polkit for Box<dyn Polkit> {
+    fn check(&self, action: String, identity: Identity) -> CheckFuture {
+        (**self).check(action, identity)
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct RealPolkit;
 

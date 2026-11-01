@@ -27,14 +27,63 @@ const FEDORA_MIRRORS: &[&str] = &[
 const SSH_TIMEOUT: Duration = Duration::from_secs(420);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(120);
 
-pub fn run(distro: &str) -> Result<()> {
+pub fn run(distro: &str, phase: Option<&str>) -> Result<()> {
     match distro {
-        "fedora" => fedora_smoke(),
-        other => bail!("unsupported distro `{other}` (F0 supports: fedora)"),
+        "fedora" => {
+            let (vm, workspace) = boot_fedora()?;
+            match phase {
+                None | Some("f0") => f0_smoke(&vm, &workspace),
+                Some("f1") => crate::f1::run(&vm, &workspace),
+                Some(other) => bail!("unknown phase `{other}` (supported: f0, f1)"),
+            }
+        }
+        other => bail!("unsupported distro `{other}` (F0/F1 support: fedora)"),
     }
 }
 
-struct Vm {
+/// Boots the Fedora VM and returns it with the workspace root. The Drop
+/// guard shuts it down.
+fn boot_fedora() -> Result<(Vm, PathBuf)> {
+    check_tools()?;
+    let cache = cache_dir();
+    std::fs::create_dir_all(&cache)?;
+
+    let base = ensure_fedora_image(&cache)?;
+    println!("base image: {}", base.display());
+    let workspace = workspace_root();
+    Ok((start_vm(&cache, &base)?, workspace))
+}
+
+fn f0_smoke(vm: &Vm, workspace: &Path) -> Result<()> {
+    run_capture(
+        "cargo",
+        ["build", "-p", "ibexwall-cli"],
+        None,
+        "building ibexctl for the smoke test",
+    )?;
+    let ibexctl = workspace.join("target/debug/ibexctl");
+
+    let kernel = vm.ssh("uname -sr")?.trim().to_string();
+    println!("vm up: {kernel}");
+    let version = vm
+        .ssh_pipe(
+            &ibexctl,
+            "cat > /tmp/ibexctl && chmod +x /tmp/ibexctl && /tmp/ibexctl --version",
+        )?
+        .trim()
+        .to_string();
+    println!("smoke: {version}");
+
+    assert!(kernel.starts_with("Linux"), "unexpected uname output");
+    assert!(
+        version.starts_with("ibexctl "),
+        "workspace binary did not run inside the VM: `{version}`"
+    );
+    println!("PASS: fedora vm smoke test");
+    Ok(())
+}
+
+pub(crate) struct Vm {
     work: PathBuf,
     qemu: std::process::Child,
     port: u16,
@@ -42,7 +91,7 @@ struct Vm {
 }
 
 impl Vm {
-    fn ssh_base(&self) -> Command {
+    pub(crate) fn ssh_base(&self) -> Command {
         let mut cmd = Command::new("ssh");
         cmd.args([
             "-i",
@@ -62,7 +111,7 @@ impl Vm {
         cmd
     }
 
-    fn ssh(&self, command: &str) -> Result<String> {
+    pub(crate) fn ssh(&self, command: &str) -> Result<String> {
         let output = self
             .ssh_base()
             .arg(command)
@@ -78,7 +127,7 @@ impl Vm {
     }
 
     /// Pipes `local` into `remote_cmd` over ssh stdin (no scp needed).
-    fn ssh_pipe(&self, local: &Path, remote_cmd: &str) -> Result<String> {
+    pub(crate) fn ssh_pipe(&self, local: &Path, remote_cmd: &str) -> Result<String> {
         let mut child = self
             .ssh_base()
             .arg(remote_cmd)
@@ -124,24 +173,7 @@ impl Vm {
     }
 }
 
-fn fedora_smoke() -> Result<()> {
-    check_tools()?;
-    let cache = cache_dir();
-    std::fs::create_dir_all(&cache)?;
-
-    let base = ensure_fedora_image(&cache)?;
-    println!("base image: {}", base.display());
-
-    // Build the binary the smoke test executes inside the VM.
-    run_capture(
-        "cargo",
-        ["build", "-p", "ibexwall-cli"],
-        None,
-        "building ibexctl for the smoke test",
-    )?;
-    let workspace = workspace_root();
-    let ibexctl = workspace.join("target/debug/ibexctl");
-
+fn start_vm(cache: &Path, base: &Path) -> Result<Vm> {
     let work = cache.join(format!(
         "work-{}",
         SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs()
@@ -254,25 +286,7 @@ fn fedora_smoke() -> Result<()> {
         }
         std::thread::sleep(Duration::from_secs(3));
     }
-
-    let kernel = vm.ssh("uname -sr")?.trim().to_string();
-    println!("vm up: {kernel}");
-    let version = vm
-        .ssh_pipe(
-            &ibexctl,
-            "cat > /tmp/ibexctl && chmod +x /tmp/ibexctl && /tmp/ibexctl --version",
-        )?
-        .trim()
-        .to_string();
-    println!("smoke: {version}");
-
-    assert!(kernel.starts_with("Linux"), "unexpected uname output");
-    assert!(
-        version.starts_with("ibexctl "),
-        "workspace binary did not run inside the VM: `{version}`"
-    );
-    println!("PASS: fedora vm smoke test");
-    Ok(())
+    Ok(vm)
 }
 
 fn check_tools() -> Result<()> {
@@ -311,7 +325,7 @@ fn cache_dir() -> PathBuf {
     base.join("ibexwall").join("vm")
 }
 
-fn workspace_root() -> PathBuf {
+pub(crate) fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("xtask lives inside the workspace")
@@ -422,7 +436,7 @@ fn curl(url: &str) -> Result<String> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-fn run_capture(
+pub(crate) fn run_capture(
     program: &str,
     args: impl IntoIterator<Item = impl AsRef<str>>,
     cwd: Option<&str>,

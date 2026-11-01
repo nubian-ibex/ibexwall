@@ -135,6 +135,8 @@ impl Supervisor {
     /// Ensures the plugin process is listening, spawning it directly
     /// (dev/F1-VM mode; systemd activation arrives with packaging).
     pub async fn ensure_running(&self, id: &str) -> Result<()> {
+        // Every use verifies the manifest signature (spec 5.1).
+        self.verify_signature(id)?;
         if let Some(entry) = self.plugins.get(id)
             && ibexwall_varlink::Client::connect(&entry.socket)
                 .await

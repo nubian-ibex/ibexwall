@@ -4,6 +4,7 @@
 //! Developer tasks: `cargo xtask <command>`.
 
 mod devkey;
+mod f1;
 mod idl;
 mod schemas;
 mod vm;
@@ -16,8 +17,9 @@ Usage: cargo xtask <COMMAND>
 Commands:
   schemas [--check]  Export JSON Schemas and varlink IDL to spec/
                      (--check fails if committed files differ)
-  vm-test [--distro <distro>]
-                     Boot a QEMU/KVM VM and run the smoke test (F0: fedora)
+  vm-test [--distro <distro>] [--phase f0|f1]
+                     Boot a QEMU/KVM VM; phase f0 runs the smoke test,
+                     f1 provisions the daemon and runs acceptance tests
   devkey             Generate the dev plugin-signing key and sign
                      plugins/*/plugin.toml (dev builds only)
 ";
@@ -35,11 +37,26 @@ fn main() {
             }
         }
         Some("vm-test") => {
-            let distro = match args.next() {
-                Some(a) if a == "--distro" => args.next().unwrap_or_else(|| "fedora".into()),
-                _ => "fedora".into(),
+            let mut distro = "fedora".to_string();
+            let mut phase = None;
+            while let Some(arg) = args.next() {
+                match arg.as_str() {
+                    "--distro" => distro = args.next().unwrap_or(distro),
+                    "--phase" => phase = args.next(),
+                    other => {
+                        eprintln!("error: unknown vm-test flag `{other}`");
+                        std::process::exit(2);
+                    }
+                }
+            }
+            let result = match phase.as_deref() {
+                None | Some("f0") | Some("f1") => vm::run(&distro, phase.as_deref()),
+                Some(other) => {
+                    eprintln!("error: unknown phase `{other}`");
+                    std::process::exit(2);
+                }
             };
-            if let Err(err) = vm::run(&distro) {
+            if let Err(err) = result {
                 eprintln!("error: {err:#}");
                 std::process::exit(1);
             }

@@ -21,7 +21,7 @@ en = "Exercises every typed operation for engine and CLI tests."
 write_paths = ["/etc/sysctl.d", "/etc/NetworkManager/conf.d", "/etc/ibexwall-tests"]
 units = ["ibexwall-test.service"]
 unit_actions = ["start", "stop", "restart"]
-sysctl_keys = ["kernel.ibexwall_test", "net.ibexwall_test"]
+sysctl_keys = ["kernel.ibexwall_test", "net.ibexwall_test", "vm.swappiness"]
 exec = [{ path = "/usr/bin/sleep", args = ["10"] }]
 nft_prefix = "dev_echo"
 

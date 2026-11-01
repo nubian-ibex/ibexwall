@@ -49,13 +49,14 @@ impl Polkit for RealPolkit {
             let mut subject: HashMap<&str, zbus::zvariant::Variant> = HashMap::new();
             subject.insert("pid", zbus::zvariant::Variant::U32(identity.pid));
             subject.insert(
-                "starttime",
+                "start-time",
                 zbus::zvariant::Variant::U64(identity.start_time),
             );
-            let details: HashMap<&str, zbus::zvariant::Variant> = HashMap::new();
+            // CheckAuthorization signature: ((sa{sv})sa{ss}us); the subject
+            // is a struct and the details map is a{ss}.
+            let details: HashMap<&str, &str> = HashMap::new();
             let body = (
-                "unix-process",
-                subject,
+                ("unix-process", subject),
                 action.as_str(),
                 details,
                 0u32, // flags: no interactive prompt
@@ -72,7 +73,8 @@ impl Polkit for RealPolkit {
                     &body,
                 )
                 .await?;
-            let (authorized, _details): (bool, HashMap<String, zbus::zvariant::Variant>) =
+            // Reply is one struct: (is_authorized, is_challenge, details)
+            let ((authorized, _challenge, _details),): ((bool, bool, HashMap<String, String>),) =
                 reply.body().deserialize()?;
             Ok(if authorized {
                 Decision::Authorized

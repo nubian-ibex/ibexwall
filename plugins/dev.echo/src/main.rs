@@ -131,6 +131,29 @@ fn plan_for(template: &str) -> Result<Vec<Op>, String> {
                 value: "1".into(),
             },
         ],
+        // File-only variant for real systems where the fake sysctl key
+        // does not exist in /proc/sys.
+        "dropin_file" => vec![Op::FileWrite {
+            path: "/etc/sysctl.d/90-ibexwall-test.conf".into(),
+            content: "# managed by IbexWall (vm test)\n".into(),
+            mode: "0644".into(),
+            owner: "root".into(),
+            group: "root".into(),
+        }],
+        // Real, harmless sysctl for VM runs.
+        "sysctl" => vec![
+            Op::FileWrite {
+                path: "/etc/sysctl.d/90-ibexwall-test.conf".into(),
+                content: "vm.swappiness = 10\n".into(),
+                mode: "0644".into(),
+                owner: "root".into(),
+                group: "root".into(),
+            },
+            Op::SysctlSet {
+                key: "vm.swappiness".into(),
+                value: "10".into(),
+            },
+        ],
         "network" => vec![Op::FileWrite {
             path: "/etc/NetworkManager/conf.d/50-ibexwall-test.conf".into(),
             content: "# managed by IbexWall (dev test)\n".into(),

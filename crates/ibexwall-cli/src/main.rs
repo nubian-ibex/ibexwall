@@ -72,13 +72,22 @@ enum Command {
     Rollback { target: String },
     /// Recent transactions.
     History,
-    /// Validate the audit hash chain.
-    AuditVerify,
+    /// Audit chain operations.
+    Audit {
+        #[command(subcommand)]
+        action: AuditAction,
+    },
     /// Live events.
     Events {
         #[arg(long)]
         follow: bool,
     },
+}
+
+#[derive(Subcommand)]
+enum AuditAction {
+    /// Validate the audit hash chain.
+    Verify,
 }
 
 #[derive(Subcommand)]
@@ -207,7 +216,9 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
             }
             let params = serde_json::json!({ "plugin": plugin, "patch": config });
             let value = client.call("com.ibexwall.Core.PlanChange", params).await?;
-            if !json {
+            if json {
+                emit(value.clone(), json);
+            } else {
                 let plan = &value["plan"];
                 println!(
                     "plan {} for {} ({} op(s))",
@@ -267,12 +278,33 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
             emit(value, json);
             Ok(Finish::Done)
         }
-        Command::AuditVerify => {
+        Command::Audit {
+            action: AuditAction::Verify,
+        } => {
             let value = client
                 .call("com.ibexwall.Core.AuditVerify", serde_json::json!({}))
                 .await?;
-            emit(value, json);
-            Ok(Finish::Done)
+            let valid = value["valid"].as_bool().unwrap_or(false);
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&value).unwrap_or_default()
+                );
+            } else if valid {
+                println!("audit chain valid ({} entries)", value["entries"]);
+            } else {
+                eprintln!(
+                    "audit chain BROKEN: {}",
+                    value["reason"].as_str().unwrap_or("unknown")
+                );
+            }
+            if valid {
+                Ok(Finish::Done)
+            } else {
+                Err(CliError::Other(anyhow::anyhow!(
+                    "audit chain verification failed"
+                )))
+            }
         }
         Command::Events { follow } => {
             if !*follow {

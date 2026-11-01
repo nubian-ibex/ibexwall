@@ -5,6 +5,7 @@
 
 mod idl;
 mod schemas;
+mod vm;
 
 const HELP: &str = "\
 IbexWall developer tasks
@@ -26,6 +27,16 @@ fn main() {
         Some("schemas") => {
             let check = args.any(|a| a == "--check");
             if let Err(err) = schemas::run(check) {
+                eprintln!("error: {err:#}");
+                std::process::exit(1);
+            }
+        }
+        Some("vm-test") => {
+            let distro = match args.next() {
+                Some(a) if a == "--distro" => args.next().unwrap_or_else(|| "fedora".into()),
+                _ => "fedora".into(),
+            };
+            if let Err(err) = vm::run(&distro) {
                 eprintln!("error: {err:#}");
                 std::process::exit(1);
             }

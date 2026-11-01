@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Risk flags attached to plans and transactions (spec §4.5).",
+  "enum": [
+    "network",
+    "auth",
+    "boot",
+    "reboot_to_revert",
+    "irreversible"
+  ],
+  "title": "RiskFlag",
+  "type": "string"
+}

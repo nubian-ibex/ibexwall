@@ -1,0 +1,65 @@
+{
+  "$defs": {
+    "ProtectionStatus": {
+      "additionalProperties": false,
+      "description": "State of one protection as shown on the overview screen.",
+      "properties": {
+        "detail": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plugin": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "summary_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "plugin",
+        "state",
+        "summary_key"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Posture score and per-protection snapshot.",
+  "properties": {
+    "generated_at": {
+      "type": "string"
+    },
+    "open_findings": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "protections": {
+      "items": {
+        "$ref": "#/$defs/ProtectionStatus"
+      },
+      "type": "array"
+    },
+    "score": {
+      "format": "uint8",
+      "maximum": 255,
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "score",
+    "generated_at",
+    "protections",
+    "open_findings"
+  ],
+  "title": "Posture",
+  "type": "object"
+}

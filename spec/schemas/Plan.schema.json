@@ -1,0 +1,105 @@
+{
+  "$defs": {
+    "OpPreview": {
+      "additionalProperties": false,
+      "description": "One operation as previewed to the user (op kind + target + diff).",
+      "properties": {
+        "diff": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "op": {
+          "type": "string"
+        },
+        "risk": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RiskFlag"
+          },
+          "type": "array"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "target"
+      ],
+      "type": "object"
+    },
+    "Reversible": {
+      "description": "How easily an operation reverses.",
+      "enum": [
+        "immediate",
+        "reboot",
+        "irreversible"
+      ],
+      "type": "string"
+    },
+    "RiskFlag": {
+      "description": "Risk flags attached to plans and transactions (spec §4.5).",
+      "enum": [
+        "network",
+        "auth",
+        "boot",
+        "reboot_to_revert",
+        "irreversible"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A previewable, expiring plan produced by `PlanChange`.",
+  "properties": {
+    "expires_at": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "may_affect_keys": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "ops": {
+      "items": {
+        "$ref": "#/$defs/OpPreview"
+      },
+      "type": "array"
+    },
+    "plugin": {
+      "type": "string"
+    },
+    "requires_confirm": {
+      "type": "boolean"
+    },
+    "reversible": {
+      "$ref": "#/$defs/Reversible"
+    },
+    "risk": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/RiskFlag"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "plugin",
+    "ops",
+    "reversible",
+    "requires_confirm",
+    "expires_at"
+  ],
+  "title": "Plan",
+  "type": "object"
+}

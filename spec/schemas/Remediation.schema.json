@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Remediation metadata for a finding.",
+  "properties": {
+    "may_affect_keys": {
+      "default": [],
+      "description": "Fluent keys for the \"may affect\" callout.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "plan_template": {
+      "default": null,
+      "description": "Plan template id the core can render into a previewable plan.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "title": "Remediation",
+  "type": "object"
+}

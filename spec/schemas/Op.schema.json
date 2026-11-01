@@ -1,0 +1,302 @@
+{
+  "$defs": {
+    "UnitAction": {
+      "description": "Allowed systemd unit actions.",
+      "enum": [
+        "start",
+        "stop",
+        "restart",
+        "enable",
+        "disable",
+        "mask",
+        "unmask"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The typed operation set (spec §5.3).\n\nVariants serialize with dotted `op` tags (`file.write`, `systemd.unit`,\n...). Inverses and validation are the core's job, driven by the plugin\nmanifest's `[privileges]` section.\n\nNote: serde cannot enforce `deny_unknown_fields` on internally tagged\nenums; the core re-validates every deserialized op strictly (F1).",
+  "oneOf": [
+    {
+      "description": "Write a file inside declared `write_paths`; atomic write, no symlink\nfollowing, declared mode/owner.",
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "group": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "op": {
+          "const": "file.write",
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "path",
+        "content",
+        "mode",
+        "owner",
+        "group"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "Remove a file that IbexWall itself created inside `write_paths`.",
+      "properties": {
+        "op": {
+          "const": "file.remove",
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "path"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "Start/stop/enable/disable/mask a unit listed in `units`.",
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/UnitAction"
+        },
+        "now": {
+          "default": null,
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "op": {
+          "const": "systemd.unit",
+          "type": "string"
+        },
+        "unit": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "unit",
+        "action"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "Set a sysctl key listed in `sysctl_keys`, persisted in a drop-in.",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "op": {
+          "const": "sysctl.set",
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "key",
+        "value"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "Contribute a fragment (chains/sets with the plugin's prefix) to\n`table inet ibexwall`; the core recomposes the table atomically.",
+      "properties": {
+        "fragment": true,
+        "op": {
+          "const": "nft.fragment",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "fragment"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "Drive the detected firewall backend (firewalld/ufw/bare nftables).",
+      "properties": {
+        "action": true,
+        "backend": {
+          "type": "string"
+        },
+        "op": {
+          "const": "firewall.adapter",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "backend",
+        "action"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "Drive the detected DNS backend (resolved/NM/resolv.conf drop-ins).",
+      "properties": {
+        "action": true,
+        "backend": {
+          "type": "string"
+        },
+        "op": {
+          "const": "dns.backend",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "backend",
+        "action"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "Apply Flatpak overrides (e.g. `--unshare=network`).",
+      "properties": {
+        "app_id": {
+          "type": "string"
+        },
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "op": {
+          "const": "flatpak.override",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "app_id",
+        "args"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "Connect/disconnect a Snap interface.",
+      "properties": {
+        "connect": {
+          "type": "boolean"
+        },
+        "interface": {
+          "type": "string"
+        },
+        "op": {
+          "const": "snap.interface",
+          "type": "string"
+        },
+        "snap": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "snap",
+        "interface",
+        "connect"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "Write an allowed browser policy key (with user consent).",
+      "properties": {
+        "browser": {
+          "type": "string"
+        },
+        "op": {
+          "const": "browser.policy",
+          "type": "string"
+        },
+        "policy": true
+      },
+      "required": [
+        "op",
+        "browser",
+        "policy"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "Set an allowed NetworkManager key (MAC randomization, global DNS).",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "op": {
+          "const": "nm.setting",
+          "type": "string"
+        },
+        "value": true
+      },
+      "required": [
+        "op",
+        "key",
+        "value"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "Install a package via PackageKit only; never automatically\nreversible (flagged in the plan).",
+      "properties": {
+        "op": {
+          "const": "package.install",
+          "type": "string"
+        },
+        "package": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "package"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "Run an allowlisted binary with fixed argv; no shell.",
+      "properties": {
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "op": {
+          "const": "exec",
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "path",
+        "args"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "Op"
+}

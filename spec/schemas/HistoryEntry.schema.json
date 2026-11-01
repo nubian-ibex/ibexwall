@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Audit/history row.",
+  "properties": {
+    "actor": {
+      "type": "string"
+    },
+    "plugin": {
+      "type": "string"
+    },
+    "result": {
+      "type": "string"
+    },
+    "seq": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "transaction": {
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ts": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "seq",
+    "ts",
+    "actor",
+    "plugin",
+    "result"
+  ],
+  "title": "HistoryEntry",
+  "type": "object"
+}

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "State of one protection as shown on the overview screen.",
+  "properties": {
+    "detail": {
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "plugin": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "summary_key": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "plugin",
+    "state",
+    "summary_key"
+  ],
+  "title": "ProtectionStatus",
+  "type": "object"
+}

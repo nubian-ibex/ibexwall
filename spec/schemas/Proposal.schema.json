@@ -1,0 +1,51 @@
+{
+  "$defs": {
+    "ProposalStatus": {
+      "description": "Lifecycle of an AI/client proposal.",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected",
+        "expired"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A change proposed through the API (e.g. by the MCP assistant);\napproval is always human.",
+  "properties": {
+    "client": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "justification": {
+      "type": "string"
+    },
+    "plan_id": {
+      "type": "string"
+    },
+    "plugin": {
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/ProposalStatus"
+    }
+  },
+  "required": [
+    "id",
+    "client",
+    "plugin",
+    "plan_id",
+    "justification",
+    "status",
+    "created_at"
+  ],
+  "title": "Proposal",
+  "type": "object"
+}

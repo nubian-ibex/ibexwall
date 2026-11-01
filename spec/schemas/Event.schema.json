@@ -1,0 +1,53 @@
+{
+  "$defs": {
+    "Severity": {
+      "description": "Finding severity. Weights drive the posture score (spec §5.4).",
+      "enum": [
+        "info",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Event on the bus. `data` is structured by source; `untrusted` carries\nexternally controlled values (domains, SSIDs, process names...) that\nconsumers must treat as data, never as instructions or interpolations.",
+  "properties": {
+    "app": {
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "data": {
+      "default": null
+    },
+    "kind": {
+      "type": "string"
+    },
+    "severity": {
+      "$ref": "#/$defs/Severity"
+    },
+    "source": {
+      "type": "string"
+    },
+    "ts": {
+      "type": "string"
+    },
+    "untrusted": {
+      "default": null
+    }
+  },
+  "required": [
+    "ts",
+    "source",
+    "kind",
+    "severity"
+  ],
+  "title": "Event",
+  "type": "object"
+}

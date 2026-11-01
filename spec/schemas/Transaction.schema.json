@@ -1,0 +1,54 @@
+{
+  "$defs": {
+    "TransactionState": {
+      "description": "Change-engine transaction states (spec §4.5).",
+      "enum": [
+        "planned",
+        "approved",
+        "applying",
+        "applied",
+        "pending_confirm",
+        "committed",
+        "rolled_back",
+        "failed"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A transaction (apply) of a plan.",
+  "properties": {
+    "confirm_deadline": {
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "id": {
+      "type": "string"
+    },
+    "plan_id": {
+      "type": "string"
+    },
+    "restore_point": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/TransactionState"
+    }
+  },
+  "required": [
+    "id",
+    "plan_id",
+    "state",
+    "started_at",
+    "restore_point"
+  ],
+  "title": "Transaction",
+  "type": "object"
+}

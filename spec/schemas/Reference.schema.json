@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Reference to a control in an external framework (own wording only;\nnever copy protected norm texts).",
+  "properties": {
+    "framework": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "url": {
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "framework",
+    "id"
+  ],
+  "title": "Reference",
+  "type": "object"
+}

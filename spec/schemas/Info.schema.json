@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Daemon and host information (`GetInfo`).",
+  "properties": {
+    "api": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "degraded": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "distro": {
+      "type": "string"
+    },
+    "features": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "kernel": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "version",
+    "api",
+    "distro",
+    "kernel",
+    "features",
+    "degraded"
+  ],
+  "title": "Info",
+  "type": "object"
+}

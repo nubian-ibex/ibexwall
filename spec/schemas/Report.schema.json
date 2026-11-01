@@ -1,0 +1,188 @@
+{
+  "$defs": {
+    "AppCount": {
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
+        },
+        "count": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "app",
+        "count"
+      ],
+      "type": "object"
+    },
+    "BlockedConnectionsSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "top_apps": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AppCount"
+          },
+          "type": "array"
+        },
+        "total_24h": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total_24h"
+      ],
+      "type": "object"
+    },
+    "HistoryEntry": {
+      "additionalProperties": false,
+      "description": "Audit/history row.",
+      "properties": {
+        "actor": {
+          "type": "string"
+        },
+        "plugin": {
+          "type": "string"
+        },
+        "result": {
+          "type": "string"
+        },
+        "seq": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "transaction": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ts": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "ts",
+        "actor",
+        "plugin",
+        "result"
+      ],
+      "type": "object"
+    },
+    "ProtectionStatus": {
+      "additionalProperties": false,
+      "description": "State of one protection as shown on the overview screen.",
+      "properties": {
+        "detail": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "plugin": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "summary_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "plugin",
+        "state",
+        "summary_key"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "blocked_connections": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BlockedConnectionsSummary"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "change_audit": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/HistoryEntry"
+      },
+      "type": "array"
+    },
+    "findings_by_severity": {
+      "additionalProperties": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "findings_open": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "package_versions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "policy_version": {
+      "default": null,
+      "format": "uint64",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "protections": {
+      "items": {
+        "$ref": "#/$defs/ProtectionStatus"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "score": {
+      "format": "uint8",
+      "maximum": 255,
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema",
+    "generated_at",
+    "score",
+    "protections",
+    "findings_open"
+  ],
+  "title": "Report",
+  "type": "object"
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Lifecycle of an AI/client proposal.",
+  "enum": [
+    "pending",
+    "approved",
+    "rejected",
+    "expired"
+  ],
+  "title": "ProposalStatus",
+  "type": "string"
+}

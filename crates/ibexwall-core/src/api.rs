@@ -245,6 +245,26 @@ async fn dispatch(
             Ok(Reply::result(json!({ "entries": entries })))
         }
         "Subscribe" => subscribe(core),
+        "AuditVerify" => {
+            let verification = core.audit_verify();
+            let value = match &verification {
+                crate::audit::Verification::Valid { entries } => json!({
+                    "valid": true, "entries": entries, "reason": null
+                }),
+                crate::audit::Verification::Broken { seq, reason } => json!({
+                    "valid": false, "entries": seq, "reason": reason
+                }),
+            };
+            Ok(Reply::result(value))
+        }
+        "RecentEvents" => {
+            let limit = parameters
+                .get("limit")
+                .and_then(Value::as_u64)
+                .unwrap_or(50) as usize;
+            let events = core.state.list_events(limit).map_err(internal)?;
+            Ok(Reply::result(json!({ "events": events })))
+        }
         _ => Err(VarlinkError::new(
             ibexwall_varlink::service_errors::METHOD_NOT_FOUND,
             json!({ "method": method }),
@@ -255,7 +275,7 @@ async fn dispatch(
 fn polkit_action(method: &str) -> Option<&'static str> {
     Some(match method {
         "GetInfo" | "GetPosture" | "ListPlugins" | "ListFindings" | "GetConfig" | "History"
-        | "Subscribe" | "RunChecks" => names::POLKIT_READ,
+        | "Subscribe" | "RunChecks" | "AuditVerify" | "RecentEvents" => names::POLKIT_READ,
         "SetPluginEnabled" => names::POLKIT_PLUGINS_MANAGE,
         "PlanChange" => names::POLKIT_PLAN,
         "Apply" | "Confirm" => names::POLKIT_APPLY,

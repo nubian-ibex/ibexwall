@@ -11,9 +11,7 @@ mod server;
 mod wire;
 
 pub use client::{CallStream, Client, call, call_more};
-pub use server::{
-    futures_handle, serve, serve_with_fd, Call, Handler, Peer, Reply, ServiceInfo,
-};
+pub use server::{Call, Handler, Peer, Reply, ServiceInfo, futures_handle, serve, serve_with_fd};
 pub use wire::{MAX_MESSAGE_BYTES, Reply as WireReply, Request, VarlinkError};
 
 /// Standard org.varlink.service error names.

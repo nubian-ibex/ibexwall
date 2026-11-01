@@ -24,26 +24,23 @@ fn run() -> Result<()> {
 
     init_tracing();
 
-    let socket = match names::core_socket() {
-        path if path.exists() => path,
-        path => {
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent)
-                    .with_context(|| format!("creating {}", parent.display()))?;
-            }
-            path
-        }
-    };
-    // Direct-bind mode (dev/VM): a crashed daemon leaves the socket
-    // file behind and bind(2) would fail. systemd socket activation
-    // (LISTEN_FDS) does not go through this path.
-    if std::env::var_os("LISTEN_FDS").is_none() {
-        let _ = std::fs::remove_file(&socket);
-    }
-
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
+
+    // systemd socket activation: the listening socket arrives as fd 3.
+    if let Some(listener) = listenfd::ListenFd::from_env().take_unix_listener(0)? {
+        return runtime.block_on(ibexwall_core::serve_activated(listener, dev_key));
+    }
+
+    // Direct-bind mode (dev/VM/tests).
+    let socket = names::core_socket();
+    if let Some(parent) = socket.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating {}", parent.display()))?;
+    }
+    // A crashed daemon leaves the socket file behind; bind(2) would fail.
+    let _ = std::fs::remove_file(&socket);
     runtime.block_on(ibexwall_core::serve(&socket, dev_key))
 }
 

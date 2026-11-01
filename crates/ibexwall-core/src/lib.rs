@@ -13,7 +13,6 @@ pub mod events;
 pub mod plugins;
 pub mod state;
 
-use std::os::fd::OwnedFd;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -23,7 +22,7 @@ use tokio::net::UnixListener;
 use ibexwall_proto::names;
 use ibexwall_proto::{Event, Op, Severity, Transaction, TransactionState};
 use ibexwall_sys::Clock;
-use ibexwall_varlink::{ServiceInfo, serve as serve_varlink, serve_with_fd};
+use ibexwall_varlink::{ServiceInfo, serve as serve_varlink};
 
 use crate::state::TxStatus;
 
@@ -55,13 +54,33 @@ pub async fn serve(socket: &std::path::Path, dev_key: Option<PathBuf>) -> Result
 
 async fn serve_listener(listener: UnixListener, dev_key: Option<PathBuf>) -> Result<()> {
     let core = Core::open(names::root(), dev_key).await?;
+    notify_ready();
     serve_varlink(listener, service_info(), Arc::new(api::Api::new(core))).await
 }
 
-/// Serves on an inherited listening fd (systemd socket activation).
-pub async fn serve_fd(fd: OwnedFd, dev_key: Option<PathBuf>) -> Result<()> {
-    let core = Core::open(names::root(), dev_key).await?;
-    serve_with_fd(fd, service_info(), Arc::new(api::Api::new(core))).await
+/// Serves on a listener inherited from systemd socket activation.
+pub async fn serve_activated(
+    listener: std::os::unix::net::UnixListener,
+    dev_key: Option<PathBuf>,
+) -> Result<()> {
+    listener.set_nonblocking(true)?;
+    serve_listener(UnixListener::from_std(listener)?, dev_key).await
+}
+
+/// Tells systemd the daemon is ready (Type=notify) and starts the
+/// watchdog heartbeat when WatchdogSec is set. No-ops outside systemd.
+fn notify_ready() {
+    use sd_notify::NotifyState;
+    let _ = sd_notify::notify(&[NotifyState::Ready]);
+    if let Some(timeout) = sd_notify::watchdog_enabled() {
+        let period = timeout / 2;
+        tokio::spawn(async move {
+            loop {
+                let _ = sd_notify::notify(&[NotifyState::Watchdog]);
+                tokio::time::sleep(period).await;
+            }
+        });
+    }
 }
 
 fn service_info() -> ServiceInfo {

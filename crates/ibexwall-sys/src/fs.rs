@@ -13,7 +13,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use rustix::fs::{self as rfs, Mode, OFlags, ResolveFlags};
+use rustix::fs::{self as rfs, Mode, OFlags};
 
 use crate::log::OpLog;
 
@@ -40,6 +40,34 @@ pub trait Fs: Send + Sync {
     ) -> io::Result<()>;
     fn remove(&self, path: &Path) -> io::Result<()>;
     fn create_dir_all(&self, path: &Path) -> io::Result<()>;
+}
+
+/// Opens `dir` component by component from `/`, each step relative to
+/// the previous fd with `O_NOFOLLOW`, so no symlink anywhere in the path
+/// is ever followed and nothing can be swapped in between steps.
+///
+/// Used instead of `openat2(RESOLVE_NO_SYMLINKS)`: systemd's
+/// `RestrictSUIDSGID=` makes `openat2` return ENOSYS inside hardened
+/// units (its mode argument cannot be inspected by seccomp).
+fn open_dir_no_symlinks(dir: &Path) -> io::Result<std::os::fd::OwnedFd> {
+    use std::path::Component;
+    let flags = OFlags::DIRECTORY | OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+    let mut current = rfs::open("/", flags, Mode::empty())?;
+    for component in dir.components() {
+        match component {
+            Component::RootDir | Component::CurDir => {}
+            Component::Normal(name) => {
+                current = rfs::openat(&current, name, flags, Mode::empty())?;
+            }
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "path must be absolute and normalized",
+                ));
+            }
+        }
+    }
+    Ok(current)
 }
 
 /// Real filesystem with sandbox translation: operation paths arrive in
@@ -114,18 +142,8 @@ impl Fs for RealFs {
             ))
         })?;
 
-        // Open the parent directory refusing any symlink in its path.
-        // RDONLY (not O_PATH): fsync(2) rejects O_PATH descriptors.
-        let dir_fd = rfs::openat2(
-            rfs::CWD,
-            parent,
-            OFlags::DIRECTORY | OFlags::RDONLY,
-            Mode::empty(),
-            ResolveFlags::NO_SYMLINKS,
-        )
-        .map_err(|e| io::Error::other(format!("openat2 parent {}: {e}", parent.display())))?;
-
-        // Write the content to a fresh temp file, fsync, then rename.
+        let dir_fd = open_dir_no_symlinks(parent)
+            .map_err(|e| io::Error::other(format!("open parent {}: {e}", parent.display())))?;
         let tmp_name = format!(
             ".{}.ibexwall.tmp.{}",
             name.to_string_lossy(),

@@ -198,3 +198,18 @@ This document must be updated before merging: any new varlink method,
 polkit action, op type, plugin capability, network listener, download
 channel, or sandbox escape surface. F1 (socket, polkit, engine) is the
 first mandatory review point.
+
+## 10. F1 review (socket, polkit subject, engine, supervisor)
+
+- Socket: 0666 with per-method polkit; identity from SO_PEERCRED plus
+  /proc start time. Polkit errors fail closed (call refused).
+- Validated in VM: unprivileged caller gets PermissionDenied (exit 3).
+- Engine: out-of-manifest ops refused at plan and re-checked at apply;
+  kill -9 mid-apply is rolled back on restart; unconfirmed network
+  changes auto-revert; audit tampering is detected.
+- Supervisor: manifest signature verified on every use (minisign format,
+  dev anchor only; no embedded release key yet, so non-dev builds refuse
+  all plugins).
+- Open items: pidfd subjects (ADR-0025), transient-unit executor spike
+  S1-c (not done, in-process executor remains), fuzz target for the
+  varlink framing, rate limiting on the socket, stale plugin processes.

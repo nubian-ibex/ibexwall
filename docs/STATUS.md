@@ -3,7 +3,7 @@
 
 # STATUS
 
-Last updated: 2026-11-01 (F0 complete, awaiting review)
+Last updated: 2026-11-01 (F1 complete, awaiting review)
 
 ## Current phase
 
@@ -72,3 +72,22 @@ minimal) pending plan approval (`docs/plans/F1-*.md` to be written).
 - P-01 domains (affects `com.ibexwall` prefix, ADR-0021).
 - `ibexwall-proto`/`ibexwall-sdk` publication to crates.io when
   contracts stabilize.
+
+## F1 (core + CLI)
+
+Done: varlink framing crate, ibexwall-sys traits, daemon (config layers,
+SQLite, audit chain, change engine, supervisor, events), ibexctl,
+dev.echo, xtask devkey and `vm-test --phase f1`.
+
+Verified: 81 workspace tests; clippy, fmt, deny, schema drift clean;
+`cargo xtask vm-test --phase f1` PASS (8 scenarios on Fedora 44).
+
+Deviations and pending:
+- Spike S1-c (transient-unit executor, ADR-0026) not done; in-process
+  executor stays. Plan to write the ADR as deferred.
+- Ubuntu/Debian/Arch smoke images not wired into the harness yet.
+- Coverage numbers (80%/90%) not measured yet.
+- Daemon runs directly in the VM, not through its systemd unit/socket.
+- Adapter ops (firewall, dns, flatpak, snap, browser, nm, package) are
+  validate-only, as planned.
+- Fedora VM needs network to install polkit on first provision.

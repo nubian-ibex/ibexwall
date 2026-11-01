@@ -13,11 +13,39 @@ homepage = "https://ibexwall.com"
 [workspace.dependencies]
 ibexwall-proto = { path = "crates/ibexwall-proto", version = "0.1.0" }
 ibexwall-sdk = { path = "crates/ibexwall-sdk", version = "0.1.0" }
+ibexwall-varlink = { path = "crates/ibexwall-varlink", version = "0.1.0" }
+ibexwall-sys = { path = "crates/ibexwall-sys", version = "0.1.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 schemars = "1"
 thiserror = "2"
 anyhow = "1"
+tokio = { version = "1", features = [
+  "rt-multi-thread",
+  "macros",
+  "net",
+  "io-util",
+  "time",
+  "process",
+  "fs",
+  "signal",
+] }
+zbus = { version = "6", default-features = false, features = ["tokio"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
+rustix = { version = "1", features = ["fs", "net", "process", "system"] }
+sha2 = "0.11"
+serde_jcs = "0.2"
+hex = "0.4"
+minisign-verify = "0.3"
+ed25519-dalek = "3"
+toml = "0.9"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-journald = "0.3"
+clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
+clap_mangen = "0.3"
+proptest = "1"
 
 # SEC-07: no unsafe anywhere; designated modules will be carved out via
 # dedicated crates with SAFETY comments when eBPF/FFI lands.

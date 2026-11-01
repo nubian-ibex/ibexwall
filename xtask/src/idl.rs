@@ -22,7 +22,7 @@ pub fn interfaces() -> Result<Vec<(&'static str, String)>> {
     Ok(vec![
         (
             "com.ibexwall.Core.varlink",
-            render_interface("com.ibexwall.Core", &CORE_TYPES, CORE_METHODS)?,
+            render_interface("com.ibexwall.Core", CORE_TYPES, CORE_METHODS)?,
         ),
         (
             "com.ibexwall.Plugin.varlink",
@@ -210,10 +210,8 @@ fn convert(v: &Value) -> Result<String> {
             Ok(format!("[]{}", convert(items)?))
         }
         Some("object") => {
-            if let Some(extra) = v.get("additionalProperties") {
-                if !extra.is_boolean() {
-                    return Ok(format!("[string]{}", convert(extra)?));
-                }
+            if let Some(extra) = v.get("additionalProperties").filter(|e| !e.is_boolean()) {
+                return Ok(format!("[string]{}", convert(extra)?));
             }
             if v.get("properties")
                 .is_some_and(|p| !p.as_object().is_none_or(|m| m.is_empty()))

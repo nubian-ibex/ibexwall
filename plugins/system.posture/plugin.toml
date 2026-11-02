@@ -11,7 +11,7 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 
 [name]
 en = "System posture"
-pt-BR = "Postura do sistema"
+pt-BR = "Segurança do sistema"
 
 [description]
 en = "Checks how well this computer is protected: boot, disk, firewall and accounts."

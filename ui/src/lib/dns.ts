@@ -4,6 +4,8 @@
 export const DNS_PROVIDERS = [
   { id: 'quad9', jurisdiction: 'CH', transports: ['tls', 'https', 'h3', 'quic'] },
   { id: 'cloudflare', jurisdiction: 'US', transports: ['tls', 'https', 'h3'] },
+  { id: 'adguard', jurisdiction: 'CY', transports: ['tls', 'https', 'h3', 'quic'] },
+  { id: 'dns4eu', jurisdiction: 'CZ', transports: ['tls', 'https'] },
 ] as const;
 
 export const DNS_LISTS = [

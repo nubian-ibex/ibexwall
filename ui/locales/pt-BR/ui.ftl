@@ -206,3 +206,17 @@ change-failed-other = A solicitação falhou. Nada foi alterado.
 
 dns-browser-policy = Desligar o DNS cifrado dos próprios navegadores
 dns-browser-policy-body = Com a sua aprovação, grava a política que impede Firefox, Chrome, Chromium, Brave e Edge de usar os próprios servidores DoH. Só navegadores instalados neste computador são afetados, e desfazer a mudança remove a política.
+
+dns-provider-adguard = AdGuard DNS
+dns-provider-adguard-logs = não processa dados pessoais; apenas estatísticas de uso
+dns-provider-dns4eu = DNS4EU (protective)
+dns-provider-dns4eu-logs = consulte a documentação de privacidade do provedor
+
+dns-counters-title = Desde que o resolvedor iniciou
+dns-counter-blocked-list = Domínios bloqueados pela lista
+dns-counter-blocked-doh = Tentativas de usar outros servidores DoH
+dns-counter-forwarded = Consultas encaminhadas com criptografia
+dns-counter-errors = Falhas do upstream
+dns-counters-updated = Atualizado { $when }.
+dns-counters-not-running = O resolvedor não está respondendo agora.
+dns-counters-privacy = Apenas contadores. O IbexWall não registra quais domínios você consulta.

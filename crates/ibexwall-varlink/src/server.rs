@@ -415,4 +415,89 @@ mod tests {
         }
         let _ = std::fs::remove_file(&path);
     }
+
+    async fn echo_server(name: &str) -> (std::path::PathBuf, ServiceInfo) {
+        let path = tmp_socket().with_extension(name);
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+        let mut interfaces = HashMap::new();
+        interfaces.insert("com.test".to_string(), "interface com.test\n".to_string());
+        let info = ServiceInfo {
+            vendor: "v".into(),
+            product: "p".into(),
+            version: "1".into(),
+            url: "u".into(),
+            interfaces,
+        };
+        tokio::spawn(serve(listener, info.clone(), Arc::new(Echo)));
+        (path, info)
+    }
+
+    #[tokio::test]
+    async fn serves_interface_descriptions_and_rejects_unknown_ones() {
+        let (path, _) = echo_server("desc").await;
+        let mut conn = client::Client::connect(&path).await.unwrap();
+        let ok = conn
+            .call(
+                "org.varlink.service.GetInterfaceDescription",
+                serde_json::json!({ "interface": "com.test" }),
+            )
+            .await
+            .unwrap();
+        assert!(
+            ok["interface"]
+                .as_str()
+                .unwrap()
+                .starts_with("interface com.test")
+        );
+        let err = conn
+            .call(
+                "org.varlink.service.GetInterfaceDescription",
+                serde_json::json!({ "interface": "com.nope" }),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.name, crate::service_errors::INVALID_PARAMETER);
+        let err = conn
+            .call("org.varlink.service.Bogus", serde_json::json!({}))
+            .await
+            .unwrap_err();
+        assert_eq!(err.name, crate::service_errors::METHOD_NOT_FOUND);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn malformed_json_is_answered_and_the_connection_survives() {
+        let (path, _) = echo_server("bad").await;
+        let mut conn = client::Client::connect(&path).await.unwrap();
+        conn.raw_write(b"{not json\0").await.unwrap();
+        let err = conn
+            .call("com.test.Echo", serde_json::json!({"a": 1}))
+            .await
+            .unwrap_err();
+        // The first reply on the wire is the InvalidMessage answer.
+        assert_eq!(err.name, crate::service_errors::INVALID_MESSAGE);
+        let value = conn
+            .call("com.test.Echo", serde_json::json!({"a": 2}))
+            .await
+            .unwrap();
+        assert_eq!(value["a"], 1); // the earlier Echo is answered: the connection survived
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn oneway_calls_get_no_reply() {
+        let (path, _) = echo_server("one").await;
+        let mut conn = client::Client::connect(&path).await.unwrap();
+        conn.raw_write(b"{\"method\":\"com.test.Echo\",\"parameters\":{},\"oneway\":true}\0")
+            .await
+            .unwrap();
+        // The next real call must receive its own reply, not a stale one.
+        let value = conn
+            .call("com.test.Echo", serde_json::json!({"n": 7}))
+            .await
+            .unwrap();
+        assert_eq!(value["n"], 7);
+        let _ = std::fs::remove_file(&path);
+    }
 }

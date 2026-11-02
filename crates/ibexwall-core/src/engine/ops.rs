@@ -415,4 +415,193 @@ reversible = "immediate"
             vec![RiskFlag::Network, RiskFlag::Irreversible]
         );
     }
+
+    #[test]
+    fn remove_and_mode_validation() {
+        let manifest = manifest();
+        assert!(
+            validate(
+                &[Op::FileRemove {
+                    path: "/etc/sysctl.d/x.conf".into()
+                }],
+                &manifest
+            )
+            .is_ok()
+        );
+        assert_eq!(
+            validate(
+                &[Op::FileRemove {
+                    path: "/etc/shadow".into()
+                }],
+                &manifest
+            ),
+            Err(OpError::PathNotWritable {
+                path: "/etc/shadow".into()
+            })
+        );
+        for bad in ["rwx", "99999", "0888"] {
+            let op = Op::FileWrite {
+                path: "/etc/sysctl.d/a.conf".into(),
+                content: String::new(),
+                mode: bad.into(),
+                owner: "root".into(),
+                group: "root".into(),
+            };
+            assert!(
+                matches!(
+                    validate(&[op], &manifest),
+                    Err(OpError::Invalid { field: "mode", .. })
+                ),
+                "{bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn path_prefix_must_match_a_whole_component() {
+        let manifest = manifest();
+        // `/etc/sysctl.d-evil` must not be treated as inside `/etc/sysctl.d`.
+        let op = Op::FileRemove {
+            path: "/etc/sysctl.d-evil/x".into(),
+        };
+        assert!(validate(&[op], &manifest).is_err());
+    }
+
+    #[test]
+    fn nft_requires_a_declared_prefix_and_checks_sets_and_lists() {
+        let mut manifest = manifest();
+        let ok = Op::NftFragment {
+            fragment: serde_json::json!({
+                "set": "dev_echo_s",
+                "chains": [{ "name": "dev_echo_a" }],
+                "sets": [{ "name": "dev_echo_b" }]
+            }),
+        };
+        assert!(validate(std::slice::from_ref(&ok), &manifest).is_ok());
+        let bad = Op::NftFragment {
+            fragment: serde_json::json!({ "chains": [{ "name": "other_a" }] }),
+        };
+        assert!(matches!(
+            validate(&[bad], &manifest),
+            Err(OpError::NftPrefixViolation { .. })
+        ));
+        manifest.privileges.nft_prefix = None;
+        assert!(matches!(
+            validate(&[ok], &manifest),
+            Err(OpError::Invalid {
+                field: "nft.fragment",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn adapter_ops_validate_their_required_fields() {
+        let manifest = manifest();
+        let good = [
+            Op::FirewallAdapter {
+                backend: "ufw".into(),
+                action: serde_json::json!({}),
+            },
+            Op::DnsBackend {
+                backend: "resolved".into(),
+                action: serde_json::json!({}),
+            },
+            Op::FlatpakOverride {
+                app_id: "a.b".into(),
+                args: vec!["--unshare=network".into()],
+            },
+            Op::SnapInterface {
+                snap: "s".into(),
+                interface: "i".into(),
+                connect: true,
+            },
+            Op::BrowserPolicy {
+                browser: "firefox".into(),
+                policy: serde_json::json!({"k": 1}),
+            },
+            Op::NmSetting {
+                key: "k".into(),
+                value: serde_json::json!("v"),
+            },
+            Op::PackageInstall {
+                package: "chrony".into(),
+            },
+        ];
+        assert!(validate(&good, &manifest).is_ok());
+        let bad = [
+            Op::FlatpakOverride {
+                app_id: String::new(),
+                args: vec![],
+            },
+            Op::SnapInterface {
+                snap: String::new(),
+                interface: "i".into(),
+                connect: true,
+            },
+            Op::BrowserPolicy {
+                browser: "f".into(),
+                policy: serde_json::json!({}),
+            },
+            Op::BrowserPolicy {
+                browser: "f".into(),
+                policy: serde_json::json!([1]),
+            },
+            Op::NmSetting {
+                key: String::new(),
+                value: serde_json::json!(1),
+            },
+            Op::NmSetting {
+                key: "k".into(),
+                value: serde_json::Value::Null,
+            },
+            Op::PackageInstall {
+                package: String::new(),
+            },
+        ];
+        for op in bad {
+            assert!(
+                validate(std::slice::from_ref(&op), &manifest).is_err(),
+                "{op:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn masking_a_unit_is_a_boot_risk() {
+        let ops = [Op::SystemdUnit {
+            unit: "u".into(),
+            action: UnitAction::Mask,
+            now: None,
+        }];
+        assert_eq!(risk_flags(&ops), vec![RiskFlag::Boot]);
+    }
+
+    #[test]
+    fn network_artifacts_and_net_sysctls_are_network_risk() {
+        for path in [
+            "/etc/NetworkManager/conf.d/x",
+            "/etc/systemd/resolved.conf.d/x",
+            "/etc/netplan/x",
+            "/etc/wireguard/x",
+            "/etc/sysconfig/network-scripts/x",
+        ] {
+            let ops = [Op::FileRemove { path: path.into() }];
+            assert_eq!(risk_flags(&ops), vec![RiskFlag::Network], "{path}");
+        }
+        let nonnet = [Op::FileRemove {
+            path: "/etc/sysctl.d/x".into(),
+        }];
+        assert!(risk_flags(&nonnet).is_empty());
+        let adapters = [
+            Op::FirewallAdapter {
+                backend: "x".into(),
+                action: serde_json::json!({}),
+            },
+            Op::NftFragment {
+                fragment: serde_json::json!({}),
+            },
+        ];
+        assert_eq!(risk_flags(&adapters), vec![RiskFlag::Network]);
+    }
 }

@@ -26,8 +26,8 @@
 
 <style>
   button {
-    width: 44px;
-    height: var(--target);
+    width: 48px;
+    height: 28px;
     border: none;
     border-radius: 999px;
     background: var(--border-strong);
@@ -36,6 +36,12 @@
     padding: 0;
     flex: none;
     align-self: center;
+  }
+  /* Keeps the 44px minimum touch target around the 28px visual track. */
+  button::before {
+    content: '';
+    position: absolute;
+    inset: -8px -2px;
   }
   button[aria-checked='true'] {
     background: var(--primary);
@@ -46,10 +52,10 @@
   }
   .knob {
     position: absolute;
-    top: 5px;
-    left: 5px;
-    width: 24px;
-    height: 24px;
+    top: 4px;
+    left: 4px;
+    width: 20px;
+    height: 20px;
     border-radius: 50%;
     background: var(--surface);
     transition: left 0.15s ease;

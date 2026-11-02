@@ -9,7 +9,9 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use super::f1::{install_binary, install_plugin, pipe_data, provision, run_script, start_daemon};
+use super::f1::{
+    install_binary, install_plugin, pipe_data, pipe_file, provision, run_script, start_daemon,
+};
 use super::vm::{Vm, run_capture};
 
 /// Reads the transaction or plan id out of `ibexctl --json` output.
@@ -34,6 +36,8 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
             "ibexwall-plugin-dns",
             "-p",
             "ibexwall-dns",
+            "--bins",
+            "--examples",
         ],
         None,
         "building release binaries",
@@ -45,6 +49,11 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
         vm,
         &workspace.join("target/release/ibexwall-dns"),
         "/usr/bin/ibexwall-dns",
+    )?;
+    pipe_file(
+        vm,
+        &workspace.join("target/release/examples/bench"),
+        "sudo tee /usr/bin/ibexwall-dns-bench >/dev/null && sudo chmod 755 /usr/bin/ibexwall-dns-bench",
     )?;
     for (data, target) in [
         (
@@ -59,9 +68,16 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
             include_str!("../../packaging/sysusers.d/ibexwall-dns.conf"),
             "/usr/lib/sysusers.d/ibexwall-dns.conf",
         ),
+        (
+            include_str!("../../packaging/tmpfiles.d/ibexwall.conf"),
+            "/usr/lib/tmpfiles.d/ibexwall.conf",
+        ),
     ] {
         pipe_data(vm, data, &format!("sudo tee {target} >/dev/null"))?;
     }
+    // The user must exist before tmpfiles can own its directories.
+    vm.ssh("sudo systemd-sysusers /usr/lib/sysusers.d/ibexwall-dns.conf")?;
+    vm.ssh("sudo systemd-tmpfiles --create /usr/lib/tmpfiles.d/ibexwall.conf")?;
     start_daemon(vm)?;
 
     let mut failures = 0;
@@ -96,7 +112,6 @@ if ! command -v tcpdump >/dev/null; then
 fi
 sudo systemctl enable --now systemd-resolved
 sudo ln -sf ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
-sudo systemd-sysusers /usr/lib/sysusers.d/ibexwall-dns.conf
 for i in 1 2 3 4 5 6 7 8 9 10; do getent hosts example.com >/dev/null && break; sleep 1; done
 getent hosts example.com
 sudo mkdir -p /etc/systemd/resolved.conf.d
@@ -197,6 +212,79 @@ getent hosts example.com >/dev/null
     );
 
     scenario!(
+        "d3b known DoH endpoints stop resolving once the list loads",
+        r#"
+set -e
+# The endpoints list downloads shortly after the resolver starts.
+for i in $(seq 1 40); do
+  OUT=$(resolvectl query dns.google 2>&1 || true)
+  echo "$OUT" | grep -Eqi 'not found|nxdomain|no such name' && break
+  sleep 3
+done
+echo "$OUT"
+echo "$OUT" | grep -Eqi 'not found|nxdomain|no such name' || { sudo journalctl -u ibexwall-dns -n 25 --no-pager >&2; sudo ls -la /var/lib/ibexwall/blocklists >&2; sudo cat /etc/ibexwall/dns/resolver.json >&2; exit 1; }
+! getent hosts dns.google
+getent hosts example.com >/dev/null
+sudo cat /run/ibexwall/dns/status.json
+"#
+    );
+
+    scenario!(
+        "d8 latency: warm p99 within 2 ms and cold overhead within 5 ms",
+        r#"
+set -e
+WARM=$(ibexwall-dns-bench warm 300)
+echo "warm p50/p99: $WARM"
+P99=$(echo "$WARM" | cut -d' ' -f2)
+python3 -c "raise SystemExit(0 if $P99 <= 2.0 else 1)"
+COLD=$(ibexwall-dns-bench cold 150)
+# Direct DoT is only allowed for the resolver user (that is the point of
+# the enforcement); measure from inside that exemption.
+DIRECT=$(sudo -u ibexwall-dns ibexwall-dns-bench direct 9.9.9.9 dns.quad9.net 150)
+echo "cold p50/p99: $COLD  direct p50/p99: $DIRECT"
+python3 - <<EOF
+cold = float("$COLD".split()[1])
+direct = float("$DIRECT".split()[1])
+overhead = cold - direct
+print(f"uncached overhead: {overhead:.3f} ms")
+raise SystemExit(0 if overhead <= 5.0 else 1)
+EOF
+"#
+    );
+
+    scenario!(
+        "d9 browser policy files are written and rolled back",
+        &format!(
+            r#"
+set -e
+# A stand-in browser: what is tested is IbexWall's own file handling. The
+# machine is not assumed clean: the change must restore exactly what was
+# there before, whatever that was.
+sudo touch /usr/bin/brave-browser && sudo chmod 755 /usr/bin/brave-browser
+BEFORE=$(sudo sh -c 'cat /etc/systemd/resolved.conf /etc/systemd/resolved.conf.d/* 2>/dev/null | sha256sum')
+EB=$(systemctl is-enabled ibexwall-dns 2>&1 || true)
+AB=$(systemctl is-active ibexwall-dns 2>&1 || true)
+P=$(sudo ibexctl plan net.dns --set provider=quad9 --set transport=tls --set browser_policies=true --json 2>&1 | tee /dev/stderr | {JSON_ID}) || {{ echo "PLAN FAILED"; exit 1; }}
+OUT=$(sudo ibexctl apply $P --confirm-timeout 300 --json 2>/dev/null || true)
+echo "$OUT" | grep -q pending_confirm || {{ echo "APPLY OUTPUT: $OUT"; exit 1; }}
+TX=$(echo "$OUT" | {JSON_ID})
+sudo ibexctl confirm "$TX"
+sudo test -f /etc/brave/policies/managed/ibexwall-dns.json
+sudo python3 -c 'import json,sys; d=json.load(open("/etc/brave/policies/managed/ibexwall-dns.json")); sys.exit(0 if d == {{"DnsOverHttpsMode": "off"}} else 1)' || {{ echo "WRONG POLICY CONTENT"; sudo cat /etc/brave/policies/managed/ibexwall-dns.json >&2; exit 1; }}
+sudo ibexctl rollback "$TX" --json >/dev/null || {{ echo "ROLLBACK FAILED"; exit 1; }}
+sudo test ! -e /etc/brave/policies/managed/ibexwall-dns.json || {{ echo "POLICY FILE SURVIVED ROLLBACK"; exit 1; }}
+AFTER=$(sudo sh -c 'cat /etc/systemd/resolved.conf /etc/systemd/resolved.conf.d/* 2>/dev/null | sha256sum')
+[ "$AFTER" = "$BEFORE" ] || {{ echo "RESOLVED CONFIG CHANGED: $AFTER vs $BEFORE"; exit 1; }}
+EA=$(systemctl is-enabled ibexwall-dns 2>&1 || true)
+AA=$(systemctl is-active ibexwall-dns 2>&1 || true)
+[ "$EA" = "$EB" ] || {{ echo "UNIT ENABLED CHANGED: $EA vs $EB"; exit 1; }}
+[ "$AA" = "$AB" ] || {{ echo "UNIT ACTIVE CHANGED: $AA vs $AB"; exit 1; }}
+sudo rm -f /usr/bin/brave-browser
+"#
+        )
+    );
+
+    scenario!(
         "d4 killing the resolver once recovers on its own",
         r#"
 set -e
@@ -220,7 +308,7 @@ done
 for i in $(seq 1 40); do [ ! -e /etc/systemd/resolved.conf.d/50-ibexwall.conf ] && break; sleep 1; done
 [ ! -e /etc/systemd/resolved.conf.d/50-ibexwall.conf ] || { sudo systemctl status ibexwall-dns ibexwall-dns-failsafe --no-pager >&2; exit 1; }
 for i in $(seq 1 15); do getent hosts example.com >/dev/null && break; sleep 1; done
-getent hosts example.com
+getent hosts example.com || { resolvectl status 2>&1 | head -20 >&2; resolvectl query example.com 2>&1 >&2 || true; sudo journalctl -u systemd-resolved -u ibexwall-dns-failsafe -n 20 --no-pager >&2; exit 1; }
 ! resolvectl status | grep -q 127.0.0.153
 ! sudo nft list chain inet ibexwall net_dns_guard 2>/dev/null
 "#
@@ -255,14 +343,24 @@ chk getent hosts example.com
             r#"
 set -e
 sudo systemctl reset-failed ibexwall-dns.service 2>/dev/null || true
-P=$(sudo ibexctl plan net.dns --set provider=cloudflare --set transport=https --json | {JSON_ID})
+P=$(sudo ibexctl plan net.dns --set provider=cloudflare --set transport=https --set list=oisd-small --json 2>&1 | tee /dev/stderr | {JSON_ID}) || {{ echo "PLAN FAILED"; exit 1; }}
+echo "plan id: $P" >&2
 OUT=$(sudo ibexctl apply $P --confirm-timeout 300 --json 2>/dev/null || true)
-TX=$(echo "$OUT" | {JSON_ID})
+TX=$(echo "$OUT" | {JSON_ID}) || {{ echo "APPLY OUTPUT: $OUT"; exit 1; }}
+echo "tx: $TX" >&2
 for i in 1 2 3 4 5 6 7 8 9 10; do getent hosts example.com >/dev/null && break; sleep 1; done
 getent hosts example.com
-sudo ibexctl confirm "$TX"
+sudo ibexctl confirm "$TX" || {{ echo "CONFIRM FAILED"; sudo ibexctl history --json | tail -5 >&2; exit 1; }}
 sudo test -f /etc/systemd/resolved.conf.d/50-ibexwall.conf
-sudo ibexctl rollback "$TX" --json >/dev/null
+# The chosen list must actually block: wait for the download, then probe.
+BLOCKED=0
+for i in $(seq 1 40); do
+  if ! getent hosts ads.yahoo.com >/dev/null 2>&1; then BLOCKED=1; break; fi
+  sleep 3
+done
+[ "$BLOCKED" -eq 1 ]
+getent hosts example.com >/dev/null
+sudo ibexctl rollback "$TX" --json >/dev/null || {{ echo "ROLLBACK FAILED"; sudo journalctl -u ibexwalld -n 15 --no-pager >&2; exit 1; }}
 NOW=$(sudo sh -c 'cat /etc/systemd/resolved.conf /etc/systemd/resolved.conf.d/* 2>/dev/null | sha256sum')
 [ "$NOW" = "$(cat /tmp/ibx-dns-baseline)" ]
 [ "$(sudo nft list ruleset | sha256sum)" = "$(cat /tmp/ibx-nft-baseline)" ]

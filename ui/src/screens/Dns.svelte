@@ -12,11 +12,19 @@
     type DnsTransport,
   } from '../lib/dns';
   import ChangeFlow from '../components/ChangeFlow.svelte';
+  import { relativeTime } from '../lib/time';
   import StateMessage from '../components/StateMessage.svelte';
+  import type { DnsStatus } from '../gen/contracts';
   import Switch from '../components/Switch.svelte';
 
   let choice = $state<DnsChoice>({ ...DNS_DEFAULTS });
   let busy = $state(false);
+  let counters = $state<DnsStatus | null>(null);
+
+  $effect(() => {
+    if (plugin?.enabled) void app.transport.getDnsStatus().then((value) => (counters = value));
+    else counters = null;
+  });
 
   const plugin = $derived(
     app.plugins.status === 'ready' ? app.plugins.data.find((p) => p.id === 'net.dns') : undefined,
@@ -144,6 +152,38 @@
     </label>
   </section>
 
+  {#if counters}
+    <section class="card" aria-labelledby="dns-counters">
+      <h2 id="dns-counters">{t('dns-counters-title')}</h2>
+      {#if counters.running}
+        <dl>
+          <div>
+            <dt>{t('dns-counter-blocked-list')}</dt>
+            <dd>{counters.blocked_list}</dd>
+          </div>
+          <div>
+            <dt>{t('dns-counter-blocked-doh')}</dt>
+            <dd>{counters.blocked_doh}</dd>
+          </div>
+          <div>
+            <dt>{t('dns-counter-forwarded')}</dt>
+            <dd>{counters.forwarded}</dd>
+          </div>
+          <div>
+            <dt>{t('dns-counter-errors')}</dt>
+            <dd>{counters.upstream_errors}</dd>
+          </div>
+        </dl>
+        <p class="muted">
+          {t('dns-counters-updated', { when: relativeTime(counters.updated_at) })}
+        </p>
+      {:else}
+        <p class="muted">{t('dns-counters-not-running')}</p>
+      {/if}
+      <p class="muted">{t('dns-counters-privacy')}</p>
+    </section>
+  {/if}
+
   <section class="card">
     <p class="muted">{t('dns-review-note')}</p>
     <ChangeFlow plugin="net.dns" patch={dnsPatch(choice)} />
@@ -176,6 +216,25 @@
   .status {
     grid-template-columns: 1fr auto;
     align-items: center;
+  }
+  dl {
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: var(--space-3);
+  }
+  dl div {
+    display: grid;
+    gap: var(--space-1);
+  }
+  dt {
+    color: var(--muted);
+    font-size: 13px;
+  }
+  dd {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 600;
   }
   fieldset {
     border: none;

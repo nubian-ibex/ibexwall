@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Secure DNS counters, published by the resolver. Counts only: the\nresolver never records query names.",
+  "properties": {
+    "blocked_canary": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "blocked_doh": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "blocked_list": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "forwarded": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "running": {
+      "description": "False when no resolver has published anything.",
+      "type": "boolean"
+    },
+    "updated_at": {
+      "type": "string"
+    },
+    "upstream_errors": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "running",
+    "updated_at",
+    "forwarded",
+    "blocked_list",
+    "blocked_canary",
+    "blocked_doh",
+    "upstream_errors"
+  ],
+  "title": "DnsStatus",
+  "type": "object"
+}

@@ -40,6 +40,11 @@ pub fn run(root: &Path) -> io::Result<()> {
     }
     let removed = remove_dropin(root)?;
     if root == Path::new("/") {
+        // A burst of transaction restarts can trip resolved's own start
+        // limit; clear it or the failsafe fails exactly when it matters.
+        let _ = Command::new("systemctl")
+            .args(["reset-failed", "systemd-resolved.service"])
+            .status();
         let status = Command::new("systemctl")
             .args(["restart", "systemd-resolved.service"])
             .status()?;

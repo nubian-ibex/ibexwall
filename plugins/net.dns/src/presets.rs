@@ -126,4 +126,63 @@ mod tests {
         assert!(cloudflare.servers(Transport::Quic).is_none());
         assert_eq!(cloudflare.servers(Transport::Tls).unwrap().len(), 2);
     }
+
+    /// The DNS screen keeps its own copy of the choices (ui/src/lib/dns.ts);
+    /// this fails the moment it drifts from the presets.
+    #[test]
+    fn the_ui_offers_exactly_these_providers_transports_and_lists() {
+        let ts = include_str!("../../../ui/src/lib/dns.ts");
+        let names = ["tls", "https", "h3", "quic"];
+        for provider in PROVIDERS {
+            let line = ts
+                .lines()
+                .find(|l| l.contains(&format!("id: '{}'", provider.id)))
+                .unwrap_or_else(|| panic!("the UI does not offer {}", provider.id));
+            assert!(
+                line.contains(&format!("jurisdiction: '{}'", provider.jurisdiction)),
+                "{}: jurisdiction differs",
+                provider.id
+            );
+            let offered: Vec<&str> = names
+                .iter()
+                .copied()
+                .filter(|n| line.contains(&format!("'{n}'")))
+                .collect();
+            let documented: Vec<String> = provider
+                .transports
+                .iter()
+                .map(|t| {
+                    serde_json::to_value(t)
+                        .unwrap()
+                        .as_str()
+                        .unwrap()
+                        .to_string()
+                })
+                .collect();
+            let (mut offered, mut documented) = (offered, documented);
+            offered.sort_unstable();
+            documented.sort_unstable();
+            assert_eq!(offered, documented, "{}: transports differ", provider.id);
+        }
+        let ui_providers = ts.matches("jurisdiction: '").count();
+        assert_eq!(
+            ui_providers,
+            PROVIDERS.len(),
+            "the UI offers extra providers"
+        );
+
+        let lists = ts
+            .split("DNS_LISTS = [")
+            .nth(1)
+            .unwrap()
+            .split("] as const")
+            .next()
+            .unwrap();
+        let ui_lists: Vec<&str> = lists.split('\'').skip(1).step_by(2).collect();
+        let presets: Vec<&str> = ibexwall_dns::lists::PRESETS.iter().map(|p| p.id).collect();
+        assert_eq!(
+            ui_lists, presets,
+            "the list choices differ from the presets"
+        );
+    }
 }

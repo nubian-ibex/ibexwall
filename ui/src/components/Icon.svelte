@@ -3,6 +3,7 @@
   import BrickWall from '@lucide/svelte/icons/brick-wall';
   import ClipboardList from '@lucide/svelte/icons/clipboard-list';
   import Clock from '@lucide/svelte/icons/clock';
+  import Globe from '@lucide/svelte/icons/globe';
   import HardDrive from '@lucide/svelte/icons/hard-drive';
   import LayoutGrid from '@lucide/svelte/icons/layout-grid';
   import LockKeyhole from '@lucide/svelte/icons/lock-keyhole';
@@ -21,6 +22,7 @@
     'brick-wall': BrickWall,
     'clipboard-list': ClipboardList,
     clock: Clock,
+    globe: Globe,
     'hard-drive': HardDrive,
     'layout-grid': LayoutGrid,
     'lock-keyhole': LockKeyhole,

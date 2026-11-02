@@ -4,6 +4,7 @@
   import { i18n } from './lib/i18n.svelte';
   import { applyTheme, savedTheme } from './lib/theme';
   import AppShell from './components/AppShell.svelte';
+  import Dns from './screens/Dns.svelte';
   import History from './screens/History.svelte';
   import Overview from './screens/Overview.svelte';
   import Plugins from './screens/Plugins.svelte';
@@ -20,6 +21,8 @@
 <AppShell>
   {#if app.route === 'overview'}
     <Overview />
+  {:else if app.route === 'dns'}
+    <Dns />
   {:else if app.route === 'posture'}
     <Posture />
   {:else if app.route === 'plugins'}

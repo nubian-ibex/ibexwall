@@ -16,13 +16,20 @@ for (const theme of ['light', 'dark'] as const) {
       await page.reload();
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
-      const results = await new AxeBuilder({ page })
-        .withTags(['wcag2a', 'wcag2aa', 'wcag22aa'])
-        .analyze();
-      const serious = results.violations.filter(
-        (v) => v.impact === 'serious' || v.impact === 'critical',
-      );
-      expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);
+      // Overview first, then the Secure DNS screen (a form with a flow).
+      for (const screen of ['overview', 'dns']) {
+        if (screen === 'dns') {
+          await page.getByRole('button', { name: /secure dns|dns seguro/i }).click();
+          await expect(page.getByRole('radio').first()).toBeVisible();
+        }
+        const results = await new AxeBuilder({ page })
+          .withTags(['wcag2a', 'wcag2aa', 'wcag22aa'])
+          .analyze();
+        const serious = results.violations.filter(
+          (v) => v.impact === 'serious' || v.impact === 'critical',
+        );
+        expect(serious, `${screen}: ${JSON.stringify(serious, null, 2)}`).toEqual([]);
+      }
     });
   }
 }
@@ -31,7 +38,7 @@ test('keyboard navigation reaches every navigation item', async ({ page }) => {
   await page.goto('/?scenario=attention');
   const overview = page.getByRole('button', { name: 'Overview' });
   await overview.focus();
-  for (let step = 0; step < 5; step += 1) {
+  for (let step = 0; step < 6; step += 1) {
     await page.keyboard.press('Tab');
   }
   // After the nav, focus moves into the content: the "Check now" button.

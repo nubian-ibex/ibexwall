@@ -1,5 +1,6 @@
 import type { Finding, PluginInfo, Posture } from '../gen/contracts';
 import { FixtureTransport, type Scenario } from './fixtures';
+import { insideTauri, TauriTransport } from './tauri-transport';
 import { TransportError, type Transport } from './transport';
 
 export type Route = 'overview' | 'plugins' | 'posture' | 'history' | 'settings';
@@ -8,7 +9,11 @@ type Load<T> =
   { status: 'loading' } | { status: 'ready'; data: T } | { status: 'error'; error: TransportError };
 
 class AppState {
-  transport: Transport = new FixtureTransport(initialScenario());
+  // The real shell uses the Tauri commands; a plain browser (tests, e2e,
+  // design work) uses the fixture core.
+  transport: Transport = insideTauri()
+    ? new TauriTransport()
+    : new FixtureTransport(initialScenario());
   route = $state<Route>('overview');
   posture = $state<Load<Posture>>({ status: 'loading' });
   findings = $state<Load<Finding[]>>({ status: 'loading' });

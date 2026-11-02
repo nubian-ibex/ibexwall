@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "The IbexWall window: local app commands only. No shell, no opener, no http.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

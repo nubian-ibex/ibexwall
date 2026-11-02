@@ -11,6 +11,10 @@ Component, capability and reason. Reviewed at every phase.
   The hardened unit (Appendix G) is not yet installed by the VM suite,
   which runs the daemon directly; unit validation with
   `systemd-analyze security` lands with packaging (F10).
+- ibexwall-exec: no capabilities; runs in a transient unit (Type=oneshot,
+  NoNewPrivileges, ProtectSystem=strict, ProtectHome=yes, PrivateTmp,
+  SystemCallFilter=@system-service, RestrictAddressFamilies=AF_UNIX
+  AF_NETLINK) with ReadWritePaths limited to one transaction.
 - ibexctl: unprivileged. Connects to the 0666 socket; every method is
   authorized by polkit.
 - Plugins (dev.echo): no capabilities, `DynamicUser` unit text generated

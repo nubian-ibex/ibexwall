@@ -1921,6 +1921,16 @@ name = "ibexwall-ebpf-loader"
 version = "0.1.0"
 
 [[package]]
+name = "ibexwall-exec"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ibexwall-proto",
+ "ibexwall-sys",
+ "serde_json",
+]
+
+[[package]]
 name = "ibexwall-exporters"
 version = "0.1.0"
 
@@ -1987,9 +1997,13 @@ name = "ibexwall-sys"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "hex",
  "ibexwall-proto",
  "rustix",
  "serde",
+ "serde_jcs",
+ "serde_json",
+ "sha2 0.11.1",
  "thiserror 2.0.21",
  "tokio",
  "zbus",

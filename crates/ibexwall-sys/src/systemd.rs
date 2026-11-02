@@ -5,6 +5,7 @@
 //! `systemctl` with fixed argv (never a shell, never interpolation).
 
 use std::collections::BTreeMap;
+
 use std::process::Command;
 use std::sync::Mutex;
 
@@ -42,6 +43,15 @@ impl Default for UnitSnapshot {
 pub trait Systemd: Send + Sync {
     fn snapshot(&self, unit: &str) -> anyhow::Result<UnitSnapshot>;
     fn apply(&self, unit: &str, action: UnitAction, now: bool) -> anyhow::Result<()>;
+    /// Runs the executor helper for one transaction in a transient unit
+    /// (ADR-0026): `ReadWritePaths` limited to `dirs`, hardened like the
+    /// daemon, and the call blocks until the unit finishes.
+    fn run_transient_executor(
+        &self,
+        tx: &str,
+        exec_args: &[String],
+        dirs: &[String],
+    ) -> anyhow::Result<()>;
 }
 
 /// Real systemd control via `systemctl`. Disabled under a sandbox root:
@@ -79,6 +89,60 @@ fn systemctl(args: &[&str]) -> anyhow::Result<String> {
 }
 
 impl Systemd for RealSystemd {
+    fn run_transient_executor(
+        &self,
+        tx: &str,
+        exec_args: &[String],
+        dirs: &[String],
+    ) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.enabled,
+            "transient units are disabled under IBEXWALL_ROOT"
+        );
+        // systemd-run is the CLI front-end of StartTransientUnit: fixed
+        // argv, no shell. --wait propagates the helper's exit status.
+        let unit = format!("ibexwall-exec-{tx}");
+        let mut command = Command::new("systemd-run");
+        command
+            .arg("--unit")
+            .arg(&unit)
+            .arg("--collect")
+            .arg("--wait")
+            .arg("--property")
+            .arg("Type=oneshot")
+            .arg("--property")
+            .arg("NoNewPrivileges=yes")
+            .arg("--property")
+            .arg("ProtectSystem=strict")
+            .arg("--property")
+            .arg("ProtectHome=yes")
+            .arg("--property")
+            .arg("PrivateTmp=yes")
+            .arg("--property")
+            .arg("SystemCallFilter=@system-service")
+            .arg("--property")
+            .arg("RestrictAddressFamilies=AF_UNIX AF_NETLINK");
+        for dir in dirs {
+            command
+                .arg("--property")
+                .arg(format!("ReadWritePaths={dir}"));
+        }
+        // Read the result of the run so the core can report details.
+        command.arg("--").arg("/usr/bin/ibexwall-exec");
+        for arg in exec_args {
+            command.arg(arg);
+        }
+        let output = command.output()?;
+        if !output.status.success() {
+            anyhow::bail!(
+                "executor unit {unit} failed ({}): {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
+        Ok(())
+    }
+
     fn snapshot(&self, unit: &str) -> anyhow::Result<UnitSnapshot> {
         anyhow::ensure!(
             self.enabled,
@@ -150,6 +214,16 @@ impl FakeSystemd {
 }
 
 impl Systemd for FakeSystemd {
+    fn run_transient_executor(
+        &self,
+        tx: &str,
+        _exec_args: &[String],
+        _dirs: &[String],
+    ) -> anyhow::Result<()> {
+        self.log.push(format!("transient-exec {tx}"));
+        Ok(())
+    }
+
     fn snapshot(&self, unit: &str) -> anyhow::Result<UnitSnapshot> {
         Ok(self.get(unit))
     }

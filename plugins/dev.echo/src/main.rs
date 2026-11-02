@@ -100,13 +100,22 @@ fn plan_for(template: &str) -> Result<Vec<Op>, String> {
                 value: "10".into(),
             },
         ],
-        "network" => vec![Op::FileWrite {
-            path: "/etc/NetworkManager/conf.d/50-ibexwall-test.conf".into(),
-            content: "# managed by IbexWall (dev test)\n".into(),
-            mode: "0644".into(),
-            owner: "root".into(),
-            group: "root".into(),
-        }],
+        // A network-risk change that works on every distro: the net.*
+        // sysctl key carries the network risk flag (and thus requires
+        // confirmation) and /etc/sysctl.d exists wherever systemd does.
+        "network" => vec![
+            Op::FileWrite {
+                path: "/etc/sysctl.d/90-ibexwall-net-test.conf".into(),
+                content: "net.ipv4.ping_group_range = 0 0\n".into(),
+                mode: "0644".into(),
+                owner: "root".into(),
+                group: "root".into(),
+            },
+            Op::SysctlSet {
+                key: "net.ipv4.ping_group_range".into(),
+                value: "0 0".into(),
+            },
+        ],
         "slow" => vec![Op::Exec {
             path: "/usr/bin/sleep".into(),
             args: vec!["10".into()],

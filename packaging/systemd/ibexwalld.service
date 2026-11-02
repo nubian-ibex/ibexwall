@@ -15,9 +15,9 @@ Restart=on-failure
 WatchdogSec=30s
 NoNewPrivileges=yes
 ProtectSystem=strict
-# Broad on purpose: the engine validates every path against plugin
-# manifests (spike S1-c evaluates a transient-unit executor).
-ReadWritePaths=/etc /var/lib/ibexwall /run/ibexwall
+# ADR-0026: /etc is written only by ibexwall-exec inside transient units
+# whose ReadWritePaths match one transaction.
+ReadWritePaths=/var/lib/ibexwall /run/ibexwall
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes

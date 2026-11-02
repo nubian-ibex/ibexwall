@@ -1,0 +1,22 @@
+[package]
+name = "ibexwall-exec"
+description = "IbexWall transaction executor helper (runs in a transient unit, ADR-0026)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "ibexwall-exec"
+path = "src/main.rs"
+
+[dependencies]
+ibexwall-proto.workspace = true
+ibexwall-sys.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true

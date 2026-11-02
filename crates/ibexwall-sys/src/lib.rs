@@ -13,6 +13,57 @@
 pub mod clock;
 pub mod fs;
 pub mod identity;
+pub mod ops;
+pub use ops::{
+    OpError, PriorFile, SnapshotEntry, SnapshotManifest, apply_snapshot_inverses, execute,
+    ops_digest, write_directories,
+};
+
+use std::sync::Arc;
+
+/// System bundle the engine executes against; fakes for tests.
+pub struct SysBundle {
+    pub fs: Arc<dyn Fs>,
+    pub systemd: Arc<dyn Systemd>,
+    pub sysctl: Arc<dyn Sysctl>,
+    pub clock: Arc<dyn Clock>,
+    /// System-level executors (nft, exec, package installs) are refused
+    /// while running under `IBEXWALL_ROOT` so the dev host is never
+    /// touched.
+    pub allow_system_executors: bool,
+    /// Production mode: file-touching transactions run inside the
+    /// transient executor unit (ADR-0026). False under a sandbox root
+    /// and in tests with fakes.
+    pub use_transient_executor: bool,
+}
+
+impl Default for SysBundle {
+    fn default() -> Self {
+        Self::real()
+    }
+}
+
+impl SysBundle {
+    pub fn real() -> Self {
+        Self::real_under(&ibexwall_proto::names::root())
+    }
+
+    /// Real implementations bound to a sandbox root: file and sysctl
+    /// paths are translated under it; systemd and system executors are
+    /// refused unless the root is the real `/`.
+    pub fn real_under(root: &std::path::Path) -> Self {
+        let real_root = root == std::path::Path::new("/");
+        Self {
+            fs: Arc::new(RealFs::with_root(root.to_path_buf())),
+            systemd: Arc::new(RealSystemd::new()),
+            sysctl: Arc::new(RealSysctl::with_root(root.to_path_buf())),
+            clock: Arc::new(RealClock),
+            allow_system_executors: real_root,
+            use_transient_executor: real_root,
+        }
+    }
+}
+
 pub mod polkit;
 pub mod sysctl;
 pub mod systemd;

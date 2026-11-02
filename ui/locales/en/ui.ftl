@@ -84,3 +84,70 @@ theme-system = Follow system
 theme-light = Light
 theme-dark = Dark
 language-label = Language
+
+plugins-title = Plugins
+plugins-subtitle = Every protection is a plugin you can turn on or off
+plugins-kind-check = Read-only
+plugins-kind-control = Changes the system
+plugins-kind-monitor = Watches
+plugins-origin-official = Official
+plugins-origin-community = Community
+plugins-origin-local = Local
+plugins-enabled = On
+plugins-disabled = Off
+plugins-detail = Detail
+plugins-close = Close detail
+plugins-permissions = What this plugin can do
+plugins-permissions-write = Change files under { $paths }
+plugins-permissions-units = Control services: { $units }
+plugins-permissions-sysctl = Set kernel parameters: { $keys }
+plugins-permissions-exec = Run programs: { $commands }
+plugins-permissions-nft = Add firewall rules with its own prefix
+plugins-permissions-none = Read the system; it cannot change anything
+plugins-findings = Open findings
+plugins-no-findings = No open findings
+plugins-locked = Set by your organization
+plugins-incompatible = Not compatible with this system
+
+simulate = Simulate
+apply = Apply changes
+applying = Applying…
+confirm-title = Keep the changes?
+plan-expires = This preview expires { $when }
+
+may-affect-label = What this can affect
+may-affect-title = This can affect
+restore-point-note = A restore point ({ $point }) is created before anything changes.
+
+keep-changes-title = Keep the changes
+keep-changes-prompt = Keep the changes? ({ $seconds } s left, they are undone automatically after that)
+keep-changes = Keep changes
+undo-changes = Undo changes
+
+applied-committed = Changes applied
+applied-rolled-back = Changes undone
+simulate-empty = Nothing to change
+
+posture-title = System posture
+posture-subtitle = Every check, what it means and what it is worth
+posture-how-title = How we calculate
+posture-how-intro = Each check has a weight by severity. The score is the sum of the weights of the checks in order, divided by the weights of the checks that apply on this computer.
+posture-how-weight = Weight
+posture-how-outcome = Status
+posture-how-na = Checks that do not apply here and checks that cannot be assessed yet do not count for or against the score.
+posture-recommendation = Recommendation
+posture-checks = Checks
+posture-open-findings = Open findings ({ $count })
+
+history-title = History
+history-subtitle = Every change, who approved it and what happened
+history-actor-user = { $actor }
+history-actor-system = IbexWall itself
+history-result-committed = Applied and kept
+history-result-rolled_back = Undone
+history-result-pending_confirm = Waiting for confirmation
+history-result-failed = Failed (undone)
+history-empty-title = Nothing has changed yet
+history-empty-body = When you apply a protection, it shows up here with a way to undo it.
+history-undo = Undo this change
+history-view = View

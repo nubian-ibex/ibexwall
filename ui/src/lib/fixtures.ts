@@ -108,6 +108,19 @@ const PLUGINS: PluginInfo[] = [
   },
 ];
 
+const DNS_PLUGIN: PluginInfo = {
+  id: 'net.dns',
+  name: 'Secure DNS',
+  version: '0.1.0',
+  kinds: ['check', 'control'],
+  enabled: false,
+  origin: 'official',
+  status: 'ok',
+  compatible: true,
+  conflicts: [],
+  locked: false,
+};
+
 const INFO: Info = {
   version: '0.1.0',
   api: 1,
@@ -163,7 +176,7 @@ export class FixtureTransport implements Transport {
   }
 
   listPlugins() {
-    return this.gate(() => PLUGINS);
+    return this.gate(() => [...PLUGINS, DNS_PLUGIN]);
   }
 
   listFindings(plugin?: string) {

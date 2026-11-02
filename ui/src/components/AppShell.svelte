@@ -3,6 +3,7 @@
   import { app, type Route } from '../lib/app.svelte';
   import { t } from '../lib/i18n.svelte';
   import Icon from './Icon.svelte';
+  import logo from '../assets/logo.png';
 
   let { children }: { children: Snippet } = $props();
 
@@ -19,7 +20,7 @@
 <div class="shell">
   <aside>
     <div class="brand">
-      <span class="logo"><Icon name="shield-check" size={22} /></span>
+      <img class="logo" src={logo} alt="" width="44" height="44" />
       <div>
         <strong>{t('app-name')}</strong>
         <div class="tagline">{t('app-tagline')}</div>
@@ -78,13 +79,9 @@
     align-items: center;
   }
   .logo {
-    display: grid;
-    place-items: center;
     width: 44px;
     height: 44px;
-    border-radius: var(--radius-control);
-    background: var(--primary);
-    color: var(--on-primary);
+    object-fit: contain;
   }
   .tagline {
     color: var(--muted);

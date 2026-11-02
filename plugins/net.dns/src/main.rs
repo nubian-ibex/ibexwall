@@ -69,6 +69,9 @@ struct Config {
     /// Explicit consent to set the browser policy that turns each
     /// browser's own DoH off (never implied by other choices).
     browser_policies: bool,
+    /// `restore` (default) or `block`: what happens if the resolver cannot
+    /// stay up.
+    on_failure: ibexwall_dns::config::FailureMode,
 }
 
 impl Default for Config {
@@ -83,6 +86,7 @@ impl Default for Config {
             allow: vec![],
             enforcement: true,
             browser_policies: false,
+            on_failure: ibexwall_dns::config::FailureMode::default(),
             list: None,
         }
     }
@@ -133,6 +137,7 @@ impl Config {
             block: vec![],
             allow: self.allow.clone(),
             doh_endpoints: vec![],
+            on_failure: self.on_failure,
             lists,
             doh_list: self.block_doh.then(|| ListRef {
                 id: DOH_ENDPOINTS_ID.into(),
@@ -546,6 +551,31 @@ mod tests {
         )
         .unwrap();
         assert!(!ops.iter().any(|op| matches!(op, Op::BrowserPolicy { .. })));
+    }
+
+    #[test]
+    fn the_failure_mode_is_planned_and_defaults_to_restore() {
+        let (_root, sandbox) = resolved_tree("failmode");
+        let ops = plan(&sandbox, Config::default()).unwrap();
+        let Op::FileWrite { content, .. } = &ops[0] else {
+            panic!("settings first")
+        };
+        let settings: Settings = serde_json::from_str(content).unwrap();
+        assert_eq!(
+            settings.on_failure,
+            ibexwall_dns::config::FailureMode::Restore
+        );
+
+        let block = Config::parse(json!({ "on_failure": "block" })).unwrap();
+        let ops = plan(&sandbox, block).unwrap();
+        let Op::FileWrite { content, .. } = &ops[0] else {
+            panic!("settings first")
+        };
+        let settings: Settings = serde_json::from_str(content).unwrap();
+        assert_eq!(
+            settings.on_failure,
+            ibexwall_dns::config::FailureMode::Block
+        );
     }
 
     #[test]

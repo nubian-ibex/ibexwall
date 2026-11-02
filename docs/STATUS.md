@@ -8,8 +8,8 @@ Last updated: 2026-11-02 (F2 and F3 accepted; F3 remainder in progress)
 ## Current phase
 
 **F3: secure DNS, remainder in progress (autonomous mode): enforcement,
-DoH endpoints, browser policies, counters and latency evidence done; 12
-VM scenarios green on five distros.** F0 to F2
+DoH endpoints, browser policies, counters, latency evidence and both
+failure modes done; 13 VM scenarios green on five distros.** F0 to F2
 accepted (F2 report: `docs/reports/F2-report.md`); the F3 core (resolver,
 lists, resolved backend, enforcement, DNS screen) is accepted and the
 remainder (DoH endpoints, browser policies, captive portal, counters,
@@ -188,7 +188,7 @@ Done and verified (workspace 202 tests, clippy/fmt/deny clean, pushed):
   start rate limit; `--set` sends typed values; a sandbox root no longer
   breaks manifest path checks.
 
-Next (see `docs/plans/F3-secure-dns.md`): the captive portal flow and the
-`block` failure mode (M6), the TUI DNS view and agent notifications (M7), M4 adapters B2 to B4; M6 captive portal and
+Next (see `docs/plans/F3-secure-dns.md`): the captive portal flow (M6,
+needs the S3-e decision), the TUI DNS view and agent notifications (M7), M4 adapters B2 to B4; M6 captive portal and
 `block` mode; M7 DNS screen; more provider presets after their docs are
 read (Mullvad, AdGuard, DNS4EU, NextDNS/Control D).

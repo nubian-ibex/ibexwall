@@ -3,12 +3,14 @@
 
 # STATUS
 
-Last updated: 2026-11-01 (F2 complete pending user acceptance)
+Last updated: 2026-11-02 (F2 delivered; F3 planned and starting)
 
 ## Current phase
 
-**F0 — Foundation: done.** Next: F1 (core `ibexwalld` + `ibexctl`
-minimal) pending plan approval (`docs/plans/F1-*.md` to be written).
+**F3: secure DNS, in progress (autonomous mode).** F0, F1 and F2 are
+delivered; the F2 report is `docs/reports/F2-report.md` and awaits
+maintainer acceptance. Plan: `docs/plans/F3-secure-dns.md`. Run the app
+with `scripts/dev-sandbox.sh` (sandboxed daemon, host untouched).
 
 ## What exists
 

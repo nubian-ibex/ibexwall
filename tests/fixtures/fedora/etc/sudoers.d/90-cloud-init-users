@@ -1,0 +1,4 @@
+# Created by cloud-init v. 25.3 on Mon, 02 Nov 2026 00:33:04 +0000
+
+# User rules for ibex
+ibex ALL=(ALL) NOPASSWD:ALL

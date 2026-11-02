@@ -202,4 +202,44 @@ mod tests {
         assert!(report.findings.is_empty());
         let _ = std::fs::remove_dir_all(root);
     }
+
+    /// Runs the plugin against the real files collected from each distro
+    /// (`cargo xtask vm-test --distro <id> --phase fixtures`) and compares
+    /// with the reviewed `expected-ports.json` next to them. Regenerate
+    /// with `UPDATE_GOLDEN=1` and review the diff before committing.
+    #[test]
+    fn real_distro_fixtures_match_the_reviewed_expectations() {
+        let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../tests/fixtures");
+        let mut checked = 0;
+        for entry in std::fs::read_dir(&base).unwrap().flatten() {
+            let dir = entry.path();
+            if !dir.is_dir() {
+                continue;
+            }
+            let report = evaluate(&Sandbox::at(&dir), "t");
+            let mut actual = std::collections::BTreeMap::new();
+            for result in &report.results {
+                actual.insert(result.id.clone(), format!("{:?}", result.outcome));
+            }
+            for finding in &report.findings {
+                if finding.plugin == "system.ports" {
+                    actual.insert(
+                        format!("finding:{}", finding.id),
+                        format!("{:?}", finding.severity),
+                    );
+                }
+            }
+            let golden = dir.join("expected-ports.json");
+            let text = serde_json::to_string_pretty(&actual).unwrap() + "\n";
+            if std::env::var_os("UPDATE_GOLDEN").is_some() {
+                std::fs::write(&golden, &text).unwrap();
+            }
+            let expected = std::fs::read_to_string(&golden).unwrap_or_else(|_| {
+                panic!("missing {}; run with UPDATE_GOLDEN=1", golden.display())
+            });
+            assert_eq!(text, expected, "fixture {} drifted", dir.display());
+            checked += 1;
+        }
+        assert!(checked >= 1, "no fixtures found under {}", base.display());
+    }
 }

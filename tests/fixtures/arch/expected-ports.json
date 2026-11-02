@@ -1,0 +1,7 @@
+{
+  "finding:ports.tcp.22": "Medium",
+  "finding:ports.tcp.5355": "Medium",
+  "finding:ports.udp.5353": "Info",
+  "finding:ports.udp.5355": "Info",
+  "ports.exposed_services": "Fail"
+}

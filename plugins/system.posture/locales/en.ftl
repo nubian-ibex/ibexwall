@@ -41,7 +41,7 @@ posture-shm-mount-summary =
     }
 posture-core-dumps-name = Core dumps
 posture-core-dumps-title = Privileged programs may leave memory dumps
-posture-core-dumps-summary = A crash can write secrets from memory to a file other users might read.
+posture-core-dumps-summary = A crash can write secrets from memory to a file that others might read.
 posture-sudo-nopasswd-name = Administrator password
 posture-sudo-nopasswd-title = Administrator access does not ask for a password
 posture-sudo-nopasswd-summary = Any program running as your user can become administrator silently.

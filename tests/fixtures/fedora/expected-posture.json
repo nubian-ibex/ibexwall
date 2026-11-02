@@ -1,0 +1,16 @@
+{
+  "posture.core_dumps": "Pass",
+  "posture.disk_encryption": "Fail",
+  "posture.firewall": "Fail",
+  "posture.firmware_hsi": "NotAssessed",
+  "posture.lockdown": "Fail",
+  "posture.mac": "Pass",
+  "posture.secure_boot": "NotApplicable",
+  "posture.shm_mount": "Pass",
+  "posture.sudo_nopasswd": "Fail",
+  "posture.swap_encryption": "Pass",
+  "posture.tmp_mount": "Pass",
+  "posture.tpm2": "NotApplicable",
+  "posture.updates_automatic": "NotAssessed",
+  "posture.updates_pending": "NotAssessed"
+}

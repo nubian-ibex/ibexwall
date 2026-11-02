@@ -1,11 +1,9 @@
 <script lang="ts">
   import { app } from '../lib/app.svelte';
   import { t } from '../lib/i18n.svelte';
-  import type { Plan, PluginInfo, Transaction } from '../gen/contracts';
+  import type { PluginInfo } from '../gen/contracts';
   import Button from '../components/Button.svelte';
-  import Callouts from '../components/Callouts.svelte';
-  import ConfirmCountdown from '../components/ConfirmCountdown.svelte';
-  import DiffViewer from '../components/DiffViewer.svelte';
+  import ChangeFlow from '../components/ChangeFlow.svelte';
   import FindingRow from '../components/FindingRow.svelte';
   import LockBadge from '../components/LockBadge.svelte';
   import StateMessage from '../components/StateMessage.svelte';
@@ -13,10 +11,7 @@
 
   let selected = $state<PluginInfo | null>(null);
   let manifest = $state<Record<string, unknown> | null>(null);
-  let plan = $state<Plan | null>(null);
   let busy = $state(false);
-  let applied = $state<Transaction | null>(null);
-  let keepCountdown = $state<Transaction | null>(null);
 
   const plugins = $derived(app.plugins.status === 'ready' ? app.plugins.data : []);
   const findings = $derived.by(() => {
@@ -38,51 +33,8 @@
   async function openDetail(plugin: PluginInfo) {
     selected = plugin;
     manifest = null;
-    plan = null;
-    applied = null;
-    keepCountdown = null;
     const next = await app.transport.getManifest(plugin.id);
     if (selected?.id === plugin.id) manifest = next;
-  }
-
-  async function simulate() {
-    const plugin = selected;
-    if (!plugin) return;
-    busy = true;
-    plan = null;
-    try {
-      plan = await app.transport.planChange(plugin.id, {});
-    } finally {
-      busy = false;
-    }
-  }
-
-  async function apply() {
-    if (!plan) return;
-    busy = true;
-    try {
-      applied = await app.transport.apply(plan.id);
-      plan = null;
-      if (applied.state === 'pending_confirm') keepCountdown = applied;
-    } finally {
-      busy = false;
-    }
-  }
-
-  async function keep() {
-    if (!keepCountdown) return;
-    await app.transport.confirm(keepCountdown.id);
-    applied = { ...keepCountdown, state: 'committed' };
-    keepCountdown = null;
-    await app.refresh();
-  }
-
-  async function undo() {
-    if (!applied) return;
-    await app.transport.rollback(applied.id);
-    applied = { ...applied, state: 'rolled_back' };
-    keepCountdown = null;
-    await app.refresh();
   }
 
   /** Permissions in plain words, with the technical line below. */
@@ -187,31 +139,7 @@
             {/if}
 
             {#if (plugin.kinds ?? []).includes('control')}
-              <div class="actions">
-                <Button {busy} onclick={simulate}>{t('simulate')}</Button>
-                {#if plan}
-                  <Button variant="primary" {busy} onclick={apply}>{t('apply')}</Button>
-                {/if}
-              </div>
-              {#if plan}
-                {#if plan.ops.length === 0}
-                  <p class="muted">{t('simulate-empty')}</p>
-                {:else}
-                  <DiffViewer ops={plan.ops} />
-                  <Callouts keys={plan.may_affect_keys ?? []} restorePoint="snapshots/next" />
-                {/if}
-              {/if}
-              {#if applied}
-                <p class="result">
-                  {t(applied.state === 'committed' ? 'applied-committed' : 'applied-rolled-back')}
-                </p>
-                {#if applied.state === 'committed'}
-                  <Button onclick={undo}>{t('undo-changes')}</Button>
-                {/if}
-              {/if}
-              {#if keepCountdown}
-                <ConfirmCountdown seconds={60} onkeep={keep} oncancel={undo} />
-              {/if}
+              <ChangeFlow plugin={plugin.id} />
             {/if}
           </section>
         {/if}
@@ -292,13 +220,5 @@
   .findings {
     display: grid;
     gap: var(--space-3);
-  }
-  .actions {
-    display: flex;
-    gap: var(--space-3);
-  }
-  .result {
-    font-weight: 600;
-    color: var(--primary-strong);
   }
 </style>

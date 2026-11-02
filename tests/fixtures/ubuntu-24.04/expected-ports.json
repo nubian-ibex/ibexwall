@@ -1,0 +1,4 @@
+{
+  "finding:ports.tcp.22": "Medium",
+  "ports.exposed_services": "Fail"
+}

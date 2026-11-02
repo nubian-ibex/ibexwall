@@ -106,7 +106,8 @@ pub fn run(distro: &str, phase: Option<&str>) -> Result<()> {
     match phase {
         None | Some("f0") => f0_smoke(&vm, &workspace),
         Some("f1") => crate::f1::run(&vm, &workspace, entry.install),
-        Some(other) => bail!("unknown phase `{other}` (supported: f0, f1)"),
+        Some("fixtures") => crate::fixtures::run(&vm, &workspace, entry.id),
+        Some(other) => bail!("unknown phase `{other}` (supported: f0, f1, fixtures)"),
     }
 }
 
@@ -251,6 +252,30 @@ impl Vm {
         if !output.status.success() {
             bail!(
                 "ssh `{command}` failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
+
+    /// Runs a script given on stdin as root-capable `sudo bash -s`.
+    pub(crate) fn ssh_stdin(&self, script: &str) -> Result<String> {
+        let mut child = self
+            .ssh_base()
+            .arg("sudo bash -s")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        child
+            .stdin
+            .take()
+            .expect("piped stdin")
+            .write_all(script.as_bytes())?;
+        let output = child.wait_with_output()?;
+        if !output.status.success() {
+            bail!(
+                "remote script failed: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
         }

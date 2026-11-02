@@ -225,17 +225,25 @@ fn mandatory_access_control(sandbox: &Sandbox) -> Check {
     Check::new(id, Severity::Medium, CheckOutcome::Fail).arg("mode", mode)
 }
 
-/// An active firewall service. systemd leaves `invocation:<unit>` under
-/// `/run/systemd/units` for every started unit. This says a firewall is
-/// running, not that its rules are good.
+/// An active firewall. systemd leaves `invocation:<unit>` under
+/// `/run/systemd/units` for every started unit. `ufw.service` also runs
+/// when ufw is disabled, so it only counts when `ufw.conf` says
+/// `ENABLED=yes`. This says a firewall is running, not that its rules are
+/// good.
 fn firewall(sandbox: &Sandbox) -> Check {
     let id = "posture.firewall";
     if !sandbox.exists("/run/systemd/units") {
         return Check::new(id, Severity::High, CheckOutcome::NotAssessed);
     }
-    let active = ["firewalld.service", "ufw.service", "nftables.service"]
-        .iter()
-        .any(|unit| sandbox.exists(&format!("/run/systemd/units/invocation:{unit}")));
+    let running = |unit: &str| sandbox.exists(&format!("/run/systemd/units/invocation:{unit}"));
+    let ufw_enabled = sandbox.read("/etc/ufw/ufw.conf").is_some_and(|conf| {
+        conf.lines()
+            .map(str::trim)
+            .any(|line| line.eq_ignore_ascii_case("ENABLED=yes"))
+    });
+    let active = running("firewalld.service")
+        || running("nftables.service")
+        || (running("ufw.service") && ufw_enabled);
     let outcome = if active {
         CheckOutcome::Pass
     } else {
@@ -269,6 +277,8 @@ fn mount_options(mounts: Option<&str>, mount_point: &str, id: &'static str) -> C
     }
 }
 
+/// `fs.suid_dumpable`: 0 = no dumps, 2 = dumps readable by root only (both
+/// fine); 1 = dumps of privileged programs readable by their owner (not).
 fn core_dumps(sandbox: &Sandbox) -> Check {
     let id = "posture.core_dumps";
     match sandbox
@@ -276,7 +286,7 @@ fn core_dumps(sandbox: &Sandbox) -> Check {
         .as_deref()
         .map(str::trim)
     {
-        Some("0") => Check::new(id, Severity::Low, CheckOutcome::Pass),
+        Some("0" | "2") => Check::new(id, Severity::Low, CheckOutcome::Pass),
         Some(_) => Check::new(id, Severity::Low, CheckOutcome::Fail),
         None => Check::new(id, Severity::Low, CheckOutcome::NotAssessed),
     }
@@ -515,7 +525,24 @@ mod tests {
         assert_eq!(firewall(&down).outcome, CheckOutcome::Fail);
         let (r3, unknown) = tree(&[], "fw3");
         assert_eq!(firewall(&unknown).outcome, CheckOutcome::NotAssessed);
-        for r in [r1, r2, r3] {
+        // ufw.service runs even when ufw is disabled.
+        let (r4, ufw_off) = tree(
+            &[
+                ("/run/systemd/units/invocation:ufw.service", b""),
+                ("/etc/ufw/ufw.conf", b"# x\nENABLED=no\n"),
+            ],
+            "fw4",
+        );
+        assert_eq!(firewall(&ufw_off).outcome, CheckOutcome::Fail);
+        let (r5, ufw_on) = tree(
+            &[
+                ("/run/systemd/units/invocation:ufw.service", b""),
+                ("/etc/ufw/ufw.conf", b"ENABLED=yes\n"),
+            ],
+            "fw5",
+        );
+        assert_eq!(firewall(&ufw_on).outcome, CheckOutcome::Pass);
+        for r in [r1, r2, r3, r4, r5] {
             let _ = std::fs::remove_dir_all(r);
         }
     }
@@ -549,7 +576,11 @@ mod tests {
 
     #[test]
     fn core_dump_check_reads_suid_dumpable() {
-        for (value, expected) in [("0\n", CheckOutcome::Pass), ("2\n", CheckOutcome::Fail)] {
+        for (value, expected) in [
+            ("0\n", CheckOutcome::Pass),
+            ("2\n", CheckOutcome::Pass),
+            ("1\n", CheckOutcome::Fail),
+        ] {
             let (root, sandbox) = tree(&[("/proc/sys/fs/suid_dumpable", value.as_bytes())], "cd");
             assert_eq!(core_dumps(&sandbox).outcome, expected);
             let _ = std::fs::remove_dir_all(root);
@@ -630,5 +661,37 @@ mod tests {
             }
         }
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// Runs the plugin against the real files collected from each distro
+    /// (`cargo xtask vm-test --distro <id> --phase fixtures`) and compares
+    /// with the reviewed `expected-posture.json` next to them. Regenerate
+    /// with `UPDATE_GOLDEN=1` and review the diff before committing.
+    #[test]
+    fn real_distro_fixtures_match_the_reviewed_expectations() {
+        let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../tests/fixtures");
+        let mut checked = 0;
+        for entry in std::fs::read_dir(&base).unwrap().flatten() {
+            let dir = entry.path();
+            if !dir.is_dir() {
+                continue;
+            }
+            let report = evaluate(&Sandbox::at(&dir), "t");
+            let mut actual = std::collections::BTreeMap::new();
+            for result in &report.results {
+                actual.insert(result.id.clone(), format!("{:?}", result.outcome));
+            }
+            let golden = dir.join("expected-posture.json");
+            let text = serde_json::to_string_pretty(&actual).unwrap() + "\n";
+            if std::env::var_os("UPDATE_GOLDEN").is_some() {
+                std::fs::write(&golden, &text).unwrap();
+            }
+            let expected = std::fs::read_to_string(&golden).unwrap_or_else(|_| {
+                panic!("missing {}; run with UPDATE_GOLDEN=1", golden.display())
+            });
+            assert_eq!(text, expected, "fixture {} drifted", dir.display());
+            checked += 1;
+        }
+        assert!(checked >= 1, "no fixtures found under {}", base.display());
     }
 }

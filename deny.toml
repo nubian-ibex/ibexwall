@@ -28,6 +28,9 @@ allow = [
   "MPL-2.0",
   "Unicode-3.0",
   "CC0-1.0",
+  # Mozilla CA root data bundled by webpki-roots (trust anchors for the
+  # encrypted upstreams do not depend on the host trust store).
+  "CDLA-Permissive-2.0",
   # workspace crates (self-licenses)
   "GPL-3.0-or-later",
   "GPL-2.0-only",

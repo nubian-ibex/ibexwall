@@ -156,23 +156,13 @@ fn validate_nft(fragment: &serde_json::Value, manifest: &Manifest) -> Result<(),
             reason: "plugin declares no nft_prefix".into(),
         });
     };
-    let mut names: Vec<String> = Vec::new();
-    if let Some(name) = fragment.get("chain").and_then(|v| v.as_str()) {
-        names.push(name.into());
-    }
-    if let Some(name) = fragment.get("set").and_then(|v| v.as_str()) {
-        names.push(name.into());
-    }
-    for key in ["chains", "sets"] {
-        if let Some(list) = fragment.get(key).and_then(|v| v.as_array()) {
-            for item in list {
-                if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
-                    names.push(name.into());
-                }
-            }
-        }
-    }
-    for name in names {
+    // Typed fragment only: unknown fields and structural limits are
+    // refused before anything is compiled to nftables.
+    let fragment = ibexwall_sys::ops::parse_fragment(fragment).map_err(|e| OpError::Invalid {
+        field: "nft.fragment",
+        reason: e.to_string(),
+    })?;
+    for name in fragment.chain_names() {
         if !name.starts_with(&format!("{prefix}_")) {
             return Err(OpError::NftPrefixViolation { name, prefix });
         }
@@ -373,15 +363,22 @@ reversible = "immediate"
         assert!(validate(other_bin, &manifest).is_err());
     }
 
+    fn nft_chain(name: &str) -> serde_json::Value {
+        serde_json::json!({ "chains": [{
+            "name": name,
+            "rules": [{ "oif_loopback": true, "verdict": "accept" }],
+        }] })
+    }
+
     #[test]
     fn nft_objects_need_the_plugin_prefix() {
         let manifest = manifest();
         let ok = &[Op::NftFragment {
-            fragment: serde_json::json!({ "chain": "dev_echo_guard" }),
+            fragment: nft_chain("dev_echo_guard"),
         }];
         assert!(validate(ok, &manifest).is_ok());
         let refused = &[Op::NftFragment {
-            fragment: serde_json::json!({ "chain": "firewalld_input" }),
+            fragment: nft_chain("firewalld_input"),
         }];
         assert_eq!(
             validate(refused, &manifest),
@@ -468,23 +465,30 @@ reversible = "immediate"
     }
 
     #[test]
-    fn nft_requires_a_declared_prefix_and_checks_sets_and_lists() {
+    fn nft_requires_a_declared_prefix_and_only_accepts_typed_fragments() {
         let mut manifest = manifest();
         let ok = Op::NftFragment {
-            fragment: serde_json::json!({
-                "set": "dev_echo_s",
-                "chains": [{ "name": "dev_echo_a" }],
-                "sets": [{ "name": "dev_echo_b" }]
-            }),
+            fragment: nft_chain("dev_echo_a"),
         };
         assert!(validate(std::slice::from_ref(&ok), &manifest).is_ok());
-        let bad = Op::NftFragment {
-            fragment: serde_json::json!({ "chains": [{ "name": "other_a" }] }),
-        };
-        assert!(matches!(
-            validate(&[bad], &manifest),
-            Err(OpError::NftPrefixViolation { .. })
-        ));
+        // The old free-form shape and unknown fields are refused.
+        for untyped in [
+            serde_json::json!({ "chain": "dev_echo_a" }),
+            serde_json::json!({ "chains": [{ "name": "dev_echo_a", "rules": [], "raw": "x" }] }),
+            serde_json::json!({}),
+        ] {
+            let result = validate(&[Op::NftFragment { fragment: untyped }], &manifest);
+            assert!(
+                matches!(
+                    result,
+                    Err(OpError::Invalid {
+                        field: "nft.fragment",
+                        ..
+                    })
+                ),
+                "{result:?}"
+            );
+        }
         manifest.privileges.nft_prefix = None;
         assert!(matches!(
             validate(&[ok], &manifest),

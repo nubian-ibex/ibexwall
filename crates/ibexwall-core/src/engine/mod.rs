@@ -122,6 +122,23 @@ impl Engine {
                         prior,
                     });
                 }
+                Op::NftFragment { fragment } => {
+                    let fragment = ibexwall_sys::ops::parse_fragment(fragment)?;
+                    let chains = fragment
+                        .chain_names()
+                        .into_iter()
+                        .map(|name| {
+                            Ok(ibexwall_sys::ops::NftChainPrior {
+                                prior: self.sys.nft.capture(&name)?,
+                                name,
+                            })
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    entries.push(SnapshotEntry::Nft {
+                        op_index: index,
+                        chains,
+                    });
+                }
                 _ => entries.push(SnapshotEntry::NoInverse { op_index: index }),
             }
         }
@@ -280,12 +297,9 @@ fn op_target(op: &Op) -> String {
         Op::FileWrite { path, .. } | Op::FileRemove { path } => path.clone(),
         Op::SystemdUnit { unit, action, .. } => format!("{action:?} {unit}"),
         Op::SysctlSet { key, value } => format!("{key} = {value}"),
-        Op::NftFragment { fragment } => fragment
-            .get("chain")
-            .or_else(|| fragment.get("set"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("fragment")
-            .into(),
+        Op::NftFragment { fragment } => ibexwall_sys::ops::parse_fragment(fragment)
+            .map(|f| f.chain_names().join(", "))
+            .unwrap_or_else(|_| "fragment".into()),
         Op::FirewallAdapter { backend, .. } | Op::DnsBackend { backend, .. } => backend.clone(),
         Op::FlatpakOverride { app_id, .. } => app_id.clone(),
         Op::SnapInterface {
@@ -323,7 +337,8 @@ mod tests {
     use crate::state::State;
     use ibexwall_proto::UnitAction;
     use ibexwall_sys::{
-        Enabled, FakeClock, FakeFs, FakeSysctl, FakeSystemd, Fs, SysBundle, Sysctl, UnitSnapshot,
+        Enabled, FakeClock, FakeFs, FakeNft, FakeSysctl, FakeSystemd, Fs, Nft, SysBundle, Sysctl,
+        UnitSnapshot,
     };
     use serde_json::json;
     use std::path::Path;
@@ -334,6 +349,7 @@ mod tests {
         fs: Arc<FakeFs>,
         systemd: Arc<FakeSystemd>,
         sysctl: Arc<FakeSysctl>,
+        nft: Arc<FakeNft>,
         state: State,
         dir: std::path::PathBuf,
     }
@@ -351,12 +367,14 @@ mod tests {
         let fs = Arc::new(FakeFs::new());
         let systemd = Arc::new(FakeSystemd::new());
         let sysctl = Arc::new(FakeSysctl::new());
+        let nft = Arc::new(FakeNft::new());
         let engine = Engine::with(SysBundle {
             fs: fs.clone(),
             systemd: systemd.clone(),
             sysctl: sysctl.clone(),
             clock: Arc::new(FakeClock::new(1_793_534_400)),
             allow_system_executors: allow_system,
+            nft: nft.clone(),
             use_transient_executor: false,
         });
         Rig {
@@ -364,6 +382,7 @@ mod tests {
             fs,
             systemd,
             sysctl,
+            nft,
             state: State::open(&dir).unwrap(),
             dir,
         }
@@ -470,6 +489,49 @@ mod tests {
                 assert_eq!(after.enabled, enabled);
             }
         }
+    }
+
+    fn nft_guard(rules: usize) -> Op {
+        Op::NftFragment {
+            fragment: json!({ "chains": [{
+                "name": "dev_echo_guard",
+                "rules": (0..rules).map(|_| json!({ "verdict": "accept" })).collect::<Vec<_>>(),
+            }] }),
+        }
+    }
+
+    #[test]
+    fn a_new_nft_chain_is_removed_by_rollback() {
+        let rig = rig("nft1", true);
+        let ops = vec![nft_guard(2)];
+        rig.engine.snapshot(&rig.state, "txn1", &ops).unwrap();
+        rig.engine.execute(None, &ops).unwrap();
+        assert!(rig.nft.has("dev_echo_guard"));
+        rig.engine.rollback(&rig.state, "txn1").unwrap();
+        assert!(!rig.nft.has("dev_echo_guard"));
+    }
+
+    #[test]
+    fn an_existing_nft_chain_is_restored_as_it_was() {
+        let rig = rig("nft2", true);
+        let first = vec![nft_guard(1)];
+        rig.engine.snapshot(&rig.state, "txa", &first).unwrap();
+        rig.engine.execute(None, &first).unwrap();
+        let before = rig.nft.capture("dev_echo_guard").unwrap();
+
+        let second = vec![nft_guard(5)];
+        rig.engine.snapshot(&rig.state, "txb", &second).unwrap();
+        rig.engine.execute(None, &second).unwrap();
+        assert_ne!(rig.nft.capture("dev_echo_guard").unwrap(), before);
+        rig.engine.rollback(&rig.state, "txb").unwrap();
+        assert_eq!(rig.nft.capture("dev_echo_guard").unwrap(), before);
+    }
+
+    #[test]
+    fn nft_is_refused_without_system_executors() {
+        let rig = rig("nft3", false);
+        assert!(rig.engine.execute(None, &[nft_guard(1)]).is_err());
+        assert!(!rig.nft.has("dev_echo_guard"));
     }
 
     #[test]
@@ -604,7 +666,7 @@ mod tests {
                 value: "1".into(),
             },
             Op::NftFragment {
-                fragment: json!({ "chain": "dev_echo_c" }),
+                fragment: json!({ "chains": [{ "name": "dev_echo_c", "rules": [] }] }),
             },
             Op::NftFragment {
                 fragment: json!({}),

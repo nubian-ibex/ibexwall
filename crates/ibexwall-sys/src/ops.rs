@@ -6,7 +6,6 @@
 //! helper that runs inside a transient unit whose `ReadWritePaths` are
 //! limited to one transaction (ADR-0026).
 
-use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -42,8 +41,20 @@ pub enum SnapshotEntry {
         key: String,
         prior: Option<String>,
     },
+    /// Chains an `nft.fragment` replaced, with what each held before.
+    Nft {
+        op_index: usize,
+        chains: Vec<NftChainPrior>,
+    },
     /// Ops without a system inverse (exec).
     NoInverse { op_index: usize },
+}
+
+/// A chain's definition before a transaction (`None`: it did not exist).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NftChainPrior {
+    pub name: String,
+    pub prior: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -164,7 +175,8 @@ pub fn execute(op: &Op, sys: &crate::SysBundle) -> Result<()> {
             if !sys.allow_system_executors {
                 return Err(OpError::SandboxBlocked.into());
             }
-            apply_nft_fragment(fragment)
+            let fragment = parse_fragment(fragment)?;
+            sys.nft.apply(&fragment)
         }
         Op::FirewallAdapter { .. } => {
             Err(not_implemented("firewall.adapter", "adapter lands in F5"))
@@ -209,44 +221,18 @@ fn resolve_group(group: &str) -> Result<u32> {
     }
 }
 
-/// Applies a fragment to `table inet ibexwall` atomically through the
-/// nftables JSON API: `nft -c -j` precheck, then `nft -j -f -`.
-fn apply_nft_fragment(fragment: &serde_json::Value) -> Result<()> {
-    let batch = serde_json::json!({
-        "nftables": [
-            { "table": { "family": "inet", "name": ibexwall_proto::names::NFT_TABLE } },
-            fragment.clone(),
-        ]
-    });
-    let payload = serde_json::to_vec(&batch)?;
-
-    for check in [true, false] {
-        let mut command = Command::new("nft");
-        command.arg("-j");
-        if check {
-            command.arg("-c");
-        }
-        command.arg("-f").arg("-");
-        command
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        let mut child = command.spawn().context("spawning nft")?;
-        child
-            .stdin
-            .take()
-            .expect("piped stdin")
-            .write_all(&payload)?;
-        let output = child.wait_with_output()?;
-        if !output.status.success() {
-            bail!(
-                "nft {} failed: {}",
-                if check { "check" } else { "apply" },
-                String::from_utf8_lossy(&output.stderr).trim()
-            );
-        }
-    }
-    Ok(())
+/// Parses the typed fragment a plugin proposed.
+pub fn parse_fragment(value: &serde_json::Value) -> Result<crate::Fragment> {
+    let fragment: crate::Fragment =
+        serde_json::from_value(value.clone()).map_err(|e| OpError::Invalid {
+            field: "nft.fragment",
+            reason: e.to_string(),
+        })?;
+    fragment.validate().map_err(|e| OpError::Invalid {
+        field: "nft.fragment",
+        reason: e.to_string(),
+    })?;
+    Ok(fragment)
 }
 
 /// Reads a snapshot manifest and applies the inverses in reverse order.
@@ -318,6 +304,11 @@ pub fn apply_snapshot_inverses(
             SnapshotEntry::Sysctl { key, prior, .. } => {
                 if let Some(value) = prior {
                     sys.sysctl.set(key, value)?;
+                }
+            }
+            SnapshotEntry::Nft { chains, .. } => {
+                for chain in chains {
+                    sys.nft.restore(&chain.name, chain.prior.as_ref())?;
                 }
             }
             SnapshotEntry::NoInverse { .. } => {}

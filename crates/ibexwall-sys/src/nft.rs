@@ -1,0 +1,479 @@
+// SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+//! nftables access, limited to what IbexWall may do: own chains in
+//! `table inet ibexwall`. A plugin proposes a typed [`Fragment`] (simple
+//! rules, no free text), the core validates it and this module compiles it
+//! to libnftables JSON and applies it atomically. Prior chain contents are
+//! captured so a transaction can be undone exactly.
+
+use std::collections::BTreeMap;
+use std::io::Write;
+use std::process::{Command, Stdio};
+use std::sync::Mutex;
+
+use anyhow::{Context, Result, bail};
+use ibexwall_proto::names::NFT_TABLE;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+
+/// A set of owned chains, as a plugin proposes them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Fragment {
+    pub chains: Vec<Chain>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Chain {
+    pub name: String,
+    /// Base chain priority relative to other tables (lower runs first).
+    #[serde(default)]
+    pub priority: i32,
+    pub rules: Vec<Rule>,
+}
+
+/// One rule. Every condition that is present must match.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Rule {
+    /// Only packets leaving through the loopback interface.
+    #[serde(default)]
+    pub oif_loopback: bool,
+    /// Only packets whose sending user is not this uid.
+    #[serde(default)]
+    pub uid_not: Option<u32>,
+    /// With `dports`: the transport protocols to match.
+    #[serde(default)]
+    pub protocols: Vec<Proto>,
+    #[serde(default)]
+    pub dports: Vec<u16>,
+    pub verdict: Verdict,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Proto {
+    Tcp,
+    Udp,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Verdict {
+    Accept,
+    Drop,
+    /// Refuses at once (ICMP port unreachable or TCP reset): applications
+    /// fall back faster than they would after a silent drop.
+    Reject,
+}
+
+const MAX_CHAINS: usize = 8;
+const MAX_RULES: usize = 64;
+const MAX_PORTS: usize = 16;
+
+impl Fragment {
+    /// Structural limits; the plugin manifest's name prefix is checked by
+    /// the core separately.
+    pub fn validate(&self) -> Result<()> {
+        if self.chains.is_empty() || self.chains.len() > MAX_CHAINS {
+            bail!("a fragment needs 1 to {MAX_CHAINS} chains");
+        }
+        for chain in &self.chains {
+            let name = chain.name.as_str();
+            let ok = (1..=60).contains(&name.len())
+                && name
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_');
+            if !ok {
+                bail!("chain name `{name}` must be 1 to 60 characters of a-z, 0-9 or `_`");
+            }
+            if chain.rules.len() > MAX_RULES {
+                bail!("chain `{name}` has more than {MAX_RULES} rules");
+            }
+            for rule in &chain.rules {
+                if rule.protocols.is_empty() != rule.dports.is_empty() {
+                    bail!("chain `{name}`: protocols and dports go together");
+                }
+                if rule.dports.len() > MAX_PORTS || rule.dports.contains(&0) {
+                    bail!("chain `{name}`: dports must be 1 to {MAX_PORTS} ports, none zero");
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn chain_names(&self) -> Vec<String> {
+        self.chains.iter().map(|chain| chain.name.clone()).collect()
+    }
+
+    /// The libnftables JSON commands that make these chains exist with
+    /// exactly these rules: add, flush, then the rules, in one batch.
+    pub fn compile(&self) -> Vec<Value> {
+        let mut commands =
+            vec![json!({ "add": { "table": { "family": "inet", "name": NFT_TABLE } } })];
+        for chain in &self.chains {
+            let handle = json!({ "family": "inet", "table": NFT_TABLE, "name": chain.name });
+            commands.push(json!({ "add": { "chain": {
+                "family": "inet", "table": NFT_TABLE, "name": chain.name,
+                "type": "filter", "hook": "output", "prio": chain.priority, "policy": "accept",
+            } } }));
+            commands.push(json!({ "flush": { "chain": handle } }));
+            for rule in &chain.rules {
+                for expr in rule.expressions() {
+                    commands.push(json!({ "add": { "rule": {
+                        "family": "inet", "table": NFT_TABLE, "chain": chain.name, "expr": expr,
+                    } } }));
+                }
+            }
+        }
+        commands
+    }
+}
+
+impl Rule {
+    /// One expression list per protocol (a rule on tcp and udp is two
+    /// nftables rules).
+    fn expressions(&self) -> Vec<Vec<Value>> {
+        let mut base = vec![];
+        if self.oif_loopback {
+            base.push(json!({ "match": { "op": "==",
+                "left": { "meta": { "key": "oifname" } }, "right": "lo" } }));
+        }
+        if let Some(uid) = self.uid_not {
+            base.push(json!({ "match": { "op": "!=",
+                "left": { "meta": { "key": "skuid" } }, "right": uid } }));
+        }
+        let verdict = match self.verdict {
+            Verdict::Accept => json!({ "accept": null }),
+            Verdict::Drop => json!({ "drop": null }),
+            Verdict::Reject => json!({ "reject": null }),
+        };
+        if self.protocols.is_empty() {
+            let mut expr = base;
+            expr.push(verdict);
+            return vec![expr];
+        }
+        self.protocols
+            .iter()
+            .map(|proto| {
+                let name = match proto {
+                    Proto::Tcp => "tcp",
+                    Proto::Udp => "udp",
+                };
+                let mut expr = base.clone();
+                expr.push(json!({ "match": { "op": "==",
+                    "left": { "payload": { "protocol": name, "field": "dport" } },
+                    "right": { "set": self.dports } } }));
+                expr.push(verdict.clone());
+                expr
+            })
+            .collect()
+    }
+}
+
+/// The nftables operations the engine needs.
+pub trait Nft: Send + Sync {
+    /// Applies the fragment atomically (checked first).
+    fn apply(&self, fragment: &Fragment) -> Result<()>;
+    /// The current definition of a chain in our table, `None` if absent.
+    fn capture(&self, chain: &str) -> Result<Option<Value>>;
+    /// Puts a chain back as captured: removes it when `prior` is `None`.
+    fn restore(&self, chain: &str, prior: Option<&Value>) -> Result<()>;
+}
+
+/// Runs `nft -j` with a command batch on stdin. `check` only validates.
+fn run_batch(commands: &[Value], check: bool) -> Result<()> {
+    let payload = serde_json::to_vec(&json!({ "nftables": commands }))?;
+    let mut command = Command::new("nft");
+    command.arg("-j");
+    if check {
+        command.arg("-c");
+    }
+    command
+        .arg("-f")
+        .arg("-")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command.spawn().context("spawning nft")?;
+    child
+        .stdin
+        .take()
+        .expect("piped stdin")
+        .write_all(&payload)?;
+    let output = child.wait_with_output()?;
+    if !output.status.success() {
+        bail!(
+            "nft {} failed: {}",
+            if check { "check" } else { "apply" },
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    Ok(())
+}
+
+/// Removes every `handle` key: handles belong to the live ruleset and are
+/// rejected on input.
+pub fn strip_handles(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            map.remove("handle");
+            map.values_mut().for_each(strip_handles);
+        }
+        Value::Array(items) => items.iter_mut().for_each(strip_handles),
+        _ => {}
+    }
+}
+
+/// The chain and rule items of a `nft -j list chain` reply, wrapped as
+/// `add` commands, ready to replay.
+fn replay_commands(prior: &Value) -> Vec<Value> {
+    let mut items: Vec<Value> = prior
+        .get("nftables")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter(|item| item.get("chain").is_some() || item.get("rule").is_some())
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
+    items.iter_mut().for_each(strip_handles);
+    items
+        .into_iter()
+        .map(|item| json!({ "add": item }))
+        .collect()
+}
+
+fn removal_commands(chain: &str) -> Vec<Value> {
+    // `add` of an existing chain is a no-op, so the removal also works
+    // when a crash left the chain absent.
+    let handle = json!({ "family": "inet", "table": NFT_TABLE, "name": chain });
+    vec![
+        json!({ "add": { "table": { "family": "inet", "name": NFT_TABLE } } }),
+        json!({ "add": { "chain": handle } }),
+        json!({ "flush": { "chain": handle } }),
+        json!({ "delete": { "chain": handle } }),
+    ]
+}
+
+/// Real nftables through the `nft` binary (argv only, JSON on stdin).
+pub struct RealNft;
+
+impl Nft for RealNft {
+    fn apply(&self, fragment: &Fragment) -> Result<()> {
+        fragment.validate()?;
+        let commands = fragment.compile();
+        run_batch(&commands, true)?;
+        run_batch(&commands, false)
+    }
+
+    fn capture(&self, chain: &str) -> Result<Option<Value>> {
+        let output = Command::new("nft")
+            .args(["-j", "list", "chain", "inet", NFT_TABLE, chain])
+            .output()
+            .context("spawning nft")?;
+        if !output.status.success() {
+            // The chain (or the whole table) does not exist yet.
+            return Ok(None);
+        }
+        let mut value: Value =
+            serde_json::from_slice(&output.stdout).context("parsing nft output")?;
+        strip_handles(&mut value);
+        Ok(Some(value))
+    }
+
+    fn restore(&self, chain: &str, prior: Option<&Value>) -> Result<()> {
+        let mut commands = removal_commands(chain);
+        if let Some(prior) = prior {
+            commands.extend(replay_commands(prior));
+        }
+        run_batch(&commands, true)?;
+        run_batch(&commands, false)
+    }
+}
+
+/// Fake keeping chain definitions in memory, for engine tests.
+#[derive(Default)]
+pub struct FakeNft {
+    chains: Mutex<BTreeMap<String, Value>>,
+    pub log: crate::log::OpLog,
+}
+
+impl FakeNft {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn has(&self, chain: &str) -> bool {
+        self.chains.lock().unwrap().contains_key(chain)
+    }
+}
+
+impl Nft for FakeNft {
+    fn apply(&self, fragment: &Fragment) -> Result<()> {
+        fragment.validate()?;
+        self.log
+            .push(format!("apply {}", fragment.chain_names().join(",")));
+        let mut chains = self.chains.lock().unwrap();
+        for chain in &fragment.chains {
+            chains.insert(chain.name.clone(), json!({ "rules": chain.rules.len() }));
+        }
+        Ok(())
+    }
+
+    fn capture(&self, chain: &str) -> Result<Option<Value>> {
+        Ok(self.chains.lock().unwrap().get(chain).cloned())
+    }
+
+    fn restore(&self, chain: &str, prior: Option<&Value>) -> Result<()> {
+        self.log
+            .push(format!("restore {chain} prior={}", prior.is_some()));
+        let mut chains = self.chains.lock().unwrap();
+        match prior {
+            Some(prior) => chains.insert(chain.to_string(), prior.clone()),
+            None => chains.remove(chain),
+        };
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn guard() -> Fragment {
+        serde_json::from_value(json!({ "chains": [{
+            "name": "net_dns_guard", "priority": -10,
+            "rules": [
+                { "oif_loopback": true, "verdict": "accept" },
+                { "uid_not": 990, "protocols": ["udp", "tcp"], "dports": [53, 853], "verdict": "reject" },
+            ],
+        }] }))
+        .unwrap()
+    }
+
+    #[test]
+    fn compiles_to_one_batch_with_add_flush_and_one_rule_per_protocol() {
+        let commands = guard().compile();
+        let kinds: Vec<String> = commands
+            .iter()
+            .map(|c| {
+                let (verb, body) = c.as_object().unwrap().iter().next().unwrap();
+                let object = body.as_object().unwrap().keys().next().unwrap();
+                format!("{verb} {object}")
+            })
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                "add table",
+                "add chain",
+                "flush chain",
+                "add rule", // loopback accept
+                "add rule",
+                "add rule", // reject on udp and on tcp
+            ]
+        );
+        let chain = &commands[1]["add"]["chain"];
+        assert_eq!(
+            (chain["hook"].as_str(), chain["prio"].as_i64()),
+            (Some("output"), Some(-10))
+        );
+    }
+
+    #[test]
+    fn the_dns_rule_exempts_the_resolver_uid_and_matches_both_ports() {
+        let commands = guard().compile();
+        let rule = &commands[4]["add"]["rule"]["expr"];
+        assert_eq!(rule[0]["match"]["left"]["meta"]["key"], "skuid");
+        assert_eq!(rule[0]["match"]["op"], "!=");
+        assert_eq!(rule[0]["match"]["right"], 990);
+        assert_eq!(rule[1]["match"]["left"]["payload"]["protocol"], "udp");
+        assert_eq!(rule[1]["match"]["right"]["set"], json!([53, 853]));
+        assert_eq!(rule[2], json!({ "reject": null }));
+        assert_eq!(
+            commands[5]["add"]["rule"]["expr"][1]["match"]["left"]["payload"]["protocol"],
+            "tcp"
+        );
+    }
+
+    #[test]
+    fn only_typed_fields_are_accepted() {
+        for bad in [
+            json!({ "chains": [{ "name": "a", "rules": [], "policy": "drop" }] }),
+            json!({ "chains": [{ "name": "a", "rules": [{ "verdict": "accept", "raw": "x" }] }] }),
+            json!({ "chains": [{ "name": "a", "rules": [{ "verdict": "jump" }] }] }),
+        ] {
+            assert!(
+                serde_json::from_value::<Fragment>(bad.clone()).is_err(),
+                "{bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn structural_limits_are_enforced() {
+        let named = |name: &str, rules: Value| -> Fragment {
+            serde_json::from_value(json!({ "chains": [{ "name": name, "rules": rules }] })).unwrap()
+        };
+        assert!(named("ok_1", json!([])).validate().is_ok());
+        for name in ["", "Upper", "has space", "semi;colon", &"a".repeat(61)] {
+            assert!(named(name, json!([])).validate().is_err(), "{name:?}");
+        }
+        let dangling = json!([{ "protocols": ["udp"], "verdict": "drop" }]);
+        assert!(named("c", dangling).validate().is_err());
+        let zero = json!([{ "protocols": ["udp"], "dports": [0], "verdict": "drop" }]);
+        assert!(named("c", zero).validate().is_err());
+        let many = json!(
+            (0..65)
+                .map(|_| json!({ "verdict": "accept" }))
+                .collect::<Vec<_>>()
+        );
+        assert!(named("c", many).validate().is_err());
+        assert!(Fragment { chains: vec![] }.validate().is_err());
+    }
+
+    #[test]
+    fn handles_are_stripped_so_a_captured_chain_can_be_replayed() {
+        let mut listed = json!({ "nftables": [
+            { "metainfo": { "version": "1.1.6" } },
+            { "chain": { "family": "inet", "table": "ibexwall", "name": "c", "handle": 3, "hook": "output" } },
+            { "rule": { "family": "inet", "table": "ibexwall", "chain": "c", "handle": 4, "expr": [{ "accept": null }] } },
+        ] });
+        strip_handles(&mut listed);
+        let replay = replay_commands(&listed);
+        assert_eq!(replay.len(), 2);
+        assert!(
+            replay
+                .iter()
+                .all(|c| c.to_string().find("handle").is_none())
+        );
+        assert!(replay[0]["add"]["chain"].is_object() && replay[1]["add"]["rule"].is_object());
+    }
+
+    #[test]
+    fn removal_works_even_if_the_chain_is_already_gone() {
+        let verbs: Vec<String> = removal_commands("c")
+            .iter()
+            .map(|c| c.as_object().unwrap().keys().next().unwrap().clone())
+            .collect();
+        assert_eq!(verbs, ["add", "add", "flush", "delete"]);
+    }
+
+    #[test]
+    fn the_fake_applies_captures_and_restores() {
+        let nft = FakeNft::new();
+        nft.apply(&guard()).unwrap();
+        assert!(nft.has("net_dns_guard"));
+        let prior = nft.capture("net_dns_guard").unwrap();
+        assert!(prior.is_some());
+        nft.restore("net_dns_guard", None).unwrap();
+        assert!(!nft.has("net_dns_guard"));
+        nft.restore("net_dns_guard", prior.as_ref()).unwrap();
+        assert!(nft.has("net_dns_guard"));
+    }
+}

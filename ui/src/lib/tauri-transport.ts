@@ -1,6 +1,7 @@
 // Transport backed by the Tauri commands (the Rust side is a varlink
 // client). Errors arrive as { code, parameters } and become TransportError.
 import type {
+  DnsStatus,
   Finding,
   HistoryEntry,
   Info,
@@ -51,6 +52,10 @@ export class TauriTransport implements Transport {
 
   getPosture() {
     return unwrapped<Posture>('get_posture', 'posture');
+  }
+
+  getDnsStatus() {
+    return unwrapped<DnsStatus>('get_dns_status', 'dns_status');
   }
 
   listPlugins() {

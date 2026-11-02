@@ -2,6 +2,7 @@
 // implements it with Tauri commands (varlink on the Rust side); tests and
 // design work use the fixture implementation.
 import type {
+  DnsStatus,
   Finding,
   HistoryEntry,
   Info,
@@ -32,6 +33,7 @@ export class TransportError extends Error {
 export interface Transport {
   getInfo(): Promise<Info>;
   getPosture(): Promise<Posture>;
+  getDnsStatus(): Promise<DnsStatus>;
   listPlugins(): Promise<PluginInfo[]>;
   listFindings(plugin?: string): Promise<Finding[]>;
   runChecks(plugin?: string): Promise<Finding[]>;

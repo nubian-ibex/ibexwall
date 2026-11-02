@@ -15,6 +15,7 @@ use ibexwall_dns::daemon::{build_policy, spawn_updater};
 use ibexwall_dns::handler::Handler;
 use ibexwall_dns::lists::{self, HttpsFetcher, Store};
 use ibexwall_proto::names;
+use ibexwall_sys::Clock as _;
 use tokio::net::{TcpListener, UdpSocket};
 use tokio::signal::unix::{SignalKind, signal};
 
@@ -43,6 +44,39 @@ async fn main() {
         eprintln!("ibexwall-dns: {error:#}");
         std::process::exit(1);
     }
+}
+
+/// Publishes the counters where the core can show them (spec: counters
+/// only, never query names). Best effort: a failed write is logged and
+/// retried on the next tick.
+fn spawn_status_writer(handler: Handler) {
+    tokio::spawn(async move {
+        loop {
+            let path = names::dns_status_file();
+            let counters = handler.counters.snapshot();
+            let status = serde_json::json!({
+                "running": true,
+                "updated_at": ibexwall_sys::RealClock.rfc3339_now(),
+                "forwarded": counters.forwarded,
+                "blocked_list": counters.blocked_list,
+                "blocked_canary": counters.blocked_canary,
+                "blocked_doh": counters.blocked_doh,
+                "upstream_errors": counters.upstream_errors,
+            });
+            let result = std::fs::create_dir_all(path.parent().expect("parent"))
+                .and_then(|_| write_replacing(&path, &status));
+            if let Err(error) = result {
+                tracing::warn!(%error, path = %path.display(), "writing the status file failed");
+            }
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+    });
+}
+
+fn write_replacing(path: &std::path::Path, status: &serde_json::Value) -> std::io::Result<()> {
+    let temporary = path.with_extension("json.new");
+    std::fs::write(&temporary, serde_json::to_vec(status).unwrap_or_default())?;
+    std::fs::rename(&temporary, path)
 }
 
 async fn run() -> Result<()> {
@@ -76,6 +110,7 @@ async fn run() -> Result<()> {
         handler.clone(),
     );
 
+    spawn_status_writer(handler.clone());
     let mut server = Server::new(handler);
     server.register_socket(udp);
     server.register_listener(tcp, TCP_TIMEOUT, TCP_RESPONSE_BUFFER);

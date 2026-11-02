@@ -59,6 +59,27 @@ describe('Dns screen', () => {
     expect([...select.options].map((o) => o.value)).not.toContain('quic');
   });
 
+  it('shows counters only when the plugin is on and the resolver reports', async () => {
+    app.useTransport(new FixtureTransport('attention'));
+    const off = render(Dns);
+    await app.refresh();
+    // Plugin off: no counters section at all.
+    expect(screen.queryByRole('heading', { name: /since the resolver started/i })).toBeNull();
+    off.unmount();
+
+    const transport = new FixtureTransport('protected');
+    app.useTransport(transport);
+    render(Dns);
+    await app.refresh();
+    expect(
+      await screen.findByRole('heading', { name: /since the resolver started/i }),
+    ).toBeVisible();
+    expect(screen.getByText('Domains blocked by the list')).toBeVisible();
+    expect(screen.getByText('356')).toBeVisible();
+    expect(screen.getByText('8421')).toBeVisible();
+    expect(screen.getByText(/does not record which domains you look up/i)).toBeVisible();
+  });
+
   it('shows the reason when the plan is refused and changes nothing', async () => {
     const transport = new FixtureTransport('attention');
     transport.planChange = () =>

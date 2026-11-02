@@ -1,0 +1,102 @@
+/* Design tokens (spec section 6.3). Light is extracted from the mockups;
+   dark is derived and must keep WCAG AA contrast (checked in e2e/axe). */
+:root {
+  --bg: #f4f6f4;
+  --surface: #ffffff;
+  --surface-2: #f4f6f4;
+  --border: #e2e6e3;
+  --border-strong: #c9d1cc;
+  --divider: #eef1ef;
+  --text: #16201c;
+  --text-2: #3d4843;
+  --muted: #5a6660;
+  --primary: #1f7a55;
+  --primary-strong: #14573d;
+  --primary-soft: #e5f2eb;
+  --on-primary: #ffffff;
+  --warning: #9a5b00;
+  --warning-text: #8a5100;
+  --warning-soft: #fbf0dc;
+  --warning-border: #e8c98f;
+  --danger: #9b2019;
+  --danger-strong: #b3261e;
+  --danger-soft: #fbe7e5;
+  --info: #1d4889;
+  --info-soft: #e6eef9;
+  --managed: #16263f;
+  --managed-text: #c7d3e6;
+  --managed-accent: #9fc4f5;
+
+  --radius-chip: 8px;
+  --radius-control: 10px;
+  --radius-card: 14px;
+  --radius-section: 18px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --target: 44px; /* minimum interactive size */
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --bg: #0e1412;
+  --surface: #151d1a;
+  --surface-2: #1b2521;
+  --border: #27322d;
+  --border-strong: #34413b;
+  --divider: #1f2925;
+  --text: #e6ede9;
+  --text-2: #bac6c0;
+  --muted: #8d9a94;
+  --primary: #3dae7e;
+  --primary-strong: #6bcb9f;
+  --primary-soft: #16352a;
+  --on-primary: #06120d;
+  --warning: #e0a54a;
+  --warning-text: #e0a54a;
+  --warning-soft: #3a2b12;
+  --warning-border: #5c4519;
+  --danger: #f08a80;
+  --danger-strong: #f08a80;
+  --danger-soft: #3d1916;
+  --info: #8db4f0;
+  --info-soft: #172640;
+  color-scheme: dark;
+}
+
+/* Follow the system unless the user chose a theme. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bg: #0e1412;
+    --surface: #151d1a;
+    --surface-2: #1b2521;
+    --border: #27322d;
+    --border-strong: #34413b;
+    --divider: #1f2925;
+    --text: #e6ede9;
+    --text-2: #bac6c0;
+    --muted: #8d9a94;
+    --primary: #3dae7e;
+    --primary-strong: #6bcb9f;
+    --primary-soft: #16352a;
+    --on-primary: #06120d;
+    --warning: #e0a54a;
+    --warning-text: #e0a54a;
+    --warning-soft: #3a2b12;
+    --warning-border: #5c4519;
+    --danger: #f08a80;
+    --danger-strong: #f08a80;
+    --danger-soft: #3d1916;
+    --info: #8db4f0;
+    --info-soft: #172640;
+    color-scheme: dark;
+  }
+}

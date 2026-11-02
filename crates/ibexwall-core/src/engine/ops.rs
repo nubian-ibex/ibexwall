@@ -116,13 +116,23 @@ fn validate_one(op: &Op, manifest: &Manifest) -> Result<(), OpError> {
             Ok(())
         }
         Op::BrowserPolicy { browser, policy } => {
-            if browser.is_empty()
-                || !policy.is_object()
-                || policy.as_object().is_none_or(|m| m.is_empty())
-            {
+            // Only a known browser and exactly the DoH-off policy; the
+            // path must be under the plugin's declared write paths, like
+            // every other file the engine writes.
+            let target =
+                ibexwall_sys::browser::target(browser).ok_or_else(|| OpError::Invalid {
+                    field: "browser.policy",
+                    reason: format!("unknown browser `{browser}`"),
+                })?;
+            if ibexwall_sys::browser::doh_off(browser).as_ref() != Some(policy) {
                 return Err(OpError::Invalid {
                     field: "browser.policy",
-                    reason: "browser and non-empty policy required".into(),
+                    reason: "only the exact disable-DoH policy may be written".into(),
+                });
+            }
+            if !path_under_any(target.path, &manifest.privileges.write_paths) {
+                return Err(OpError::PathNotWritable {
+                    path: target.path.into(),
                 });
             }
             Ok(())
@@ -203,6 +213,10 @@ pub fn risk_flags(ops: &[Op]) -> Vec<RiskFlag> {
             Op::NftFragment { .. } | Op::FirewallAdapter { .. } | Op::DnsBackend { .. } => {
                 push(RiskFlag::Network);
             }
+            Op::BrowserPolicy { .. } => {
+                // Steering a browser's DNS is a network change.
+                push(RiskFlag::Network);
+            }
             Op::PackageInstall { .. } => {
                 push(RiskFlag::Irreversible);
             }
@@ -225,6 +239,12 @@ fn is_network_artifact(path: &str) -> bool {
         "/etc/sysconfig/network-scripts/",
         "/etc/netplan/",
         "/etc/wireguard/",
+        "/etc/firefox/policies/",
+        "/etc/opt/chrome/policies/",
+        "/etc/opt/edge/policies/",
+        "/etc/chromium/policies/",
+        "/etc/chromium-browser/policies/",
+        "/etc/brave/policies/",
     ];
     NETWORK_PREFIXES
         .iter()
@@ -253,7 +273,7 @@ default_enabled = true
 en = "Echo"
 
 [privileges]
-write_paths = ["/etc/sysctl.d", "/etc/ibexwall-tests"]
+write_paths = ["/etc/sysctl.d", "/etc/ibexwall-tests", "/etc/firefox/policies"]
 units = ["chronyd.service", "ibexwall-test.service"]
 unit_actions = ["start", "stop", "restart"]
 sysctl_keys = ["kernel.ibexwall_test", "net.ibexwall_test"]
@@ -390,6 +410,48 @@ reversible = "immediate"
     }
 
     #[test]
+    fn browser_policy_paths_carry_the_network_risk() {
+        for browser in ["firefox", "chrome", "chromium", "brave", "edge"] {
+            let ops = [Op::BrowserPolicy {
+                browser: browser.into(),
+                policy: ibexwall_sys::browser::doh_off(browser).unwrap(),
+            }];
+            assert_eq!(risk_flags(&ops), vec![RiskFlag::Network], "{browser}");
+        }
+    }
+
+    #[test]
+    fn browser_policy_is_strictly_the_known_doh_off_content() {
+        let mut manifest = manifest();
+        manifest.privileges.write_paths = vec!["/etc/firefox/policies".into()];
+        let ok = Op::BrowserPolicy {
+            browser: "firefox".into(),
+            policy: ibexwall_sys::browser::doh_off("firefox").unwrap(),
+        };
+        assert!(validate(std::slice::from_ref(&ok), &manifest).is_ok());
+        for bad in [
+            Op::BrowserPolicy {
+                browser: "netscape".into(),
+                policy: ibexwall_sys::browser::doh_off("firefox").unwrap(),
+            },
+            Op::BrowserPolicy {
+                browser: "firefox".into(),
+                policy: serde_json::json!({ "policies": { "BlockAboutConfig": true } }),
+            },
+            Op::BrowserPolicy {
+                // Known browser, but its path is not in this manifest.
+                browser: "chrome".into(),
+                policy: ibexwall_sys::browser::doh_off("chrome").unwrap(),
+            },
+        ] {
+            assert!(
+                validate(std::slice::from_ref(&bad), &manifest).is_err(),
+                "{bad:?}"
+            );
+        }
+    }
+
+    #[test]
     fn risk_flags_follow_artifacts() {
         let ops = [
             Op::FileWrite {
@@ -522,7 +584,7 @@ reversible = "immediate"
             },
             Op::BrowserPolicy {
                 browser: "firefox".into(),
-                policy: serde_json::json!({"k": 1}),
+                policy: ibexwall_sys::browser::doh_off("firefox").unwrap(),
             },
             Op::NmSetting {
                 key: "k".into(),

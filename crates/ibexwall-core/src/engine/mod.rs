@@ -114,6 +114,35 @@ impl Engine {
                         restarted: *action == ibexwall_proto::UnitAction::Restart,
                     });
                 }
+                Op::BrowserPolicy { browser, .. } => {
+                    // The inverse is the file the executor writes, captured
+                    // like any other file so rollback restores or removes it.
+                    let path = ibexwall_sys::browser::target(browser)
+                        .map(|target| target.path)
+                        .ok_or_else(|| {
+                            anyhow::anyhow!("unknown browser `{browser}` for browser.policy")
+                        })?;
+                    let prior = match self.sys.fs.read(Path::new(path)) {
+                        Ok(content) if !content.is_empty() => {
+                            let meta = self.sys.fs.metadata(Path::new(path))?;
+                            let blob = format!("{index:03}.bin");
+                            std::fs::write(dir.join("files").join(&blob), &content)?;
+                            Some(PriorFile {
+                                sha256: hex::encode(sha2::Sha256::digest(&content)),
+                                blob,
+                                mode: meta.mode,
+                                uid: meta.uid,
+                                gid: meta.gid,
+                            })
+                        }
+                        _ => None,
+                    };
+                    entries.push(SnapshotEntry::File {
+                        op_index: index,
+                        path: path.into(),
+                        prior,
+                    });
+                }
                 Op::SysctlSet { key, .. } => {
                     let prior = self.sys.sysctl.get(key).ok();
                     entries.push(SnapshotEntry::Sysctl {

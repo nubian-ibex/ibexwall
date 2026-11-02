@@ -42,6 +42,7 @@ describe('Dns screen', () => {
       lists: [{ id: 'hagezi-pro' }],
       enforcement: false,
       block_doh: true,
+      browser_policies: false,
     });
     expect(await screen.findByText('/etc/sysctl.d/90-ibexwall.conf')).toBeVisible();
   });
@@ -97,7 +98,9 @@ describe('dns choices', () => {
       lists: [],
       enforcement: true,
       block_doh: true,
+      browser_policies: false,
     });
+    expect(dnsPatch({ ...DNS_DEFAULTS, browserPolicies: true }).browser_policies).toBe(true);
     expect(transportFor('cloudflare', 'quic')).toBe('tls');
     expect(transportFor('quad9', 'quic')).toBe('quic');
     expect(DNS_PROVIDERS.every((p) => p.transports.includes('tls'))).toBe(true);

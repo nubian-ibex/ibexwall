@@ -26,6 +26,8 @@ export interface DnsChoice {
   list: 'none' | (typeof DNS_LISTS)[number];
   enforcement: boolean;
   blockDoh: boolean;
+  /** Explicit consent: set each installed browser's own DoH policy off. */
+  browserPolicies: boolean;
 }
 
 export const DNS_DEFAULTS: DnsChoice = {
@@ -34,6 +36,7 @@ export const DNS_DEFAULTS: DnsChoice = {
   list: 'none',
   enforcement: true,
   blockDoh: true,
+  browserPolicies: false,
 };
 
 /** The patch the net.dns plugin plans from. */
@@ -44,6 +47,7 @@ export function dnsPatch(choice: DnsChoice): Record<string, unknown> {
     lists: choice.list === 'none' ? [] : [{ id: choice.list }],
     enforcement: choice.enforcement,
     block_doh: choice.blockDoh,
+    browser_policies: choice.browserPolicies,
   };
 }
 

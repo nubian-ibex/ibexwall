@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../lib/app.svelte';
 import { DNS_DEFAULTS, DNS_PROVIDERS, dnsPatch, transportFor } from '../lib/dns';
 import { FixtureTransport } from '../lib/fixtures';
+import { TransportError } from '../lib/transport';
 import { i18n } from '../lib/i18n.svelte';
 import Dns from './Dns.svelte';
 
@@ -55,6 +56,25 @@ describe('Dns screen', () => {
     expect([...select.options].map((o) => o.value)).toContain('quic');
     await fireEvent.click(screen.getByRole('radio', { name: /cloudflare/i }));
     expect([...select.options].map((o) => o.value)).not.toContain('quic');
+  });
+
+  it('shows the reason when the plan is refused and changes nothing', async () => {
+    const transport = new FixtureTransport('attention');
+    transport.planChange = () =>
+      Promise.reject(
+        new TransportError('com.ibexwall.Core.InvalidArgument', {
+          field: 'backend',
+          reason: 'NetworkManager without systemd-resolved is not supported yet',
+        }),
+      );
+    app.useTransport(transport);
+    render(Dns);
+    await app.refresh();
+    await fireEvent.click(await screen.findByRole('button', { name: /simulate/i }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('could not proceed');
+    expect(alert).toHaveTextContent('backend');
+    expect(alert).toHaveTextContent('not supported yet');
   });
 
   it('speaks Portuguese', async () => {

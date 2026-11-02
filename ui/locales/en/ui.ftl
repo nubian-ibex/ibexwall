@@ -200,3 +200,6 @@ dns-enforcement-body = Programs cannot send plain DNS or DoT queries around Secu
 dns-block-doh = Stop browsers from bypassing it
 dns-block-doh-body = Asks Firefox to keep its own DNS off. Browser settings are never changed without your approval.
 dns-review-note = Nothing changes until you review the exact changes and apply them.
+
+change-failed-title = IbexWall could not proceed
+change-failed-other = The request failed. Nothing was changed.

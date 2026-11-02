@@ -16,6 +16,7 @@ ibexwall-sdk = { path = "crates/ibexwall-sdk", version = "0.1.0" }
 ibexwall-varlink = { path = "crates/ibexwall-varlink", version = "0.1.0" }
 ibexwall-tui = { path = "crates/ibexwall-tui", version = "0.1.0" }
 ibexwall-sys = { path = "crates/ibexwall-sys", version = "0.1.0" }
+ibexwall-dns = { path = "crates/ibexwall-dns", version = "0.1.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 schemars = "1"

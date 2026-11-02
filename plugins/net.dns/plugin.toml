@@ -1,0 +1,39 @@
+id = "net.dns"
+version = "0.1.0"
+api = 1
+category = "network"
+kinds = ["check", "control"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-dns"
+default_enabled = false
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "Secure DNS"
+pt-BR = "DNS seguro"
+
+[description]
+en = "Encrypts DNS lookups, blocks trackers and malware domains, and keeps browsers from bypassing it."
+pt-BR = "Criptografa as consultas DNS, bloqueia rastreadores e domínios maliciosos e impede que os navegadores contornem a proteção."
+
+[privileges]
+write_paths = ["/etc/ibexwall/dns", "/etc/systemd/resolved.conf.d"]
+units = ["ibexwall-dns.service", "systemd-resolved.service"]
+unit_actions = ["start", "stop", "restart", "enable", "disable"]
+
+[sandbox]
+user = "dynamic"
+capabilities = []
+read_paths = ["/etc/resolv.conf", "/etc/systemd/resolved.conf.d", "/run/systemd/resolve", "/run/systemd/netif", "/run/NetworkManager", "/proc/net/udp"]
+network = false
+
+[risk]
+affects = ["network"]
+reversible = "immediate"
+confirm_timeout = true
+may_affect = ["captive portals", "VPN clients that set their own DNS", "corporate split DNS"]
+
+[ui]
+icon = "globe"
+order = 30

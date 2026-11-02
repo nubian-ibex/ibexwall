@@ -59,7 +59,7 @@ fn default_true() -> bool {
 
 /// The resolver's settings file, written by the `net.dns` plugin through
 /// the core and read by `ibexwall-dns` at start.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Settings {
     #[serde(default = "default_listen")]

@@ -287,11 +287,11 @@ pub(crate) fn start_daemon(vm: &Vm) -> Result<()> {
     bail!("daemon did not come up; journal:\n{log}");
 }
 
-fn pipe_file(vm: &Vm, local: &Path, remote_cmd: &str) -> Result<()> {
+pub(crate) fn pipe_file(vm: &Vm, local: &Path, remote_cmd: &str) -> Result<()> {
     vm.ssh_pipe(local, remote_cmd).map(|_| ())
 }
 
-fn pipe_data(vm: &Vm, data: &str, remote_cmd: &str) -> Result<()> {
+pub(crate) fn pipe_data(vm: &Vm, data: &str, remote_cmd: &str) -> Result<()> {
     let mut child = vm
         .ssh_base()
         .arg(remote_cmd)

@@ -8,8 +8,20 @@ machine encrypted, blocked domains answer as configured, and turning it off
 restores the original configuration byte for byte. Spec: PROMPT.md section
 4.8 and phase F3.
 
-Status: draft (autonomous mode, 2026-11-02). Milestones M1 to M3 need no
-decision; M4 onward start after the spikes.
+Status: in progress (autonomous mode, 2026-11-02).
+
+Progress:
+- M1 resolver core: done (forwarding stub on hickory 0.26, ADR-0028).
+- M2 block lists: done (parser, presets verified against each project,
+  atomic updates, jitter).
+- M3 plugin `net.dns`: done for the systemd-resolved stack (ADR-0029);
+  failsafe unit and `--failsafe` mode done.
+- M4 backends: B1 (resolved) verified on all five distros; B2 to B4 pending.
+- M5 enforcement and DoH, M6 captive portal and failure modes (the
+  `block` mode), M7 UI/TUI/agent: pending.
+- M8: `--phase f3` has 8 scenarios passing on all five distros (apply,
+  no clear DNS in a packet capture, canary, kill, failsafe, exact
+  rollback twice); the nft enforcement and latency scenarios are pending.
 
 ## Facts checked
 

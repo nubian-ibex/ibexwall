@@ -206,3 +206,17 @@ change-failed-other = The request failed. Nothing was changed.
 
 dns-browser-policy = Turn off each browser's own encrypted DNS
 dns-browser-policy-body = With your approval, writes the browser policy that keeps Firefox, Chrome, Chromium, Brave and Edge from using their own DoH servers. Only browsers installed on this computer are touched, and undoing the change removes the policy.
+
+dns-provider-adguard = AdGuard DNS
+dns-provider-adguard-logs = processes no personal data; only overall usage statistics
+dns-provider-dns4eu = DNS4EU (protective)
+dns-provider-dns4eu-logs = see the provider's privacy documentation
+
+dns-counters-title = Since the resolver started
+dns-counter-blocked-list = Domains blocked by the list
+dns-counter-blocked-doh = Attempts to reach other DoH servers
+dns-counter-forwarded = Lookups forwarded encrypted
+dns-counter-errors = Upstream failures
+dns-counters-updated = Updated { $when }.
+dns-counters-not-running = The resolver is not reporting right now.
+dns-counters-privacy = Counts only. IbexWall does not record which domains you look up.

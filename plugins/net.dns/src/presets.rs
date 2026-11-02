@@ -45,6 +45,40 @@ pub const PROVIDERS: &[Provider] = &[
         consulted: "2026-11-02",
     },
     Provider {
+        id: "adguard",
+        name: "AdGuard DNS",
+        addresses: &["94.140.14.14", "94.140.15.15"],
+        server_name: "dns.adguard-dns.com",
+        transports: &[
+            Transport::Tls,
+            Transport::Https,
+            Transport::Quic,
+            Transport::H3,
+        ],
+        jurisdiction: "CY",
+        sources: &[
+            "https://adguard-dns.io/en/public-dns.html",
+            // "We do not process any of your Personal Data when you connect
+            //  to and use public AdGuard DNS" (privacy policy, 2024-08-06).
+            "https://adguard-dns.io/en/privacy.html",
+            // Adguard Software Limited, Republic of Cyprus.
+            "https://adguard.com/en/eula.html",
+        ],
+        consulted: "2026-11-02",
+    },
+    Provider {
+        id: "dns4eu",
+        name: "DNS4EU (protective)",
+        // The official site lists 86.54.11.1; both addresses answer with
+        // a certificate for protective.joindns4.eu (probed 2026-11-02).
+        addresses: &["86.54.11.1", "86.54.11.201"],
+        server_name: "protective.joindns4.eu",
+        transports: &[Transport::Tls, Transport::Https],
+        jurisdiction: "CZ",
+        sources: &["https://www.joindns4.eu/"],
+        consulted: "2026-11-02",
+    },
+    Provider {
         id: "cloudflare",
         name: "Cloudflare",
         addresses: &["1.1.1.1", "1.0.0.1"],

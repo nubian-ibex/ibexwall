@@ -151,3 +151,8 @@ history-empty-title = Nothing has changed yet
 history-empty-body = When you apply a protection, it shows up here with a way to undo it.
 history-undo = Undo this change
 history-view = View
+
+settings-title = Settings
+settings-subtitle = Appearance and language
+language-en = English
+language-pt-BR = Portuguese (Brazil)

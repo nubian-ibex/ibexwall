@@ -6,11 +6,17 @@
   import StateMessage from '../components/StateMessage.svelte';
 
   let entries = $state<Awaited<ReturnType<typeof app.transport.history>> | null>(null);
+  let failed = $state(false);
   let busy = $state(false);
 
   async function load() {
     entries = null;
-    entries = await app.transport.history(50);
+    failed = false;
+    try {
+      entries = await app.transport.history(50);
+    } catch {
+      failed = true;
+    }
   }
   load();
 
@@ -32,7 +38,9 @@
   </div>
 </header>
 
-{#if entries === null}
+{#if failed}
+  <StateMessage kind="error" onretry={load} />
+{:else if entries === null}
   <StateMessage kind="loading" />
 {:else if entries.length === 0}
   <section class="empty">

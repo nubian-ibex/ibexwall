@@ -2,13 +2,6 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 
 // The build is what ships; accessibility is checked on the built app.
-const screens = [
-  { name: 'overview', hash: '' },
-  { name: 'posture', hash: '' },
-  { name: 'plugins', hash: '' },
-  { name: 'history', hash: '' },
-];
-
 for (const theme of ['light', 'dark'] as const) {
   for (const locale of ['en', 'pt-BR'] as const) {
     test(`no serious axe violations (${theme}, ${locale})`, async ({ page }) => {
@@ -38,7 +31,7 @@ test('keyboard navigation reaches every navigation item', async ({ page }) => {
   await page.goto('/?scenario=attention');
   const overview = page.getByRole('button', { name: 'Overview' });
   await overview.focus();
-  for (const name of ['Overview', 'System posture', 'Plugins', 'History', 'Settings']) {
+  for (let step = 0; step < 5; step += 1) {
     await page.keyboard.press('Tab');
   }
   // After the nav, focus moves into the content: the "Check now" button.

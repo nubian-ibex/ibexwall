@@ -573,7 +573,9 @@ async fn apply(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkErr
             engine_core
                 .engine
                 .snapshot(&engine_core.state, &tx_for_exec, &ops_for_exec)?;
-        engine_core.engine.execute(&ops_for_exec)?;
+        engine_core
+            .engine
+            .execute(Some(&tx_for_exec), &ops_for_exec)?;
         Ok::<_, anyhow::Error>(snapshot)
     })
     .await

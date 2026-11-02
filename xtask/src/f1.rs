@@ -25,6 +25,8 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
             "-p",
             "ibexwall-cli",
             "-p",
+            "ibexwall-exec",
+            "-p",
             "ibexwall-plugin-echo",
         ],
         None,
@@ -50,6 +52,11 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
         vm,
         &release.join("ibexctl"),
         "sudo tee /usr/bin/ibexctl >/dev/null && sudo chmod 755 /usr/bin/ibexctl",
+    )?;
+    pipe_file(
+        vm,
+        &release.join("ibexwall-exec"),
+        "sudo tee /usr/bin/ibexwall-exec >/dev/null && sudo chmod 755 /usr/bin/ibexwall-exec",
     )?;
     pipe_file(
         vm,
@@ -164,10 +171,10 @@ sudo ibexctl history --json | grep -q rolled_back
         r#"
 set -e
 P=$(sudo ibexctl plan dev.echo --set template=network --json | tee /dev/stderr | python3 -c 'import json,sys;print(json.load(sys.stdin)["plan"]["id"])')
-sudo ibexctl apply $P --confirm-timeout 10 --json | grep -q pending_confirm
-sudo test -f /etc/NetworkManager/conf.d/50-ibexwall-test.conf
+sudo ibexctl apply $P --confirm-timeout 10 --json | tee /dev/stderr | grep -q pending_confirm
+sudo test -f /etc/sysctl.d/90-ibexwall-net-test.conf
 sleep 15
-sudo test ! -f /etc/NetworkManager/conf.d/50-ibexwall-test.conf
+sudo test ! -f /etc/sysctl.d/90-ibexwall-net-test.conf
 "#
     );
 
@@ -194,6 +201,37 @@ c.execute("UPDATE audit_log SET result='tampered' WHERE seq=2")
 c.commit()
 EOF
 sudo ibexctl audit verify >/dev/null 2>&1 && exit 1 || exit 0
+"#
+    );
+
+    scenario!(
+        "s8 executor unit blocks writes outside the transaction dirs",
+        r#"
+set -e
+# Craft ops whose declared dir is /etc/sysctl.d but which also try to write
+# /etc/ibexwall-escape.conf: even a validation bug cannot escape the unit.
+sudo tee /run/ibexwall/escape.ops >/dev/null <<'OPS'
+[
+  { "op": "file.write", "path": "/etc/sysctl.d/90-ibexwall-test.conf",
+    "content": "x
+", "mode": "0644", "owner": "root", "group": "root" },
+  { "op": "file.write", "path": "/etc/ibexwall-escape.conf",
+    "content": "escape
+", "mode": "0644", "owner": "root", "group": "root" }
+]
+OPS
+sudo rm -f /etc/ibexwall-escape.conf
+set +e
+sudo systemd-run -q --collect --wait --unit=ibexwall-exec-escape-test \
+  --property Type=oneshot --property NoNewPrivileges=yes \
+  --property ProtectSystem=strict --property ProtectHome=yes \
+  --property ReadWritePaths=/etc/sysctl.d \
+  /usr/bin/ibexwall-exec apply /run/ibexwall/escape.ops >/dev/null 2>&1
+RC=$?
+set -e
+[ "$RC" -ne 0 ]
+sudo test ! -f /etc/ibexwall-escape.conf
+sudo rm -f /etc/sysctl.d/90-ibexwall-test.conf /run/ibexwall/escape.ops
 "#
     );
 

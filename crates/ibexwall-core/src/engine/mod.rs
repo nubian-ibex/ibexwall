@@ -6,59 +6,20 @@
 //! machine. Synchronous by design; the API layer runs it in blocking
 //! tasks. Highest coverage target in the project (>= 90%).
 
-pub mod exec;
 pub mod ops;
 
-use std::sync::Arc;
+use std::path::Path;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use ibexwall_proto::{Op, RiskFlag, UnitAction};
-use ibexwall_sys::{Clock, Fs, RealClock, RealFs, RealSysctl, RealSystemd, Sysctl, Systemd};
+use crate::state::State;
+use ibexwall_proto::{Op, RiskFlag};
 use sha2::Digest;
 
-use crate::state::State;
+use ibexwall_sys::{PriorFile, SnapshotEntry, SnapshotManifest};
 
-pub use ops::OpError;
-
-/// System bundle the engine executes against; fakes for tests.
-pub struct SysBundle {
-    pub fs: Arc<dyn Fs>,
-    pub systemd: Arc<dyn Systemd>,
-    pub sysctl: Arc<dyn Sysctl>,
-    pub clock: Arc<dyn Clock>,
-    /// System-level executors (nft, exec, package installs) are refused
-    /// while running under `IBEXWALL_ROOT` so the dev host is never
-    /// touched.
-    pub allow_system_executors: bool,
-}
-
-impl Default for SysBundle {
-    fn default() -> Self {
-        Self::real()
-    }
-}
-
-impl SysBundle {
-    pub fn real() -> Self {
-        Self::real_under(&ibexwall_proto::names::root())
-    }
-
-    /// Real implementations bound to a sandbox root: file and sysctl
-    /// paths are translated under it; systemd and system executors are
-    /// refused unless the root is the real `/`.
-    pub fn real_under(root: &std::path::Path) -> Self {
-        let real_root = root == std::path::Path::new("/");
-        Self {
-            fs: Arc::new(RealFs::with_root(root.to_path_buf())),
-            systemd: Arc::new(RealSystemd::new()),
-            sysctl: Arc::new(RealSysctl::with_root(root.to_path_buf())),
-            clock: Arc::new(RealClock),
-            allow_system_executors: real_root,
-        }
-    }
-}
+pub use crate::engine::ops::OpError as ValidateError;
 
 /// A plan as persisted between the Plan and Apply calls.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,59 +41,18 @@ impl PersistedPlan {
     }
 }
 
-/// One snapshot entry; inverses replay them backwards.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum SnapshotEntry {
-    File {
-        op_index: usize,
-        path: String,
-        /// None: the file did not exist.
-        prior: Option<PriorFile>,
-    },
-    Unit {
-        op_index: usize,
-        unit: String,
-        enabled: String,
-        active: bool,
-    },
-    Sysctl {
-        op_index: usize,
-        key: String,
-        prior: Option<String>,
-    },
-    /// Ops without a system inverse (exec).
-    NoInverse { op_index: usize },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PriorFile {
-    /// File name inside the snapshot directory.
-    pub blob: String,
-    pub mode: u32,
-    pub uid: u32,
-    pub gid: u32,
-    pub sha256: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SnapshotManifest {
-    pub tx: String,
-    pub entries: Vec<SnapshotEntry>,
-}
-
 pub struct Engine {
-    pub sys: SysBundle,
+    pub sys: ibexwall_sys::SysBundle,
 }
 
 impl Engine {
     pub fn new() -> Self {
         Self {
-            sys: SysBundle::real(),
+            sys: ibexwall_sys::SysBundle::real(),
         }
     }
 
-    pub fn with(sys: SysBundle) -> Self {
+    pub fn with(sys: ibexwall_sys::SysBundle) -> Self {
         Self { sys }
     }
 
@@ -215,85 +135,101 @@ impl Engine {
         Ok(manifest)
     }
 
-    /// Executes ops in order (idempotent; snapshot must exist first).
-    pub fn execute(&self, ops: &[Op]) -> Result<()> {
+    /// Executes ops in order. In production (root, systemd), file-touching
+    /// transactions run inside the transient executor unit (ADR-0026);
+    /// otherwise in-process (sandbox and tests).
+    pub fn execute(&self, tx: Option<&str>, ops: &[Op]) -> Result<()> {
+        if let Some(tx) = tx
+            && self.sys.use_transient_executor
+            && !ibexwall_sys::write_directories(ops).is_empty()
+        {
+            return self.execute_via_transient_unit(tx, ops);
+        }
         for op in ops {
-            exec::execute(op, &self.sys).with_context(|| format!("executing {}", op_name(op)))?;
+            ibexwall_sys::execute(op, &self.sys)
+                .with_context(|| format!("executing {}", op_name(op)))?;
         }
         Ok(())
     }
 
-    /// Applies inverses in reverse order from the snapshot manifest.
-    pub fn rollback(&self, state: &State, tx: &str) -> Result<()> {
-        let dir = state.snapshots_dir().join(tx);
-        let bytes = std::fs::read(dir.join("manifest.json"))
-            .with_context(|| format!("reading snapshot for {tx}"))?;
-        let manifest: SnapshotManifest = serde_json::from_slice(&bytes)?;
-        for entry in manifest.entries.iter().rev() {
-            match entry {
-                SnapshotEntry::File { path, prior, .. } => match prior {
-                    Some(prior_file) => {
-                        let content = std::fs::read(dir.join("files").join(&prior_file.blob))?;
-                        let digest = hex::encode(sha2::Sha256::digest(&content));
-                        if digest != prior_file.sha256 {
-                            anyhow::bail!("snapshot blob integrity failure for {path}");
-                        }
-                        self.sys.fs.write_atomic(
-                            std::path::Path::new(path),
-                            &content,
-                            prior_file.mode,
-                            Some((prior_file.uid, prior_file.gid)),
-                        )?;
-                    }
-                    None => {
-                        self.sys.fs.remove(std::path::Path::new(path))?;
-                    }
-                },
-                SnapshotEntry::Unit {
-                    unit,
-                    enabled,
-                    active,
-                    ..
-                } => {
-                    let enabled: ibexwall_sys::Enabled = serde_json::from_str(enabled)?;
-                    match enabled {
-                        ibexwall_sys::Enabled::Enabled => {
-                            self.sys.systemd.apply(unit, UnitAction::Enable, false)?;
-                            if *active {
-                                self.sys.systemd.apply(unit, UnitAction::Start, false)?;
-                            } else {
-                                self.sys.systemd.apply(unit, UnitAction::Stop, false)?;
-                            }
-                        }
-                        ibexwall_sys::Enabled::Disabled => {
-                            self.sys.systemd.apply(unit, UnitAction::Disable, false)?;
-                            if *active {
-                                self.sys.systemd.apply(unit, UnitAction::Start, false)?;
-                            } else {
-                                self.sys.systemd.apply(unit, UnitAction::Stop, false)?;
-                            }
-                        }
-                        ibexwall_sys::Enabled::Masked => {
-                            self.sys.systemd.apply(unit, UnitAction::Stop, false)?;
-                            self.sys.systemd.apply(unit, UnitAction::Mask, false)?;
-                        }
-                        ibexwall_sys::Enabled::Static | ibexwall_sys::Enabled::NotFound => {
-                            if *active {
-                                self.sys.systemd.apply(unit, UnitAction::Start, false)?;
-                            } else {
-                                self.sys.systemd.apply(unit, UnitAction::Stop, false)?;
-                            }
-                        }
+    /// Writes the ops where the helper can read them and launches it in a
+    /// transient unit with `ReadWritePaths` limited to this transaction.
+    fn execute_via_transient_unit(&self, tx: &str, ops: &[Op]) -> Result<()> {
+        use std::io::Write as _;
+        let dirs = self.writable_ancestors(ibexwall_sys::write_directories(ops));
+        let work = ibexwall_proto::names::runtime_dir()
+            .join("executor")
+            .join(tx);
+        std::fs::create_dir_all(&work).with_context(|| format!("creating {}", work.display()))?;
+        let ops_file = work.join("ops.json");
+        let mut file = std::fs::File::create(&ops_file)?;
+        file.write_all(&serde_json::to_vec(ops)?)?;
+        drop(file);
+
+        let exec_args = vec!["apply".to_string(), ops_file.to_string_lossy().into_owned()];
+        self.sys
+            .systemd
+            .run_transient_executor(tx, &exec_args, &dirs)
+            .with_context(|| format!("starting the executor unit for {tx}"))?;
+        Ok(())
+    }
+
+    /// The transient unit's ReadWritePaths must name directories that
+    /// exist at unit start (its namespace is set up before the helper
+    /// runs). A missing drop-in directory is represented by its nearest
+    /// existing ancestor: the helper then creates the directory itself.
+    fn writable_ancestors(&self, dirs: Vec<String>) -> Vec<String> {
+        let mut resolved: std::collections::BTreeSet<String> = Default::default();
+        for dir in dirs {
+            let mut current = Path::new(&dir);
+            loop {
+                if self.sys.fs.exists(current) {
+                    resolved.insert(current.to_string_lossy().into_owned());
+                    break;
+                }
+                match current.parent() {
+                    Some(parent) if parent != Path::new("/") => current = parent,
+                    _ => {
+                        // Nothing exists up the chain: give the whole root
+                        // (the plan is about to fail honestly anyway).
+                        resolved.insert("/".into());
+                        break;
                     }
                 }
-                SnapshotEntry::Sysctl { key, prior, .. } => {
-                    if let Some(value) = prior {
-                        self.sys.sysctl.set(key, value)?;
-                    }
-                }
-                SnapshotEntry::NoInverse { .. } => {}
             }
         }
+        resolved.into_iter().collect()
+    }
+
+    /// Applies inverses in reverse order from the snapshot manifest.
+    /// In production this runs inside the transient executor unit when
+    /// the transaction needs it; the logic is shared with the helper.
+    pub fn rollback(&self, state: &State, tx: &str) -> Result<()> {
+        let bytes = std::fs::read(state.snapshots_dir().join(tx).join("manifest.json"))
+            .with_context(|| format!("reading snapshot for {tx}"))?;
+        let manifest: SnapshotManifest = serde_json::from_slice(&bytes)?;
+        if !self.sys.use_transient_executor {
+            return ibexwall_sys::apply_snapshot_inverses(
+                &self.sys,
+                state.snapshots_dir(),
+                &manifest,
+            );
+        }
+        // The daemon unit cannot write /etc: the inverses also run inside
+        // the transient executor, with the snapshot's own directories.
+        let dirs = self.writable_ancestors(snapshot_write_directories(&manifest));
+        let exec_args = vec![
+            "rollback".to_string(),
+            state
+                .snapshots_dir()
+                .join(tx)
+                .to_string_lossy()
+                .into_owned(),
+        ];
+        self.sys
+            .systemd
+            .run_transient_executor(tx, &exec_args, &dirs)
+            .with_context(|| format!("starting the rollback executor unit for {tx}"))?;
         Ok(())
     }
 }
@@ -302,6 +238,22 @@ impl Default for Engine {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Parent directories the inverses of a snapshot will write to.
+fn snapshot_write_directories(manifest: &SnapshotManifest) -> Vec<String> {
+    let mut dirs: std::collections::BTreeSet<String> = Default::default();
+    for entry in &manifest.entries {
+        if let SnapshotEntry::File { path, .. } = entry
+            && let Some(parent) = Path::new(path).parent()
+        {
+            let parent = parent.to_string_lossy();
+            if !parent.is_empty() {
+                dirs.insert(parent.into_owned());
+            }
+        }
+    }
+    dirs.into_iter().collect()
 }
 
 fn op_name(op: &Op) -> &'static str {
@@ -368,9 +320,13 @@ pub fn flags_from(ops: &[Op]) -> Vec<RiskFlag> {
 mod tests {
     use super::*;
     use crate::state::State;
-    use ibexwall_sys::{Enabled, FakeClock, FakeFs, FakeSysctl, FakeSystemd, UnitSnapshot};
+    use ibexwall_proto::UnitAction;
+    use ibexwall_sys::{
+        Enabled, FakeClock, FakeFs, FakeSysctl, FakeSystemd, Fs, SysBundle, Sysctl, UnitSnapshot,
+    };
     use serde_json::json;
     use std::path::Path;
+    use std::sync::Arc;
 
     struct Rig {
         engine: Engine,
@@ -400,6 +356,7 @@ mod tests {
             sysctl: sysctl.clone(),
             clock: Arc::new(FakeClock::new(1_793_534_400)),
             allow_system_executors: allow_system,
+            use_transient_executor: false,
         });
         Rig {
             engine,
@@ -428,7 +385,7 @@ mod tests {
         rig.fs.seed(Path::new(path), b"old\n");
         let ops = vec![write(path, "new\n")];
         rig.engine.snapshot(&rig.state, "tx1", &ops).unwrap();
-        rig.engine.execute(&ops).unwrap();
+        rig.engine.execute(None, &ops).unwrap();
         assert_eq!(rig.fs.read(Path::new(path)).unwrap(), b"new\n");
         rig.engine.rollback(&rig.state, "tx1").unwrap();
         assert_eq!(rig.fs.read(Path::new(path)).unwrap(), b"old\n");
@@ -440,7 +397,7 @@ mod tests {
         let path = "/etc/ibexwall-tests/new.conf";
         let ops = vec![write(path, "x\n")];
         rig.engine.snapshot(&rig.state, "tx2", &ops).unwrap();
-        rig.engine.execute(&ops).unwrap();
+        rig.engine.execute(None, &ops).unwrap();
         assert!(rig.fs.exists(Path::new(path)));
         rig.engine.rollback(&rig.state, "tx2").unwrap();
         assert!(!rig.fs.exists(Path::new(path)));
@@ -453,7 +410,7 @@ mod tests {
         rig.fs.seed(Path::new(path), b"keep\n");
         let ops = vec![Op::FileRemove { path: path.into() }];
         rig.engine.snapshot(&rig.state, "tx3", &ops).unwrap();
-        rig.engine.execute(&ops).unwrap();
+        rig.engine.execute(None, &ops).unwrap();
         assert!(!rig.fs.exists(Path::new(path)));
         rig.engine.rollback(&rig.state, "tx3").unwrap();
         assert_eq!(rig.fs.read(Path::new(path)).unwrap(), b"keep\n");
@@ -466,7 +423,7 @@ mod tests {
         rig.fs.seed(Path::new(path), b"orig\n");
         let ops = vec![write(path, "new\n")];
         rig.engine.snapshot(&rig.state, "tx4", &ops).unwrap();
-        rig.engine.execute(&ops).unwrap();
+        rig.engine.execute(None, &ops).unwrap();
         let blob = rig.state.snapshots_dir().join("tx4/files/000.bin");
         std::fs::write(&blob, b"evil\n").unwrap();
         let err = rig.engine.rollback(&rig.state, "tx4").unwrap_err();
@@ -501,7 +458,7 @@ mod tests {
                 now: None,
             }];
             rig.engine.snapshot(&rig.state, "txu", &ops).unwrap();
-            rig.engine.execute(&ops).unwrap();
+            rig.engine.execute(None, &ops).unwrap();
             rig.engine.rollback(&rig.state, "txu").unwrap();
             let after = rig.systemd.get("ibexwall-test.service");
             assert_eq!(after.active, active, "{enabled:?}/{active}");
@@ -529,7 +486,7 @@ mod tests {
             },
         ];
         rig.engine.snapshot(&rig.state, "txs", &ops).unwrap();
-        rig.engine.execute(&ops).unwrap();
+        rig.engine.execute(None, &ops).unwrap();
         assert_eq!(rig.sysctl.get("vm.swappiness").unwrap(), "10");
         rig.engine.rollback(&rig.state, "txs").unwrap();
         assert_eq!(rig.sysctl.get("vm.swappiness").unwrap(), "60");
@@ -560,7 +517,7 @@ mod tests {
             }, // sandbox-blocked
             write("/etc/ibexwall-tests/never.conf", "x"),
         ];
-        assert!(rig.engine.execute(&ops).is_err());
+        assert!(rig.engine.execute(None, &ops).is_err());
         assert!(!rig.fs.exists(Path::new("/etc/ibexwall-tests/never.conf")));
     }
 
@@ -639,7 +596,7 @@ mod tests {
             engine.sys.allow_system_executors,
             ibexwall_proto::names::root() == Path::new("/")
         );
-        let sandboxed = SysBundle::real_under(Path::new("/tmp/some-root"));
+        let sandboxed = ibexwall_sys::SysBundle::real_under(Path::new("/tmp/some-root"));
         assert!(!sandboxed.allow_system_executors);
     }
 }

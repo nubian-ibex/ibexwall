@@ -210,6 +210,21 @@ first mandatory review point.
 - Supervisor: manifest signature verified on every use (minisign format,
   dev anchor only; no embedded release key yet, so non-dev builds refuse
   all plugins).
-- Open items: pidfd subjects (ADR-0025), transient-unit executor spike
-  S1-c (not done, in-process executor remains), fuzz target for the
-  varlink framing, rate limiting on the socket, stale plugin processes.
+- Open items: pidfd subjects (ADR-0025), fuzz target for the varlink
+  framing, rate limiting on the socket, stale plugin processes.
+
+## 11. Transient executor (ADR-0026, F2)
+
+- The daemon unit no longer writes `/etc`: every file-touching
+  transaction (apply and rollback) runs in `ibexwall-exec` inside a
+  transient unit whose `ReadWritePaths` name that transaction's
+  directories (or the nearest existing ancestor; the helper creates
+  missing drop-in directories itself).
+- Validated in VM: an ops list that tries to write outside its declared
+  directory fails with EROFS and the file is not created (s8).
+- This contains path-validation bugs. It does not contain a fully
+  compromised daemon, which can still ask systemd to start arbitrary
+  transient units; that residual risk is accepted and documented.
+- The ops and manifests the helper reads are core-written files under
+  /run/ibexwall and /var/lib/ibexwall; the helper decides nothing
+  (validation, snapshotting and auditing all happened in the core).

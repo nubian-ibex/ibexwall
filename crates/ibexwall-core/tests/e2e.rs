@@ -123,11 +123,13 @@ fn prepare_sandbox() -> Sandbox {
         "run/ibexwall",
         "etc/sysctl.d",
         "proc/sys/kernel",
+        "proc/sys/net/ipv4",
     ] {
         std::fs::create_dir_all(root.join(sub)).unwrap();
     }
     // Prior sysctl state the engine must restore on rollback.
     std::fs::write(root.join("proc/sys/kernel/ibexwall_test"), "0\n").unwrap();
+    std::fs::write(root.join("proc/sys/net/ipv4/ping_group_range"), "1 0\n").unwrap();
     // Prior drop-in with distinct content and mode (byte-for-byte
     // rollback target).
     std::fs::write(
@@ -305,7 +307,7 @@ async fn full_flow_plan_apply_rollback_confirm_and_gates() {
     assert!(
         sandbox
             .root
-            .join("etc/NetworkManager/conf.d/50-ibexwall-test.conf")
+            .join("etc/sysctl.d/90-ibexwall-net-test.conf")
             .exists()
     );
     client
@@ -315,7 +317,7 @@ async fn full_flow_plan_apply_rollback_confirm_and_gates() {
     assert!(
         sandbox
             .root
-            .join("etc/NetworkManager/conf.d/50-ibexwall-test.conf")
+            .join("etc/sysctl.d/90-ibexwall-net-test.conf")
             .exists()
     );
 
@@ -362,9 +364,7 @@ async fn confirmation_timeout_rolls_back_automatically() {
         .await
         .unwrap();
     assert_eq!(value["transaction"]["state"], "pending_confirm");
-    let target = sandbox
-        .root
-        .join("etc/NetworkManager/conf.d/50-ibexwall-test.conf");
+    let target = sandbox.root.join("etc/sysctl.d/90-ibexwall-net-test.conf");
     assert!(target.exists());
 
     // Without Confirm, the watchdog reverts at the deadline.
@@ -407,7 +407,7 @@ async fn crash_recovery_rolls_back_interrupted_transactions() {
     // Simulate a crash mid-apply: snapshot taken, ops partially run, the
     // transaction row says `applying`.
     core.engine.snapshot(&core.state, "tx-crash", &ops).unwrap();
-    core.engine.execute(&ops).unwrap();
+    core.engine.execute(None, &ops).unwrap();
     core.state
         .insert_transaction(
             &TxRow {

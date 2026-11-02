@@ -121,7 +121,7 @@ impl Core {
         let mut core = Self {
             config,
             state,
-            engine: engine::Engine::with(engine::SysBundle::real_under(&root)),
+            engine: engine::Engine::with(ibexwall_sys::SysBundle::real_under(&root)),
             plugins,
             events,
         };

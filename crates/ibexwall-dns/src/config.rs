@@ -79,6 +79,10 @@ pub struct Settings {
     /// Block lists to load from the store and keep updated.
     #[serde(default)]
     pub lists: Vec<ListRef>,
+    /// The known DNS-over-HTTPS endpoints list; its entries are refused
+    /// while `block_doh` is on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub doh_list: Option<ListRef>,
     /// Hours between list updates (jitter is added on top).
     #[serde(default = "default_update_hours")]
     pub update_interval_hours: u64,

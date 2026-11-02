@@ -94,6 +94,12 @@ pub fn write_directories(ops: &[Op]) -> Vec<String> {
     for op in ops {
         let path = match op {
             Op::FileWrite { path, .. } | Op::FileRemove { path } => path.as_str(),
+            // The browser policy executor writes one known file per
+            // browser; its directory must be writable in the unit too.
+            Op::BrowserPolicy { browser, .. } => match crate::browser::target(browser) {
+                Some(target) => target.path,
+                None => continue,
+            },
             _ => continue,
         };
         if let Some(parent) = Path::new(path).parent() {
@@ -405,6 +411,23 @@ mod tests {
             vec![
                 "/etc/NetworkManager/conf.d".to_string(),
                 "/etc/sysctl.d".to_string()
+            ]
+        );
+        let with_browser = [
+            Op::BrowserPolicy {
+                browser: "firefox".into(),
+                policy: serde_json::json!({}),
+            },
+            Op::BrowserPolicy {
+                browser: "brave".into(),
+                policy: serde_json::json!({}),
+            },
+        ];
+        assert_eq!(
+            write_directories(&with_browser),
+            vec![
+                "/etc/brave/policies/managed".to_string(),
+                "/etc/firefox/policies".to_string()
             ]
         );
     }

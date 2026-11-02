@@ -4,3 +4,5 @@ dist/
 *.rs.bk
 .DS_Store
 plugins/*/plugin.toml.sig
+ui/playwright-report/
+ui/test-results/

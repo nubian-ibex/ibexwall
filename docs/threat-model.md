@@ -245,8 +245,11 @@ first mandatory review point.
   can never make the machine fall back to plain public servers.
 - Enforcement is an owned nftables chain (`net_dns_guard`) that refuses
   port 53 and 853 for every user except the resolver; loopback stays open.
-  It does not stop DoH on 443; the canary, known endpoints and browser
-  policies (with consent) address that and remain best effort.
+  DoH on 443 cannot be blocked wholesale; it is addressed by the canary,
+  the known-endpoints list refused by the stub, and browser policies that
+  are written only with explicit consent and only for installed browsers.
+  An application with its own DoH client and an unknown endpoint can still
+  bypass DNS-level blocking; that is inherent and documented.
 - Risk: enforcement plus a dead resolver means no DNS. Mitigations: the
   resolver restarts on failure, three failures in 60 s run the failsafe
   (removes the chain and the drop-in, restarts the system resolver), a

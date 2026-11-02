@@ -48,7 +48,22 @@ a stack it does not support instead of guessing.
   the f3 rollback scenario, fixed with a parser test).
 - When the resolver cannot stay up (three failures in 60 s),
   `ibexwall-dns-failsafe.service` removes only IbexWall's drop-in and
-  restarts resolved; DNS works again within seconds.
+  restarts resolved; DNS works again within seconds. The failsafe also
+  clears resolved's start rate limit first: a burst of transaction
+  restarts can trip it and the failsafe would otherwise fail exactly when
+  it is needed (found by the VM kill scenario).
+- Browser DoH steering is one known file per browser with exactly the
+  vendor-documented disable-DoH policy (sources cited in
+  `ibexwall-sys/src/browser.rs`), proposed only for installed browsers and
+  only with explicit consent; Firefox's fixed-name policies.json is never
+  overwritten when an administrator already manages it.
+- The known-DoH-endpoints list (HaGeZi's Encrypted DNS Bypass, 3505
+  entries) is loaded through the same block-list machinery when the
+  browser-bypass block is on, so applications cannot route around the stub
+  by speaking DoH to a public server on port 443.
+- Provider presets ship only with vendor-verified facts. Mullvad was
+  evaluated and rejected: its public encrypted DNS service is
+  discontinued as of 2026-11-02.
 
 ## Consequences
 

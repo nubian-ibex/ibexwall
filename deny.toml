@@ -6,6 +6,15 @@
 [graph]
 all-features = true
 
+[advisories]
+version = 2
+ignore = [
+  # Unmaintained-only (no known exploit), inherited from the GTK stack
+  # that Tauri uses on Linux (glib-macros -> gtk -> tauri). The whole
+  # ecosystem carries it; remove when glib-macros drops it.
+  "RUSTSEC-2024-0370",
+]
+
 [licenses]
 version = 2
 allow = [

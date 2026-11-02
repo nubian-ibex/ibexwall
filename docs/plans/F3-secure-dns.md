@@ -21,11 +21,12 @@ Progress:
   the stub and browser policies with explicit consent (paths from each
   vendor's documentation).
 - M6: both failure modes are done and proven (`restore` by d5, `block`
-  failing closed by d10); the captive portal flow is pending (needs a
-  decision on who may lift enforcement: spike S3-e).
+  failing closed by d10); the captive portal is detected and announced by
+  the agent with manual relief (ADR-0030).
 - M7: the DNS screen is done (providers with verified facts, transport,
-  list, enforcement, browser consent, counters); TUI DNS view and agent
-  notifications are pending.
+  list, enforcement, browser consent, counters); the agent raises the
+  portal notice. A dedicated TUI DNS view is pending (the TUI already
+  lists and toggles net.dns as a plugin).
 - M8: `--phase f3` has 12 scenarios passing on all five distros, including
   the DoH endpoints, latency targets (warm p99 under 2 ms, uncached
   overhead under 5 ms versus direct DoT) and browser policies with exact

@@ -257,3 +257,7 @@ first mandatory review point.
 - Residual: a VPN client or a local application with its own resolver on
   loopback is not affected; per-link DNS of a VPN with routing domains can
   still win for those domains.
+- Captive portals: a portal blocks the encrypted upstream, so the login
+  page may not load. The agent announces the portal with the relief steps
+  (ADR-0030); enforcement is never lifted automatically, so a faked portal
+  cannot weaken the machine.

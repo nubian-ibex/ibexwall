@@ -12,7 +12,6 @@
 //! This crate is permissively licensed and must not depend on GPL code.
 
 use std::future::Future;
-use std::path::Path;
 use std::sync::Arc;
 
 use ibexwall_proto::{CheckReport, Op, names};
@@ -167,20 +166,73 @@ async fn dispatch<P: Plugin>(plugin: &P, method: &str, params: Value) -> Reply {
     }
 }
 
-/// Convenience for plugins that read files under the sandbox root.
-pub fn under_root(path: &str) -> std::path::PathBuf {
-    names::path_under(&names::root(), path)
+/// Read-only view of a filesystem tree rooted at `root`.
+///
+/// Checks read through it instead of using absolute paths, so they run
+/// against the real system (`/`), against `IBEXWALL_ROOT`, and against
+/// fixture trees in tests with the same code.
+#[derive(Debug, Clone)]
+pub struct Sandbox {
+    root: std::path::PathBuf,
 }
 
-/// Reads a file under the sandbox root; `None` when it is missing or
-/// unreadable (checks treat that as "cannot tell", not as a pass).
-pub fn read_text(path: &str) -> Option<String> {
-    std::fs::read_to_string(under_root(path)).ok()
-}
+impl Sandbox {
+    /// The real system, or `IBEXWALL_ROOT` when it is set.
+    pub fn system() -> Self {
+        Self {
+            root: names::root(),
+        }
+    }
 
-/// True when `path` exists under the sandbox root.
-pub fn exists(path: &str) -> bool {
-    Path::new(&under_root(path)).exists()
+    pub fn at(root: impl Into<std::path::PathBuf>) -> Self {
+        Self { root: root.into() }
+    }
+
+    fn path(&self, absolute: &str) -> std::path::PathBuf {
+        names::path_under(&self.root, absolute)
+    }
+
+    /// File contents; `None` when missing or unreadable ("cannot tell",
+    /// never a pass).
+    pub fn read(&self, path: &str) -> Option<String> {
+        std::fs::read_to_string(self.path(path)).ok()
+    }
+
+    /// Raw file contents (EFI variables are binary).
+    pub fn read_bytes(&self, path: &str) -> Option<Vec<u8>> {
+        std::fs::read(self.path(path)).ok()
+    }
+
+    pub fn exists(&self, path: &str) -> bool {
+        self.path(path).exists()
+    }
+
+    /// Target of a symlink (not followed), as text.
+    pub fn read_link(&self, path: &str) -> Option<String> {
+        std::fs::read_link(self.path(path))
+            .ok()
+            .map(|t| t.to_string_lossy().into_owned())
+    }
+
+    /// Sorted names of the entries of a directory (empty when unreadable).
+    pub fn list(&self, dir: &str) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(self.path(dir))
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .map(|e| e.file_name().to_string_lossy().into_owned())
+                    .collect()
+            })
+            .unwrap_or_default();
+        names.sort();
+        names
+    }
+
+    /// True when the directory exists but cannot be listed.
+    pub fn is_unreadable_dir(&self, dir: &str) -> bool {
+        let path = self.path(dir);
+        path.is_dir() && std::fs::read_dir(path).is_err()
+    }
 }
 
 #[cfg(test)]
@@ -291,5 +343,22 @@ mod tests {
             .unwrap_err();
         assert_eq!(err.name, ibexwall_varlink::service_errors::METHOD_NOT_FOUND);
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn sandbox_reads_lists_and_reports_missing_files() {
+        let root = std::env::temp_dir().join(format!("ibx-sbx-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("etc/d")).unwrap();
+        std::fs::write(root.join("etc/d/b"), "B").unwrap();
+        std::fs::write(root.join("etc/d/a"), "A").unwrap();
+        let sandbox = Sandbox::at(&root);
+        assert_eq!(sandbox.read("/etc/d/a").as_deref(), Some("A"));
+        assert_eq!(sandbox.read("/etc/d/none"), None);
+        assert!(sandbox.exists("/etc/d"));
+        assert_eq!(sandbox.list("/etc/d"), vec!["a", "b"]);
+        assert!(sandbox.list("/etc/nope").is_empty());
+        assert!(!sandbox.is_unreadable_dir("/etc/d"));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

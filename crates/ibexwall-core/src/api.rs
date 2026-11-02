@@ -187,6 +187,20 @@ async fn dispatch(
             );
             Ok(Reply::result(json!({ "plan": null })))
         }
+        "GetPlugin" => {
+            let id = str_field(&parameters, "id")?;
+            let manifest = core.manifest(&id).map_err(|_| not_found("plugin", &id))?;
+            let plugins = list_plugins(core);
+            let info = plugins
+                .iter()
+                .find(|p| p.id == id)
+                .cloned()
+                .ok_or_else(|| not_found("plugin", &id))?;
+            let manifest = serde_json::to_value(&manifest).map_err(internal)?;
+            Ok(Reply::result(
+                json!({ "plugin": info, "manifest": manifest }),
+            ))
+        }
         "RunChecks" => run_checks(core, opt_str_field(&parameters, "plugin")?.as_deref()).await,
         "ListFindings" => {
             let plugin = opt_str_field(&parameters, "plugin")?.unwrap_or_default();
@@ -272,7 +286,9 @@ async fn dispatch(
 fn polkit_action(method: &str) -> Option<&'static str> {
     Some(match method {
         "GetInfo" | "GetPosture" | "ListPlugins" | "ListFindings" | "GetConfig" | "History"
-        | "Subscribe" | "RunChecks" | "AuditVerify" | "RecentEvents" => names::POLKIT_READ,
+        | "Subscribe" | "RunChecks" | "GetPlugin" | "AuditVerify" | "RecentEvents" => {
+            names::POLKIT_READ
+        }
         "SetPluginEnabled" => names::POLKIT_PLUGINS_MANAGE,
         "PlanChange" => names::POLKIT_PLAN,
         "Apply" | "Confirm" => names::POLKIT_APPLY,

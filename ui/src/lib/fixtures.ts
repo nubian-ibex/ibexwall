@@ -193,10 +193,10 @@ export class FixtureTransport implements Transport {
           risk: [],
         },
       ],
-      risk: [],
+      risk: this.scenario === 'attention' ? ['network'] : [],
       reversible: 'immediate',
-      may_affect_keys: [],
-      requires_confirm: false,
+      may_affect_keys: this.scenario === 'attention' ? ['posture-may-affect-example'] : [],
+      requires_confirm: this.scenario === 'attention',
       expires_at: '2026-11-01T12:10:00Z',
     }));
   }
@@ -205,8 +205,9 @@ export class FixtureTransport implements Transport {
     return this.gate((): Transaction => ({
       id: 'tx-fixture-1',
       plan_id: planId,
-      state: 'committed',
+      state: this.scenario === 'attention' ? 'pending_confirm' : 'committed',
       started_at: '2026-11-01T12:00:00Z',
+      confirm_deadline: this.scenario === 'attention' ? '2026-11-01T12:01:00Z' : undefined,
       restore_point: 'snapshots/tx-fixture-1',
     }));
   }
@@ -226,14 +227,39 @@ export class FixtureTransport implements Transport {
   }
 
   history() {
-    return this.gate((): HistoryEntry[] => [
-      {
-        seq: 1,
-        ts: '2026-11-01T11:58:00Z',
-        actor: 'user:1000',
-        plugin: 'system.posture',
-        result: 'run-checks',
+    return this.gate((): HistoryEntry[] => {
+      if (this.scenario === 'empty') return [];
+      return [
+        {
+          seq: 2,
+          ts: '2026-11-01T11:58:00Z',
+          actor: 'user:1000',
+          plugin: 'system.posture',
+          transaction: 'tx-fixture-1',
+          result: 'committed',
+        },
+        {
+          seq: 1,
+          ts: '2026-11-01T11:30:00Z',
+          actor: 'system',
+          plugin: 'system.ports',
+          transaction: 'tx-fixture-0',
+          result: 'rolled_back',
+        },
+      ];
+    });
+  }
+
+  getManifest(id: string): Promise<Record<string, unknown>> {
+    return this.gate((): Record<string, unknown> => ({
+      id,
+      privileges: {
+        write_paths: id === 'system.posture' ? [] : ['/etc/sysctl.d'],
+        units: id === 'system.posture' ? [] : ['chronyd.service'],
+        sysctl_keys: id === 'system.posture' ? [] : ['kernel.kptr_restrict'],
+        exec: [],
+        nft_prefix: null,
       },
-    ]);
+    }));
   }
 }

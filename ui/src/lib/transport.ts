@@ -36,6 +36,7 @@ export interface Transport {
   listFindings(plugin?: string): Promise<Finding[]>;
   runChecks(plugin?: string): Promise<Finding[]>;
   setPluginEnabled(id: string, enabled: boolean): Promise<void>;
+  getManifest(id: string): Promise<Record<string, unknown>>;
   planChange(plugin: string, patch: Record<string, unknown>): Promise<Plan>;
   apply(planId: string, confirmTimeoutSeconds?: number): Promise<Transaction>;
   confirm(transactionId: string): Promise<void>;

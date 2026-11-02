@@ -19,8 +19,14 @@ plugins="$root/usr/lib/ibexwall/plugins"
 for id in system.posture system.ports; do
     mkdir -p "$plugins/$id"
     bin="ibexwall-plugin-${id#system.}"
-    cp "$repo/target/debug/$bin" "$repo/plugins/$id/plugin.toml" \
-        "$repo/plugins/$id/plugin.toml.sig" "$plugins/$id/"
+    # Copy then rename: a running plugin binary cannot be overwritten in
+    # place (ETXTBSY) but it can be replaced.
+    for file in "$repo/target/debug/$bin" "$repo/plugins/$id/plugin.toml" \
+        "$repo/plugins/$id/plugin.toml.sig"; do
+        name=$(basename -- "$file")
+        cp "$file" "$plugins/$id/.$name.new"
+        mv -f "$plugins/$id/.$name.new" "$plugins/$id/$name"
+    done
 done
 mkdir -p "$root/run/ibexwall" "$root/var/lib/ibexwall" "$root/etc/ibexwall"
 

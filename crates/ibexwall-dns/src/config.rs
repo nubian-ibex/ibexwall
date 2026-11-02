@@ -14,6 +14,7 @@ use hickory_resolver::config::{NameServerConfig, ResolveHosts, ResolverConfig};
 use hickory_resolver::net::runtime::TokioRuntimeProvider;
 use ibexwall_proto::names;
 
+use crate::lists::ListRef;
 use crate::policy::{BlockResponse, Policy};
 use serde::{Deserialize, Serialize};
 
@@ -75,6 +76,16 @@ pub struct Settings {
     pub allow: Vec<String>,
     #[serde(default)]
     pub doh_endpoints: Vec<String>,
+    /// Block lists to load from the store and keep updated.
+    #[serde(default)]
+    pub lists: Vec<ListRef>,
+    /// Hours between list updates (jitter is added on top).
+    #[serde(default = "default_update_hours")]
+    pub update_interval_hours: u64,
+}
+
+fn default_update_hours() -> u64 {
+    24
 }
 
 impl Settings {

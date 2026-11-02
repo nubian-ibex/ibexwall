@@ -89,6 +89,11 @@ impl Handler {
         *self.policy.write().expect("policy lock") = Arc::new(policy);
     }
 
+    /// What the current policy would do with `name` (status and tests).
+    pub fn verdict(&self, name: &str) -> Verdict {
+        self.policy().decide(name)
+    }
+
     fn policy(&self) -> Arc<Policy> {
         Arc::clone(&self.policy.read().expect("policy lock"))
     }

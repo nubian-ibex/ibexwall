@@ -11,6 +11,7 @@ use std::sync::{Arc, RwLock};
 use hickory_server::proto::op::{Header, HeaderCounts, Metadata, ResponseCode};
 use hickory_server::proto::rr::{RData, Record, RecordType};
 use hickory_server::resolver::Resolver;
+use hickory_server::resolver::net::NetError;
 use hickory_server::resolver::net::runtime::TokioRuntimeProvider;
 use hickory_server::server::{Request, RequestHandler, ResponseHandler, ResponseInfo};
 use hickory_server::zone_handler::MessageResponseBuilder;
@@ -19,6 +20,10 @@ use crate::policy::{BlockResponse, Category, Policy, Verdict};
 
 /// TTL of locally generated answers; short so list changes show quickly.
 const BLOCK_TTL: u32 = 60;
+
+/// Longest a client waits for the upstream; QUIC alone can take 15 s to
+/// give up (ADR-0028), which a stub must not pass on to applications.
+const UPSTREAM_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Per-category block counts and totals (no names, ever).
 #[derive(Debug, Default)]
@@ -133,7 +138,13 @@ impl RequestHandler for Handler {
                     }
                 }
             }
-            Verdict::Forward => match self.resolver.lookup(name, query_type).await {
+            Verdict::Forward => match tokio::time::timeout(
+                UPSTREAM_DEADLINE,
+                self.resolver.lookup(name, query_type),
+            )
+            .await
+            .unwrap_or_else(|_| Err(NetError::Timeout))
+            {
                 Ok(lookup) => {
                     self.counters.forwarded.fetch_add(1, Ordering::Relaxed);
                     let metadata = Metadata::response_from_request(&request.metadata);

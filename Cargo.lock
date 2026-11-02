@@ -2130,11 +2130,13 @@ dependencies = [
  "async-trait",
  "hickory-resolver",
  "hickory-server",
+ "ibexwall-proto",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

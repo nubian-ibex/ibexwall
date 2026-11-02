@@ -6,13 +6,16 @@
 
 use std::collections::HashSet;
 
+use serde::{Deserialize, Serialize};
+
 /// Names that must never resolve because they signal "disable DoH" to
 /// browsers. Firefox asks for the canary and turns its own DoH off when
 /// it gets NXDOMAIN.
 pub const DOH_CANARY: &str = "use-application-dns.net";
 
 /// How a blocked name is answered.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum BlockResponse {
     /// NXDOMAIN (default).
     #[default]

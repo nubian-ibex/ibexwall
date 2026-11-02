@@ -82,6 +82,8 @@ enum Command {
         #[arg(long)]
         follow: bool,
     },
+    /// Interactive terminal UI.
+    Tui,
 }
 
 #[derive(Subcommand)]
@@ -305,6 +307,13 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
                     "audit chain verification failed"
                 )))
             }
+        }
+        Command::Tui => {
+            // The TUI owns the terminal and creates its own runtime.
+            drop(client);
+            let socket = names::core_socket();
+            ibexwall_tui::run(&socket).map_err(CliError::Other)?;
+            Ok(Finish::Done)
         }
         Command::Events { follow } => {
             if !*follow {

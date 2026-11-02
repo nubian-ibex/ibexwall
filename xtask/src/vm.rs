@@ -27,31 +27,162 @@ const FEDORA_MIRRORS: &[&str] = &[
 const SSH_TIMEOUT: Duration = Duration::from_secs(420);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(120);
 
+/// A distro the VM harness can boot from an official cloud image.
+struct Distro {
+    id: &'static str,
+    /// Command (run over ssh as the test user) that installs polkit and
+    /// python3 and must succeed.
+    install: &'static str,
+    /// Where the image and its checksum list live; Fedora is discovered
+    /// from a directory listing instead.
+    image: Option<Image>,
+}
+
+struct Image {
+    base_url: &'static str,
+    file: &'static str,
+    sums_file: &'static str,
+    /// `sha256sum` or `sha512sum`.
+    hasher: &'static str,
+}
+
+const DISTROS: &[Distro] = &[
+    Distro {
+        id: "fedora",
+        install: "rpm -q polkit >/dev/null 2>&1 || sudo dnf install -y polkit",
+        image: None,
+    },
+    Distro {
+        id: "ubuntu-24.04",
+        install: "sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install -y -qq polkitd python3",
+        image: Some(Image {
+            base_url: "https://cloud-images.ubuntu.com/releases/24.04/release",
+            file: "ubuntu-24.04-server-cloudimg-amd64.img",
+            sums_file: "SHA256SUMS",
+            hasher: "sha256sum",
+        }),
+    },
+    Distro {
+        id: "ubuntu-26.04",
+        install: "sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install -y -qq polkitd python3",
+        image: Some(Image {
+            base_url: "https://cloud-images.ubuntu.com/releases/26.04/release",
+            file: "ubuntu-26.04-server-cloudimg-amd64.img",
+            sums_file: "SHA256SUMS",
+            hasher: "sha256sum",
+        }),
+    },
+    Distro {
+        id: "debian",
+        install: "sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install -y -qq polkitd python3",
+        image: Some(Image {
+            base_url: "https://cloud.debian.org/images/cloud/trixie/latest",
+            file: "debian-13-generic-amd64.qcow2",
+            sums_file: "SHA512SUMS",
+            hasher: "sha512sum",
+        }),
+    },
+    Distro {
+        id: "arch",
+        install: "sudo pacman -Sy --noconfirm --needed polkit python",
+        image: Some(Image {
+            base_url: "https://geo.mirror.pkgbuild.com/images/latest",
+            file: "Arch-Linux-x86_64-cloudimg.qcow2",
+            sums_file: "Arch-Linux-x86_64-cloudimg.qcow2.SHA256",
+            hasher: "sha256sum",
+        }),
+    },
+];
+
 pub fn run(distro: &str, phase: Option<&str>) -> Result<()> {
-    match distro {
-        "fedora" => {
-            let (vm, workspace) = boot_fedora()?;
-            match phase {
-                None | Some("f0") => f0_smoke(&vm, &workspace),
-                Some("f1") => crate::f1::run(&vm, &workspace),
-                Some(other) => bail!("unknown phase `{other}` (supported: f0, f1)"),
-            }
-        }
-        other => bail!("unsupported distro `{other}` (F0/F1 support: fedora)"),
+    let Some(entry) = DISTROS.iter().find(|d| d.id == distro) else {
+        let ids: Vec<&str> = DISTROS.iter().map(|d| d.id).collect();
+        bail!(
+            "unsupported distro `{distro}` (supported: {})",
+            ids.join(", ")
+        );
+    };
+    let (vm, workspace) = boot(entry)?;
+    match phase {
+        None | Some("f0") => f0_smoke(&vm, &workspace),
+        Some("f1") => crate::f1::run(&vm, &workspace, entry.install),
+        Some(other) => bail!("unknown phase `{other}` (supported: f0, f1)"),
     }
 }
 
-/// Boots the Fedora VM and returns it with the workspace root. The Drop
+/// Boots the distro VM and returns it with the workspace root. The Drop
 /// guard shuts it down.
-fn boot_fedora() -> Result<(Vm, PathBuf)> {
+fn boot(distro: &Distro) -> Result<(Vm, PathBuf)> {
     check_tools()?;
     let cache = cache_dir();
     std::fs::create_dir_all(&cache)?;
 
-    let base = ensure_fedora_image(&cache)?;
+    let base = match &distro.image {
+        None => ensure_fedora_image(&cache)?,
+        Some(image) => ensure_image(&cache, image)?,
+    };
     println!("base image: {}", base.display());
     let workspace = workspace_root();
     Ok((start_vm(&cache, &base)?, workspace))
+}
+
+/// Downloads an image and verifies it against the distro's published
+/// checksum list.
+fn ensure_image(cache: &Path, image: &Image) -> Result<PathBuf> {
+    let sums = curl(&format!("{}/{}", image.base_url, image.sums_file))?;
+    let expected = checksum_for(&sums, image.file)
+        .with_context(|| format!("no checksum for {} in {}", image.file, image.sums_file))?;
+    let target = cache.join(image.file);
+    if !target.is_file() {
+        println!("downloading {} ...", image.file);
+        run_capture(
+            "curl",
+            [
+                "-fL",
+                "--progress-bar",
+                "-o",
+                &target.to_string_lossy(),
+                &format!("{}/{}", image.base_url, image.file),
+            ],
+            None,
+            "downloading cloud image",
+        )?;
+    }
+    let output = run_capture(
+        image.hasher,
+        [&target.to_string_lossy()],
+        None,
+        "hashing image",
+    )?;
+    let actual = output
+        .split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .to_lowercase();
+    if actual != expected {
+        // A partial download must not poison the cache.
+        let _ = std::fs::remove_file(&target);
+        bail!(
+            "checksum mismatch for {}: expected {expected}, got {actual}",
+            image.file
+        );
+    }
+    Ok(target)
+}
+
+/// Finds `file` in a `sha*sum` style list (`<hash>  <file>` or
+/// `<hash> *<file>`, or just `<hash>` when the list has a single entry).
+fn checksum_for(sums: &str, file: &str) -> Option<String> {
+    for line in sums.lines() {
+        let mut parts = line.split_whitespace();
+        let (Some(hash), Some(name)) = (parts.next(), parts.next()) else {
+            continue;
+        };
+        if name.trim_start_matches('*') == file {
+            return Some(hash.to_lowercase());
+        }
+    }
+    None
 }
 
 fn f0_smoke(vm: &Vm, workspace: &Path) -> Result<()> {
@@ -492,5 +623,19 @@ mod tests {
         assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
         // The other file's line must not leak into the result.
         assert_eq!(super::parse_cloud_checksum(CHECKSUM, "missing.qcow2"), None);
+    }
+
+    #[test]
+    fn finds_checksums_in_sum_lists() {
+        let sums = "aaaa *ubuntu.img\nbbbb  debian.qcow2\n";
+        assert_eq!(
+            super::checksum_for(sums, "ubuntu.img").as_deref(),
+            Some("aaaa")
+        );
+        assert_eq!(
+            super::checksum_for(sums, "debian.qcow2").as_deref(),
+            Some("bbbb")
+        );
+        assert_eq!(super::checksum_for(sums, "missing"), None);
     }
 }

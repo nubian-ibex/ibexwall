@@ -82,12 +82,26 @@ dev.echo, xtask devkey and `vm-test --phase f1`.
 Verified: 81 workspace tests; clippy, fmt, deny, schema drift clean;
 `cargo xtask vm-test --phase f1` PASS (8 scenarios on Fedora 44).
 
-Deviations and pending:
-- Spike S1-c (transient-unit executor, ADR-0026) not done; in-process
-  executor stays. Plan to write the ADR as deferred.
-- Ubuntu/Debian/Arch smoke images not wired into the harness yet.
-- Coverage numbers (80%/90%) not measured yet.
-- Daemon runs directly in the VM, not through its systemd unit/socket.
-- Adapter ops (firewall, dns, flatpak, snap, browser, nm, package) are
-  validate-only, as planned.
-- Fedora VM needs network to install polkit on first provision.
+Pending items closed (2026-11-01):
+- Daemon now runs under its systemd socket and unit in the VM suite
+  (`systemd-analyze security` 2.7); packaging/ holds the units, polkit
+  policy (all ten actions, test-checked).
+- ADR-0026 (transient-unit executor) written after a VM spike; status
+  Proposed, needs a maintainer decision.
+- Coverage measured: core 90.5%, engine+ops 95.7%, proto 89.8%, sys 80.8%,
+  varlink at the target after added tests (see docs/testing.md).
+- F1 suite passes on Fedora 44, Ubuntu 24.04, Ubuntu 26.04, Debian 13, Arch.
+
+Findings worth remembering:
+- systemd `RestrictSUIDSGID=` makes `openat2` return ENOSYS, so
+  `write_atomic` walks the path with `O_NOFOLLOW`.
+- ibexwalld built on Fedora 44 needs glibc 2.39 (the Ubuntu 24.04 floor);
+  per-distro packages (F10) remove this coupling.
+- Rollback bugs fixed: previously inactive or masked units were left active.
+
+Still open:
+- Decision on ADR-0026.
+- Omarchy and EndeavourOS manual runs on the user's hosts.
+- Adapter ops stay validate-only until F3-F5.
+- Fedora VM first provision needs network (also true for every distro
+  now: polkit and python3 are installed from the distro mirror).

@@ -212,8 +212,14 @@ impl Supervisor {
         let mut report: ibexwall_proto::CheckReport = serde_json::from_value(reply)
             .context("plugin Check reply does not match CheckReport")?;
         // A plugin may only report on itself.
+        // Plugins have no trusted clock; the core stamps detection time
+        // (a plugin sends the epoch as "unknown").
+        let now = ibexwall_sys::Clock::rfc3339_now(&ibexwall_sys::RealClock);
         for finding in &mut report.findings {
             finding.plugin = id.to_string();
+            if finding.detected_at.starts_with("1970-") {
+                finding.detected_at = now.clone();
+            }
         }
         Ok(report)
     }

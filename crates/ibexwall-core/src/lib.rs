@@ -52,10 +52,29 @@ pub async fn serve(socket: &std::path::Path, dev_key: Option<PathBuf>) -> Result
     serve_listener(listener, dev_key).await
 }
 
+/// Under a sandbox root (`IBEXWALL_ROOT`) the host's polkit has no
+/// IbexWall policy installed, and installing it would touch the host.
+/// The sandbox daemon therefore authorizes every action for its own uid
+/// only; system-level executors stay disabled by the sandbox bundle.
+fn sandbox_polkit() -> Option<Arc<dyn ibexwall_sys::Polkit>> {
+    if names::root() == std::path::Path::new("/") {
+        return None;
+    }
+    let mut fake = ibexwall_sys::FakePolkit::new();
+    for action in names::polkit_actions() {
+        fake.allow(ibexwall_sys::current_uid(), action);
+    }
+    Some(Arc::new(fake))
+}
+
 async fn serve_listener(listener: UnixListener, dev_key: Option<PathBuf>) -> Result<()> {
     let core = Core::open(names::root(), dev_key).await?;
     notify_ready();
-    serve_varlink(listener, service_info(), Arc::new(api::Api::new(core))).await
+    let api = match sandbox_polkit() {
+        Some(polkit) => api::Api::with_polkit(Arc::new(core), polkit),
+        None => api::Api::new(core),
+    };
+    serve_varlink(listener, service_info(), Arc::new(api)).await
 }
 
 /// Serves on a listener inherited from systemd socket activation.

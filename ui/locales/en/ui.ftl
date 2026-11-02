@@ -203,3 +203,6 @@ dns-review-note = Nothing changes until you review the exact changes and apply t
 
 change-failed-title = IbexWall could not proceed
 change-failed-other = The request failed. Nothing was changed.
+
+dns-browser-policy = Turn off each browser's own encrypted DNS
+dns-browser-policy-body = With your approval, writes the browser policy that keeps Firefox, Chrome, Chromium, Brave and Edge from using their own DoH servers. Only browsers installed on this computer are touched, and undoing the change removes the policy.

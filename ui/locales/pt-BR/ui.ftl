@@ -203,3 +203,6 @@ dns-review-note = Nada muda até você revisar as alterações exatas e aplicá-
 
 change-failed-title = O IbexWall não pôde continuar
 change-failed-other = A solicitação falhou. Nada foi alterado.
+
+dns-browser-policy = Desligar o DNS cifrado dos próprios navegadores
+dns-browser-policy-body = Com a sua aprovação, grava a política que impede Firefox, Chrome, Chromium, Brave e Edge de usar os próprios servidores DoH. Só navegadores instalados neste computador são afetados, e desfazer a mudança remove a política.

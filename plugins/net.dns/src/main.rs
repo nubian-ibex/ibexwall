@@ -62,6 +62,9 @@ struct Config {
     /// Refuse clear DNS (port 53) and DoT (port 853) from everyone but
     /// the resolver.
     enforcement: bool,
+    /// Explicit consent to set the browser policy that turns each
+    /// browser's own DoH off (never implied by other choices).
+    browser_policies: bool,
 }
 
 impl Default for Config {
@@ -75,6 +78,7 @@ impl Default for Config {
             block_doh: true,
             allow: vec![],
             enforcement: true,
+            browser_policies: false,
         }
     }
 }
@@ -198,7 +202,47 @@ fn plan(sandbox: &Sandbox, config: Config) -> Result<Vec<Op>, PluginError> {
     if config.enforcement {
         ops.push(enforcement_op(sandbox)?);
     }
+    if config.browser_policies {
+        ops.extend(browser_policy_ops(sandbox));
+    }
     Ok(ops)
+}
+
+/// Browsers we can steer, with the executables that reveal they are
+/// installed. Only installed browsers get a policy file.
+const BROWSER_EXECUTABLES: &[(&str, &[&str])] = &[
+    ("firefox", &["firefox", "firefox-esr"]),
+    ("chrome", &["google-chrome", "google-chrome-stable"]),
+    ("chromium", &["chromium", "chromium-browser-bin"]),
+    ("chromium-browser", &["chromium-browser"]),
+    ("brave", &["brave-browser", "brave"]),
+    ("edge", &["microsoft-edge", "microsoft-edge-stable"]),
+];
+
+fn installed_browsers(sandbox: &Sandbox) -> Vec<&'static str> {
+    BROWSER_EXECUTABLES
+        .iter()
+        .filter(|&(_, executables)| {
+            executables
+                .iter()
+                .any(|name| sandbox.exists(&format!("/usr/bin/{name}")))
+        })
+        .map(|(browser, _)| *browser)
+        .collect()
+}
+
+/// One op per installed browser: exactly the DoH-off policy the core
+/// accepts, in the file that browser's documentation defines.
+fn browser_policy_ops(sandbox: &Sandbox) -> Vec<Op> {
+    installed_browsers(sandbox)
+        .into_iter()
+        .filter_map(|browser| {
+            ibexwall_sys::browser::doh_off(browser).map(|policy| Op::BrowserPolicy {
+                browser: browser.into(),
+                policy,
+            })
+        })
+        .collect()
 }
 
 /// Looks up a user's uid in `/etc/passwd` (read-only).
@@ -322,6 +366,7 @@ mod tests {
         std::fs::create_dir_all(root.join("etc")).unwrap();
         std::fs::create_dir_all(root.join("run/systemd/resolve")).unwrap();
         std::fs::create_dir_all(root.join("proc/net")).unwrap();
+        std::fs::create_dir_all(root.join("usr/bin")).unwrap();
         std::fs::write(
             root.join("etc/passwd"),
             "root:x:0:0:root:/root:/bin/bash\nibexwall-dns:x:990:988::/var/lib/ibexwall:/usr/sbin/nologin\n",
@@ -436,6 +481,61 @@ mod tests {
         let no_doh = Config::parse(json!({ "block_doh": false, "enforcement": false })).unwrap();
         assert!(no_doh.settings().unwrap().doh_list.is_none());
         assert!(!ops.iter().any(|op| matches!(op, Op::NftFragment { .. })));
+    }
+
+    #[test]
+    fn browser_policies_need_consent_and_follow_installed_browsers() {
+        let (root, sandbox) = resolved_tree("browsers");
+        for name in ["firefox", "google-chrome-stable", "brave-browser"] {
+            std::fs::write(root.join(format!("usr/bin/{name}")), "#!/bin/sh\n").unwrap();
+        }
+        // Off by default: nothing is planned even with browsers present.
+        assert!(
+            !plan(&sandbox, Config::default())
+                .unwrap()
+                .iter()
+                .any(|op| matches!(op, Op::BrowserPolicy { .. }))
+        );
+
+        let with = Config::parse(json!({ "browser_policies": true })).unwrap();
+        let ops = plan(&sandbox, with).unwrap();
+        let browsers: Vec<&str> = ops
+            .iter()
+            .filter_map(|op| match op {
+                Op::BrowserPolicy { browser, policy } => {
+                    assert_eq!(
+                        *policy,
+                        ibexwall_sys::browser::doh_off(browser).expect("known browser")
+                    );
+                    Some(browser.as_str())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(browsers, ["firefox", "chrome", "brave"]);
+        // An empty machine plans no browser ops at all.
+        let bare_root =
+            std::env::temp_dir().join(format!("ibx-netdns-nobrowsers-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&bare_root);
+        std::fs::create_dir_all(bare_root.join("etc")).unwrap();
+        std::fs::create_dir_all(bare_root.join("run/systemd/resolve")).unwrap();
+        std::fs::create_dir_all(bare_root.join("proc/net")).unwrap();
+        std::fs::write(
+            bare_root.join("etc/passwd"),
+            "ibexwall-dns:x:990:988::/var/lib/ibexwall:/usr/sbin/nologin\n",
+        )
+        .unwrap();
+        symlink(
+            "../run/systemd/resolve/stub-resolv.conf",
+            bare_root.join("etc/resolv.conf"),
+        )
+        .unwrap();
+        let ops = plan(
+            &Sandbox::at(&bare_root),
+            Config::parse(json!({ "browser_policies": true })).unwrap(),
+        )
+        .unwrap();
+        assert!(!ops.iter().any(|op| matches!(op, Op::BrowserPolicy { .. })));
     }
 
     #[test]

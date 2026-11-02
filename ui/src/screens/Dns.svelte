@@ -135,6 +135,13 @@
         <span class="muted">{t('dns-block-doh-body')}</span>
       </span>
     </label>
+    <label class="check">
+      <input type="checkbox" bind:checked={choice.browserPolicies} />
+      <span>
+        <strong>{t('dns-browser-policy')}</strong>
+        <span class="muted">{t('dns-browser-policy-body')}</span>
+      </span>
+    </label>
   </section>
 
   <section class="card">

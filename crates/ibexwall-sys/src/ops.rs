@@ -184,7 +184,45 @@ pub fn execute(op: &Op, sys: &crate::SysBundle) -> Result<()> {
         Op::DnsBackend { .. } => Err(not_implemented("dns.backend", "adapter lands in F3")),
         Op::FlatpakOverride { .. } => Err(not_implemented("flatpak.override", "lands in F4")),
         Op::SnapInterface { .. } => Err(not_implemented("snap.interface", "lands in F4")),
-        Op::BrowserPolicy { .. } => Err(not_implemented("browser.policy", "lands in F3")),
+        Op::BrowserPolicy { browser, policy } => {
+            let target = crate::browser::target(browser).ok_or_else(|| OpError::Invalid {
+                field: "browser.policy",
+                reason: format!("unknown browser `{browser}`"),
+            })?;
+            if &serde_json::from_str::<serde_json::Value>(target.content).map_err(|_| {
+                OpError::Invalid {
+                    field: "browser.policy",
+                    reason: "internal policy content is not JSON".into(),
+                }
+            })? != policy
+            {
+                return Err(OpError::Invalid {
+                    field: "browser.policy",
+                    reason: "only the exact disable-DoH policy may be written".into(),
+                }
+                .into());
+            }
+            let path = std::path::Path::new(target.path);
+            if let Ok(existing) = sys.fs.read(path)
+                && !existing.is_empty()
+                && !crate::browser::is_ours(browser, &existing)
+            {
+                // Firefox's file name is fixed: never touch an
+                // administrator's policy file.
+                return Err(OpError::Invalid {
+                    field: "browser.policy",
+                    reason: format!("{} already has a policy file", target.path),
+                }
+                .into());
+            }
+            if let Some(parent) = path.parent() {
+                sys.fs.create_dir_all(parent).map_err(anyhow::Error::from)?;
+            }
+            sys.fs
+                .write_atomic(path, target.content.as_bytes(), 0o644, None)
+                .map_err(anyhow::Error::from)?;
+            Ok(())
+        }
         Op::NmSetting { .. } => Err(not_implemented("nm.setting", "lands in F3")),
         Op::PackageInstall { .. } => Err(not_implemented(
             "package.install",

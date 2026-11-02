@@ -10,6 +10,7 @@
 //! backends (Nft, Flatpak, Snap, NetworkManager...) land with their
 //! phases.
 
+pub mod browser;
 pub mod clock;
 pub mod fs;
 pub mod identity;
@@ -77,6 +78,7 @@ pub mod polkit;
 pub mod sysctl;
 pub mod systemd;
 
+pub use browser::{TARGETS, doh_off, is_ours, target};
 pub use clock::{Clock, FakeClock, RealClock, format_rfc3339};
 pub use fs::{FakeFs, FileMeta, Fs, RealFs};
 pub use identity::{Identity, current_uid, peer_credentials, proc_start_time};

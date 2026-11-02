@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Outcome of one check. `NotApplicable` checks are left out of the score\ndenominator; `NotAssessed` checks cannot be evaluated yet (e.g. they\nneed a plugin that ships later) and are shown honestly, never as passes.",
+  "enum": [
+    "pass",
+    "fail",
+    "not_applicable",
+    "not_assessed"
+  ],
+  "title": "CheckOutcome",
+  "type": "string"
+}

@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! varlink server: accept loop, per-connection task, dispatch to a
 //! handler with streaming replies, plus the org.varlink.service
@@ -156,8 +156,11 @@ async fn connection(
     info: ServiceInfo,
     handler: Arc<dyn Handler>,
 ) -> anyhow::Result<()> {
-    let peer = ibexwall_sys::peer_credentials(&stream)
-        .map(|(uid, pid)| Peer { uid, pid })
+    let peer = rustix::net::sockopt::socket_peercred(&stream)
+        .map(|cred| Peer {
+            uid: cred.uid.as_raw(),
+            pid: cred.pid.as_raw_pid().unsigned_abs(),
+        })
         .unwrap_or_default();
     let (mut reader, mut writer) = stream.into_split();
     // One read may deliver several frames; the framer buffers the rest.

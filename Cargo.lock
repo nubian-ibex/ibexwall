@@ -605,9 +605,8 @@ version = "0.1.0"
 name = "ibexwall-plugin-echo"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "ibexwall-proto",
- "ibexwall-varlink",
+ "ibexwall-sdk",
  "serde_json",
  "tokio",
 ]
@@ -626,6 +625,13 @@ dependencies = [
 [[package]]
 name = "ibexwall-sdk"
 version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-varlink",
+ "serde_json",
+ "thiserror",
+ "tokio",
+]
 
 [[package]]
 name = "ibexwall-sys"
@@ -649,7 +655,7 @@ name = "ibexwall-varlink"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "ibexwall-sys",
+ "rustix",
  "serde",
  "serde_json",
  "thiserror",

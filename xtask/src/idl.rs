@@ -94,7 +94,7 @@ const PLUGIN_METHODS: &str = "\
 # Plugin-side interface; ops/objects are validated against plugin.toml
 # privileges by the core (Op travels as JSON Schema, see spec/schemas).
 method Describe() -> (manifest: object, api: int)
-method Check(config: object) -> (findings: []object)
+method Check(config: object) -> (findings: []object, results: []object)
 method Plan(config: object, previous: ?object) -> (ops: []object, notes: []string, may_affect_keys: []string)
 method Verify(transaction_id: string, ops: []object) -> (ok: bool, details: []string)
 method Monitor() -> (event: object)

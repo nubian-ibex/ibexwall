@@ -1,6 +1,6 @@
 [package]
 name = "ibexwall-sdk"
-description = "IbexWall plugin SDK"
+description = "IbexWall plugin SDK: serve the com.ibexwall.Plugin interface from a small trait"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,3 +10,10 @@ publish = false
 
 [lints]
 workspace = true
+
+[dependencies]
+ibexwall-proto.workspace = true
+ibexwall-varlink = { workspace = true }
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true

@@ -4,7 +4,7 @@ description = "In-repo varlink wire protocol: framing, server and client (ADR-00
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
+license = "Apache-2.0 OR MIT"
 repository.workspace = true
 publish = false
 
@@ -19,4 +19,4 @@ anyhow.workspace = true
 tracing.workspace = true
 tokio.workspace = true
 tokio-stream = { version = "0.1", features = ["sync"] }
-ibexwall-sys.workspace = true
+rustix.workspace = true

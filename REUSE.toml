@@ -3,7 +3,7 @@
 version = 1
 
 [[annotations]]
-path = ["crates/ibexwall-proto/**", "crates/ibexwall-sdk/**"]
+path = ["crates/ibexwall-proto/**", "crates/ibexwall-sdk/**", "crates/ibexwall-varlink/**"]
 precedence = "closest"
 SPDX-FileCopyrightText = "Nubian Ibex and IbexWall contributors"
 SPDX-License-Identifier = "Apache-2.0 OR MIT"

@@ -1,0 +1,46 @@
+{
+  "$defs": {
+    "CheckOutcome": {
+      "description": "Outcome of one check. `NotApplicable` checks are left out of the score\ndenominator; `NotAssessed` checks cannot be evaluated yet (e.g. they\nneed a plugin that ships later) and are shown honestly, never as passes.",
+      "enum": [
+        "pass",
+        "fail",
+        "not_applicable",
+        "not_assessed"
+      ],
+      "type": "string"
+    },
+    "Severity": {
+      "description": "Finding severity. Weights drive the posture score (spec §5.4).",
+      "enum": [
+        "info",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One evaluated check; the score is computed from these (spec §5.4).",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "outcome": {
+      "$ref": "#/$defs/CheckOutcome"
+    },
+    "severity": {
+      "$ref": "#/$defs/Severity"
+    }
+  },
+  "required": [
+    "id",
+    "severity",
+    "outcome"
+  ],
+  "title": "CheckResult",
+  "type": "object"
+}

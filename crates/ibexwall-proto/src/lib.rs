@@ -25,9 +25,9 @@ pub use plugin::{ExecAllow, Manifest, ManifestError, PluginKind, PluginOrigin, S
 pub use policy::{PolicyBundle, PolicyError};
 pub use report::{BlockedConnectionsSummary, Report, ReportError};
 pub use types::{
-    Event, Finding, FindingStatus, HistoryEntry, Info, OpPreview, Plan, PluginInfo, Posture,
-    Proposal, ProposalStatus, ProtectionStatus, Reference, Remediation, Severity, Transaction,
-    TransactionState,
+    CheckOutcome, CheckReport, CheckResult, Event, Finding, FindingStatus, HistoryEntry, Info,
+    OpPreview, Plan, PluginInfo, Posture, Proposal, ProposalStatus, ProtectionStatus, Reference,
+    Remediation, Severity, Transaction, TransactionState, posture_score,
 };
 
 /// Schema export support used by `cargo xtask schemas`.
@@ -65,6 +65,9 @@ pub mod export {
         "Remediation" => crate::types::Remediation,
         "FindingStatus" => crate::types::FindingStatus,
         "Finding" => crate::types::Finding,
+        "CheckOutcome" => crate::types::CheckOutcome,
+        "CheckResult" => crate::types::CheckResult,
+        "CheckReport" => crate::types::CheckReport,
         "PluginOrigin" => crate::plugin::PluginOrigin,
         "PluginKind" => crate::plugin::PluginKind,
         "PluginInfo" => crate::types::PluginInfo,

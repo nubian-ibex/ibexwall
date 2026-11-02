@@ -5,114 +5,58 @@
 //! template-driven plans so the engine, supervisor and CLI can be
 //! exercised end to end. Development/test only; never packaged.
 
-use std::sync::Arc;
-
-use ibexwall_proto::names;
-use ibexwall_proto::{Op, UnitAction};
-use ibexwall_varlink::{Call, Handler, Reply, ServiceInfo, futures_handle};
-use serde_json::{Value, json};
+use ibexwall_proto::{
+    CheckOutcome, CheckReport, CheckResult, Finding, FindingStatus, Op, Severity, UnitAction,
+};
+use ibexwall_sdk::{Plugin, PluginError};
+use serde_json::Value;
 
 fn main() {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .expect("tokio runtime");
-    if let Err(err) = runtime.block_on(run()) {
-        eprintln!("ibexwall-plugin-echo: {err:#}");
+    if let Err(err) = runtime.block_on(ibexwall_sdk::serve(Echo)) {
+        eprintln!("ibexwall-plugin-echo: {err}");
         std::process::exit(1);
     }
 }
 
-async fn run() -> anyhow::Result<()> {
-    let socket = names::plugin_socket("dev.echo");
-    if let Some(parent) = socket.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    // A killed predecessor leaves its socket file behind.
-    let _ = std::fs::remove_file(&socket);
-    let listener = tokio::net::UnixListener::bind(&socket)?;
-    let mut interfaces = std::collections::HashMap::new();
-    interfaces.insert(
-        names::IFACE_PLUGIN.to_string(),
-        include_str!("../../../spec/idl/com.ibexwall.Plugin.varlink").to_string(),
-    );
-    let info = ServiceInfo {
-        vendor: "Nubian Ibex".into(),
-        product: "dev.echo".into(),
-        version: env!("CARGO_PKG_VERSION").into(),
-        url: String::new(),
-        interfaces,
-    };
-    ibexwall_varlink::serve(listener, info, Arc::new(Echo)).await
-}
-
 struct Echo;
 
-impl Handler for Echo {
-    fn handle(
-        &self,
-        call: Call,
-        out: tokio::sync::mpsc::Sender<Reply>,
-    ) -> futures_handle::BoxHandle {
-        futures_handle::BoxHandle::new(async move {
-            let method = call
-                .method
-                .strip_prefix("com.ibexwall.Plugin.")
-                .unwrap_or(&call.method)
-                .to_string();
-            let reply = match method.as_str() {
-                "Describe" => Reply::result(json!({
-                    "manifest": { "id": "dev.echo", "api": 1 },
-                    "api": 1,
-                })),
-                "Check" => Reply::result(json!({
-                    "findings": [ {
-                        "id": "dev.echo.check",
-                        "plugin": "dev.echo",
-                        "severity": "low",
-                        "title_key": "dev-echo-finding-title",
-                        "summary_key": "dev-echo-finding-summary",
-                        "status": "open",
-                        "detected_at": "1970-01-01T00:00:00Z",
-                    } ]
-                })),
-                "Plan" => {
-                    let template = call
-                        .parameters
-                        .get("config")
-                        .and_then(|c| c.get("template"))
-                        .and_then(Value::as_str)
-                        .unwrap_or("noop");
-                    match plan_for(template) {
-                        Ok(ops) => Reply::result(json!({
-                            "ops": ops,
-                            "notes": [format!("template: {template}")],
-                            "may_affect_keys": [],
-                        })),
-                        Err(reason) => Reply::error(
-                            "com.ibexwall.Core.InvalidArgument",
-                            json!({ "field": "template", "reason": reason }),
-                        ),
-                    }
-                }
-                "Verify" => Reply::result(json!({ "ok": true, "details": [] })),
-                "Monitor" => {
-                    // One event, then the stream closes (F1 minimal).
-                    let _ = out
-                        .send(Reply::result_continues(json!({
-                            "kind": "dev.echo.heartbeat", "data": {}
-                        })))
-                        .await;
-                    Reply::result(json!({ "kind": "dev.echo.done", "data": {} }))
-                }
-                "Reconcile" => Reply::result(json!({ "applied": true, "details": [] })),
-                other => Reply::error(
-                    ibexwall_varlink::service_errors::METHOD_NOT_FOUND,
-                    json!({ "method": other }),
-                ),
-            };
-            let _ = out.send(reply).await;
+impl Plugin for Echo {
+    fn id(&self) -> &'static str {
+        "dev.echo"
+    }
+
+    async fn check(&self, _config: Value) -> Result<CheckReport, PluginError> {
+        Ok(CheckReport {
+            results: vec![CheckResult {
+                id: "dev.echo.check".into(),
+                severity: Severity::Low,
+                outcome: CheckOutcome::Fail,
+            }],
+            findings: vec![Finding {
+                id: "dev.echo.check".into(),
+                plugin: "dev.echo".into(),
+                severity: Severity::Low,
+                title_key: "dev-echo-finding-title".into(),
+                summary_key: "dev-echo-finding-summary".into(),
+                args: Default::default(),
+                references: vec![],
+                remediation: None,
+                status: FindingStatus::Open,
+                detected_at: "1970-01-01T00:00:00Z".into(),
+            }],
         })
+    }
+
+    async fn plan(&self, config: Value) -> Result<Vec<Op>, PluginError> {
+        let template = config
+            .get("template")
+            .and_then(Value::as_str)
+            .unwrap_or("noop");
+        plan_for(template).map_err(|reason| PluginError::invalid("template", reason))
     }
 }
 

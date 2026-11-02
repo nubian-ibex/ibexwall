@@ -3,7 +3,7 @@ interface com.ibexwall.Core
 type Severity (info, low, medium, high, critical)
 type Info (api: int, degraded: []string, distro: string, features: []string, kernel: string, version: string)
 type ProtectionStatus (detail: ?string, plugin: string, state: string, summary_key: string)
-type Posture (generated_at: string, open_findings: int, protections: []ProtectionStatus, score: int)
+type Posture (generated_at: string, open_findings: int, protections: []ProtectionStatus, results: ?[]CheckResult, score: ?int)
 type Reference (framework: string, id: string, url: ?string)
 type Remediation (may_affect_keys: ?[]string, plan_template: ?string)
 type FindingStatus (open, accepted_risk, resolved)

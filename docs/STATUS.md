@@ -3,7 +3,7 @@
 
 # STATUS
 
-Last updated: 2026-11-01 (F2 in progress: M1-M8 done)
+Last updated: 2026-11-01 (F2 complete pending user acceptance)
 
 ## Current phase
 
@@ -126,14 +126,17 @@ Done and verified (workspace 157 tests, clippy/fmt/deny clean, pushed):
 - M8 session agent (user unit, notifications for high/critical, .desktop
   inventory with proptest-hardened parser).
 
-Remaining for F2:
-- M6 (rest): the Tauri shell itself. BLOCKED on host packages
-  (webkit2gtk4.1-devel, libsoup3-devel, librsvg2-devel): the user was
-  asked to `sudo dnf install` them.
-- M9: ADR-0026 executor (ibexwall-exec in a transient unit; daemon unit
-  drops /etc from ReadWritePaths; VM scenario for out-of-dir writes).
-- M10: VM phase f2 (posture/ports on five distros, UI e2e against a real
-  daemon), threat model + capabilities matrix updates, phase report.
+- M6 Tauri shell (com.ibexwall.IbexWall, strict CSP, core:default only,
+  no updater); RUSTSEC-2024-0370 ignored in deny.toml (GTK stack).
+- M9 ADR-0026 executor: ibexwall-exec in a transient unit; daemon unit
+  no longer writes /etc; VM scenario s8 proves out-of-dir writes fail.
+- M10 VM phase f2 (posture/ports through the daemon, UI contract) and
+  F1 suite (9/9) pass on fedora, ubuntu-24.04, ubuntu-26.04, debian, arch.
+  Threat model section 11 and capabilities matrix updated.
+
+Pending for the user: manual runs on Omarchy/EndeavourOS, visual review
+against mockups, running the Tauri app on a real desktop session, F2
+acceptance, then F3 planning.
 
 Notes:
 - Local lesson: pipe-to-tail masks exit codes; the CI workflow runs the

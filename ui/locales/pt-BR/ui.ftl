@@ -151,3 +151,8 @@ history-empty-title = Nada foi alterado ainda
 history-empty-body = Quando você aplicar uma proteção, ela aparece aqui com um jeito de desfazer.
 history-undo = Desfazer esta alteração
 history-view = Ver
+
+settings-title = Configurações
+settings-subtitle = Aparência e idioma
+language-en = Inglês
+language-pt-BR = Português (Brasil)

@@ -23,4 +23,12 @@ describe('History', () => {
     await app.refresh();
     expect(await screen.findByText(/nothing has changed yet/i)).toBeVisible();
   });
+
+  it('shows an error with retry instead of loading forever', async () => {
+    const transport = new FixtureTransport('attention');
+    transport.history = () => Promise.reject(new Error('unreachable'));
+    app.useTransport(transport);
+    render(History);
+    expect(await screen.findByRole('button', { name: /try again/i })).toBeVisible();
+  });
 });

@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=IbexWall
+GenericName=Security Center
+GenericName[pt_BR]=Central de Segurança
+Comment=Security Center for Linux
+Comment[pt_BR]=Central de Segurança para Linux
+Exec=ibexwall-desktop
+Icon=com.ibexwall.IbexWall
+Terminal=false
+Categories=System;Security;
+Keywords=security;firewall;privacy;posture;segurança;
+StartupWMClass=ibexwall-desktop

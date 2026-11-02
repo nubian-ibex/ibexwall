@@ -7,7 +7,7 @@ Last updated: 2026-11-02 (F2 delivered; F3 planned and starting)
 
 ## Current phase
 
-**F3: secure DNS, in progress (autonomous mode).** F0, F1 and F2 are
+**F3: secure DNS, in progress (autonomous mode): M1 to M3 done, backend B1 and 8 VM scenarios green on five distros; M5 enforcement next.** F0, F1 and F2 are
 delivered; the F2 report is `docs/reports/F2-report.md` and awaits
 maintainer acceptance. Plan: `docs/plans/F3-secure-dns.md`. Run the app
 with `scripts/dev-sandbox.sh` (sandboxed daemon, host untouched).
@@ -145,3 +145,27 @@ Notes:
   checks directly, so it does not have this problem.
 - `cargo deny` flags nothing; coverage numbers from F1 still hold for the
   core (the new UI/TUI/agent are not in the 80% core target).
+
+## F3 progress (2026-11-02)
+
+Done and verified (workspace 202 tests, clippy/fmt/deny clean, pushed):
+- `ibexwall-dns` forwarding stub (hickory 0.26, ADR-0028): block policy,
+  encrypted upstreams (DoT, DoH, DoQ, DoH3 probed against Cloudflare and
+  Quad9), counters without query logs, 5 s upstream cap, `--failsafe`.
+- Block lists: parser for hosts, domain and adblock formats, counts match
+  the declared sizes of HaGeZi, OISD and StevenBlack; https-only download
+  with a 64 MiB cap, atomic replace, jitter, a bad download never replaces
+  a good list.
+- `net.dns` plugin for systemd-resolved (ADR-0029), Quad9 and Cloudflare
+  presets with sources and dates, hardened units (exposure 1.4 and 1.1).
+- Core: units restarted by a transaction are restarted again after
+  rollback; fixed an F1 defect where a disabled unit was snapshotted as
+  not found (rollback never disabled it).
+- `cargo xtask vm-test --phase f3` (8 scenarios) passes on fedora,
+  ubuntu-24.04, ubuntu-26.04, debian, arch; `--phase f1` regression 5/5.
+
+Next (see `docs/plans/F3-secure-dns.md`): M5 nft enforcement (needs a typed
+fragment with an inverse in the core), known DoH endpoints, browser
+policies behind consent; M4 adapters B2 to B4; M6 captive portal and
+`block` mode; M7 DNS screen; more provider presets after their docs are
+read (Mullvad, AdGuard, DNS4EU, NextDNS/Control D).

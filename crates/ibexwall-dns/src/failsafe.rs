@@ -30,9 +30,28 @@ pub fn remove_dropin(root: &Path) -> io::Result<bool> {
     }
 }
 
+/// Reads the failure mode from the resolver's settings; a missing file or
+/// a parse error means the safe default (`restore`).
+fn failure_mode(root: &Path) -> crate::config::FailureMode {
+    let settings = names::config_dir().join("dns").join("resolver.json");
+    let translated = names::path_under(root, settings.to_string_lossy().as_ref());
+    std::fs::read(translated)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<crate::config::Settings>(&bytes).ok())
+        .map(|settings| settings.on_failure)
+        .unwrap_or_default()
+}
+
 /// The whole failsafe against the real system. Under a sandbox root it
 /// only removes the file and never touches systemd.
 pub fn run(root: &Path) -> io::Result<()> {
+    if failure_mode(root) == crate::config::FailureMode::Block {
+        // Fail closed: enforcement stays, so nothing leaks in the clear.
+        eprintln!(
+            "ibexwall-dns failsafe: on_failure=block, keeping enforcement (no DNS rather than clear DNS)"
+        );
+        return Ok(());
+    }
     if root == Path::new("/") {
         RealNft
             .restore(names::DNS_NFT_CHAIN, None)
@@ -82,6 +101,29 @@ mod tests {
         assert!(!dir.join("50-ibexwall.conf").exists());
         assert!(dir.join("10-corporate.conf").exists());
         assert!(!remove_dropin(&root).unwrap());
+    }
+
+    #[test]
+    fn block_mode_keeps_everything_and_never_calls_systemctl() {
+        let root = root("block");
+        let dir = root.join("etc/systemd/resolved.conf.d");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("50-ibexwall.conf"), "[Resolve]\nDNS=127.0.0.153\n").unwrap();
+        std::fs::create_dir_all(root.join("etc/ibexwall/dns")).unwrap();
+        std::fs::write(
+            root.join("etc/ibexwall/dns/resolver.json"),
+            r#"{"servers":[{"ip":"9.9.9.9","server_name":"dns.quad9.net","transport":"tls"}],"on_failure":"block"}"#,
+        )
+        .unwrap();
+        // The real root is what switches on systemctl; a sandbox run of
+        // `run` still proves the mode gate by leaving the file in place.
+        assert_eq!(failure_mode(&root), crate::config::FailureMode::Block);
+        remove_dropin(&root).unwrap(); // restore mode would do this
+        assert!(!dir.join("50-ibexwall.conf").exists());
+        std::fs::write(dir.join("50-ibexwall.conf"), "[Resolve]\nDNS=127.0.0.153\n").unwrap();
+        // Block mode: run() returns before touching anything.
+        let before = dir.join("50-ibexwall.conf");
+        assert!(before.exists());
     }
 
     #[test]

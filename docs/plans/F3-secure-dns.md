@@ -20,8 +20,9 @@ Progress:
 - M5 enforcement: done, including the known-DoH-endpoints list refused by
   the stub and browser policies with explicit consent (paths from each
   vendor's documentation).
-- M6: the failsafe (`restore`) is done and proven; the captive portal flow
-  and the `block` failure mode are pending.
+- M6: both failure modes are done and proven (`restore` by d5, `block`
+  failing closed by d10); the captive portal flow is pending (needs a
+  decision on who may lift enforcement: spike S3-e).
 - M7: the DNS screen is done (providers with verified facts, transport,
   list, enforcement, browser consent, counters); TUI DNS view and agent
   notifications are pending.

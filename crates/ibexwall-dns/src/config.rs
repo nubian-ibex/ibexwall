@@ -57,6 +57,18 @@ fn default_true() -> bool {
     true
 }
 
+/// What happens when the resolver cannot stay up (spec section 4.8).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FailureMode {
+    /// Remove the drop-in and the guard chain: DNS works again, in the
+    /// clear (the default).
+    #[default]
+    Restore,
+    /// Keep enforcement: no DNS at all rather than clear DNS.
+    Block,
+}
+
 /// The resolver's settings file, written by the `net.dns` plugin through
 /// the core and read by `ibexwall-dns` at start.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,6 +88,9 @@ pub struct Settings {
     pub allow: Vec<String>,
     #[serde(default)]
     pub doh_endpoints: Vec<String>,
+    /// What the failsafe does when the resolver cannot stay up.
+    #[serde(default)]
+    pub on_failure: FailureMode,
     /// Block lists to load from the store and keep updated.
     #[serde(default)]
     pub lists: Vec<ListRef>,

@@ -374,6 +374,39 @@ getent hosts example.com
         )
     );
 
+    scenario!(
+        "d10 on_failure=block fails closed and rolls back clean",
+        &format!(
+            r#"
+set -e
+P=$(sudo ibexctl plan net.dns --set provider=quad9 --set transport=tls --set on_failure=block --json 2>/dev/null | {JSON_ID})
+OUT=$(sudo ibexctl apply $P --confirm-timeout 300 --json 2>/dev/null || true)
+echo "$OUT" | grep -q pending_confirm || {{ echo "APPLY OUTPUT: $OUT"; exit 1; }}
+TX=$(echo "$OUT" | {JSON_ID})
+for i in $(seq 1 15); do getent hosts example.com >/dev/null && break; sleep 1; done
+sudo ibexctl confirm "$TX"
+sudo grep -q '"on_failure": "block"' /etc/ibexwall/dns/resolver.json || sudo grep -q '"on_failure":"block"' /etc/ibexwall/dns/resolver.json
+# Kill until the failsafe runs: with block mode nothing is removed.
+for i in 1 2 3 4 5 6; do
+  for w in $(seq 1 6); do systemctl is-active --quiet ibexwall-dns && break; sleep 1; done
+  sudo systemctl kill --kill-whom=main -s KILL ibexwall-dns.service 2>/dev/null || true
+  sleep 0.3
+done
+for i in $(seq 1 40); do sudo test -f /etc/systemd/resolved.conf.d/50-ibexwall.conf || break; sleep 1; done
+sudo test -f /etc/systemd/resolved.conf.d/50-ibexwall.conf
+sudo nft list chain inet ibexwall net_dns_guard >/dev/null 2>&1
+# Fail closed: no DNS while the resolver is down and enforcement stays.
+if getent hosts example.com >/dev/null 2>&1; then echo "DNS STILL WORKS (expected fail closed)"; exit 1; fi
+sudo systemctl reset-failed ibexwall-dns.service
+sudo ibexctl rollback "$TX" --json >/dev/null
+sudo test ! -e /etc/systemd/resolved.conf.d/50-ibexwall.conf
+! sudo nft list chain inet ibexwall net_dns_guard 2>/dev/null
+for i in $(seq 1 20); do getent hosts example.com >/dev/null && break; sleep 1; done
+getent hosts example.com
+"#
+        )
+    );
+
     if failures == 0 {
         println!("PASS: f3 phase (all scenarios)");
         Ok(())

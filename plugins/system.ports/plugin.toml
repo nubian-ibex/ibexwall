@@ -1,0 +1,37 @@
+id = "system.ports"
+version = "0.1.0"
+api = 1
+category = "system"
+kinds = ["check"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-ports"
+default_enabled = true
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "Exposed ports"
+pt-BR = "Portas expostas"
+
+[description]
+en = "Lists services that accept connections from other computers."
+pt-BR = "Lista os serviços que aceitam conexões de outros computadores."
+
+[privileges]
+# Read-only check: the core executes nothing on its behalf.
+
+[sandbox]
+user = "dynamic"
+capabilities = []
+read_paths = ["/proc/net"]
+network = false
+
+[risk]
+affects = []
+reversible = "immediate"
+confirm_timeout = false
+may_affect = []
+
+[ui]
+icon = "radio"
+order = 20

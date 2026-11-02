@@ -1,0 +1,39 @@
+id = "system.posture"
+version = "0.1.0"
+api = 1
+category = "system"
+kinds = ["check"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-posture"
+default_enabled = true
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "System posture"
+pt-BR = "Postura do sistema"
+
+[description]
+en = "Checks how well this computer is protected: boot, disk, firewall and accounts."
+pt-BR = "Verifica o quanto este computador está protegido: boot, disco, firewall e contas."
+
+[privileges]
+# Read-only check: the core executes nothing on its behalf.
+
+[sandbox]
+user = "dynamic"
+# Reading /etc/sudoers needs CAP_DAC_READ_SEARCH; without it that check is
+# reported as "not assessed", never as a pass.
+capabilities = ["CAP_DAC_READ_SEARCH"]
+read_paths = ["/sys", "/proc", "/etc", "/run/systemd"]
+network = false
+
+[risk]
+affects = []
+reversible = "immediate"
+confirm_timeout = false
+may_affect = []
+
+[ui]
+icon = "shield-check"
+order = 10

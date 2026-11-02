@@ -612,6 +612,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "ibexwall-plugin-ports"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "proptest",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "ibexwall-plugin-posture"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "proptest",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "ibexwall-proto"
 version = "0.1.0"
 dependencies = [

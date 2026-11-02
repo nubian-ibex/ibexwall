@@ -17,14 +17,18 @@ Progress:
 - M3 plugin `net.dns`: done for the systemd-resolved stack (ADR-0029);
   failsafe unit and `--failsafe` mode done.
 - M4 backends: B1 (resolved) verified on all five distros; B2 to B4 pending.
-- M5 enforcement: nft chain refusing 53 and 853 for all but the resolver,
-  typed fragment with exact rollback, failsafe removes it; browser
-  policies and known-DoH endpoint lists pending.
-- M6 captive portal and the `block` failure mode, M7 UI/TUI/agent: pending.
-- M8: `--phase f3` has 9 scenarios passing on all five distros (apply,
-  no clear DNS in a packet capture, enforcement refusal, canary, kill,
-  failsafe, exact rollback twice including `nft list ruleset`); latency
-  targets pending.
+- M5 enforcement: done, including the known-DoH-endpoints list refused by
+  the stub and browser policies with explicit consent (paths from each
+  vendor's documentation).
+- M6: the failsafe (`restore`) is done and proven; the captive portal flow
+  and the `block` failure mode are pending.
+- M7: the DNS screen is done (providers with verified facts, transport,
+  list, enforcement, browser consent, counters); TUI DNS view and agent
+  notifications are pending.
+- M8: `--phase f3` has 12 scenarios passing on all five distros, including
+  the DoH endpoints, latency targets (warm p99 under 2 ms, uncached
+  overhead under 5 ms versus direct DoT) and browser policies with exact
+  rollback.
 
 ## Facts checked
 

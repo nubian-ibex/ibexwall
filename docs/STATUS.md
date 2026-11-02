@@ -7,7 +7,9 @@ Last updated: 2026-11-02 (F2 and F3 accepted; F3 remainder in progress)
 
 ## Current phase
 
-**F3: secure DNS, remainder in progress (autonomous mode).** F0 to F2
+**F3: secure DNS, remainder in progress (autonomous mode): enforcement,
+DoH endpoints, browser policies, counters and latency evidence done; 12
+VM scenarios green on five distros.** F0 to F2
 accepted (F2 report: `docs/reports/F2-report.md`); the F3 core (resolver,
 lists, resolved backend, enforcement, DNS screen) is accepted and the
 remainder (DoH endpoints, browser policies, captive portal, counters,
@@ -173,7 +175,20 @@ Done and verified (workspace 202 tests, clippy/fmt/deny clean, pushed):
   (`nft list ruleset` identical after rollback); the failsafe removes the
   chain first.
 
-Next (see `docs/plans/F3-secure-dns.md`): known DoH endpoints, browser
-policies behind consent; M4 adapters B2 to B4; M6 captive portal and
+- Known DoH endpoints refused through the stub (HaGeZi's list) and browser
+  policies with explicit consent, one file per browser from each vendor's
+  documentation; Firefox's policies.json is never taken from an admin.
+- Counters: the resolver publishes them, `GetDnsStatus` exposes them and
+  the DNS screen shows them; no query names are ever recorded.
+- AdGuard and DNS4EU presets with vendor-verified facts (Mullvad rejected:
+  its public encrypted DNS is discontinued as of 2026-11-02).
+- Latency targets measured in VM: warm p99 under 2 ms, uncached overhead
+  under 5 ms versus direct DoT from the exempt user.
+- Product fixes found by the scenarios: the failsafe now clears resolved's
+  start rate limit; `--set` sends typed values; a sandbox root no longer
+  breaks manifest path checks.
+
+Next (see `docs/plans/F3-secure-dns.md`): the captive portal flow and the
+`block` failure mode (M6), the TUI DNS view and agent notifications (M7), M4 adapters B2 to B4; M6 captive portal and
 `block` mode; M7 DNS screen; more provider presets after their docs are
 read (Mullvad, AdGuard, DNS4EU, NextDNS/Control D).

@@ -27,6 +27,7 @@ pub struct SysBundle {
     pub systemd: Arc<dyn Systemd>,
     pub sysctl: Arc<dyn Sysctl>,
     pub clock: Arc<dyn Clock>,
+    pub nft: Arc<dyn Nft>,
     /// System-level executors (nft, exec, package installs) are refused
     /// while running under `IBEXWALL_ROOT` so the dev host is never
     /// touched.
@@ -58,12 +59,20 @@ impl SysBundle {
             systemd: Arc::new(RealSystemd::new()),
             sysctl: Arc::new(RealSysctl::with_root(root.to_path_buf())),
             clock: Arc::new(RealClock),
+            // Real nftables only on the real root; a sandbox never applies
+            // rules (system executors are refused there).
+            nft: if real_root {
+                Arc::new(RealNft)
+            } else {
+                Arc::new(FakeNft::new())
+            },
             allow_system_executors: real_root,
             use_transient_executor: real_root,
         }
     }
 }
 
+pub mod nft;
 pub mod polkit;
 pub mod sysctl;
 pub mod systemd;
@@ -71,6 +80,7 @@ pub mod systemd;
 pub use clock::{Clock, FakeClock, RealClock, format_rfc3339};
 pub use fs::{FakeFs, FileMeta, Fs, RealFs};
 pub use identity::{Identity, current_uid, peer_credentials, proc_start_time};
+pub use nft::{FakeNft, Fragment, Nft, RealNft};
 pub use polkit::{Decision, FakePolkit, Polkit, RealPolkit};
 pub use sysctl::{FakeSysctl, RealSysctl, Sysctl};
 pub use systemd::{Enabled, FakeSystemd, RealSystemd, Systemd, UnitSnapshot};

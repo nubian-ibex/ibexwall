@@ -170,3 +170,175 @@ fn apply_nft_fragment(fragment: &serde_json::Value) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ibexwall_sys::{FakeClock, FakeFs, FakeSysctl, FakeSystemd, Fs};
+    use std::sync::Arc;
+
+    fn bundle(allow_system: bool) -> (SysBundle, Arc<FakeFs>) {
+        let fs = Arc::new(FakeFs::new());
+        let bundle = SysBundle {
+            fs: fs.clone(),
+            systemd: Arc::new(FakeSystemd::new()),
+            sysctl: Arc::new(FakeSysctl::new()),
+            clock: Arc::new(FakeClock::new(0)),
+            allow_system_executors: allow_system,
+        };
+        (bundle, fs)
+    }
+
+    fn file(path: &str, mode: &str, owner: &str, group: &str) -> Op {
+        Op::FileWrite {
+            path: path.into(),
+            content: "x\n".into(),
+            mode: mode.into(),
+            owner: owner.into(),
+            group: group.into(),
+        }
+    }
+
+    #[test]
+    fn writes_files_and_removes_them() {
+        let (sys, fs) = bundle(false);
+        execute(&file("/etc/d/a.conf", "0644", "root", "root"), &sys).unwrap();
+        assert!(fs.exists(Path::new("/etc/d/a.conf")));
+        execute(
+            &Op::FileRemove {
+                path: "/etc/d/a.conf".into(),
+            },
+            &sys,
+        )
+        .unwrap();
+        assert!(!fs.exists(Path::new("/etc/d/a.conf")));
+    }
+
+    #[test]
+    fn rejects_bad_mode_owner_and_group() {
+        let (sys, _) = bundle(false);
+        for op in [
+            file("/etc/a", "99", "root", "root"),
+            file("/etc/a", "0644", "alice", "root"),
+            file("/etc/a", "0644", "root", "wheel"),
+        ] {
+            assert!(execute(&op, &sys).is_err());
+        }
+        assert!(execute(&file("/etc/a", "0644", "1000", "1000"), &sys).is_ok());
+    }
+
+    #[test]
+    fn unit_and_sysctl_ops_reach_the_system_traits() {
+        let (sys, _) = bundle(false);
+        execute(
+            &Op::SystemdUnit {
+                unit: "u.service".into(),
+                action: ibexwall_proto::UnitAction::Start,
+                now: None,
+            },
+            &sys,
+        )
+        .unwrap();
+        assert!(sys.systemd.snapshot("u.service").unwrap().active);
+        execute(
+            &Op::SysctlSet {
+                key: "a.b".into(),
+                value: "1".into(),
+            },
+            &sys,
+        )
+        .unwrap();
+        assert_eq!(sys.sysctl.get("a.b").unwrap(), "1");
+    }
+
+    #[test]
+    fn system_executors_are_refused_in_a_sandbox() {
+        let (sys, _) = bundle(false);
+        for op in [
+            Op::Exec {
+                path: "/usr/bin/true".into(),
+                args: vec![],
+            },
+            Op::NftFragment {
+                fragment: serde_json::json!({ "chain": "dev_echo_x" }),
+            },
+        ] {
+            let err = execute(&op, &sys).unwrap_err();
+            assert!(err.to_string().contains("disabled"), "{err}");
+        }
+    }
+
+    #[test]
+    fn exec_runs_allowlisted_binaries_when_allowed() {
+        let (sys, _) = bundle(true);
+        assert!(
+            execute(
+                &Op::Exec {
+                    path: "/usr/bin/true".into(),
+                    args: vec![]
+                },
+                &sys
+            )
+            .is_ok()
+        );
+        assert!(
+            execute(
+                &Op::Exec {
+                    path: "/usr/bin/false".into(),
+                    args: vec![]
+                },
+                &sys
+            )
+            .is_err()
+        );
+        assert!(
+            execute(
+                &Op::Exec {
+                    path: "/nonexistent/bin".into(),
+                    args: vec![]
+                },
+                &sys
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn adapter_ops_are_not_implemented_yet() {
+        let (sys, _) = bundle(false);
+        let ops = [
+            Op::FirewallAdapter {
+                backend: "ufw".into(),
+                action: serde_json::json!({}),
+            },
+            Op::DnsBackend {
+                backend: "resolved".into(),
+                action: serde_json::json!({}),
+            },
+            Op::FlatpakOverride {
+                app_id: "a".into(),
+                args: vec!["b".into()],
+            },
+            Op::SnapInterface {
+                snap: "s".into(),
+                interface: "i".into(),
+                connect: true,
+            },
+            Op::BrowserPolicy {
+                browser: "b".into(),
+                policy: serde_json::json!({"a": 1}),
+            },
+            Op::NmSetting {
+                key: "k".into(),
+                value: serde_json::json!(1),
+            },
+            Op::PackageInstall {
+                package: "p".into(),
+            },
+        ];
+        for op in ops {
+            let err = execute(&op, &sys).unwrap_err();
+            assert!(err.to_string().contains("no executor"), "{err}");
+        }
+    }
+}

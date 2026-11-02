@@ -490,3 +490,258 @@ async fn unsigned_plugins_are_refused_on_use() {
         "expected a signature failure, got: {message}"
     );
 }
+
+#[tokio::test]
+async fn read_methods_and_error_paths() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let (core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+
+    let info = client
+        .call("com.ibexwall.Core.GetInfo", json!({}))
+        .await
+        .unwrap();
+    assert_eq!(info["info"]["api"], 1);
+
+    let plugins = client
+        .call("com.ibexwall.Core.ListPlugins", json!({}))
+        .await
+        .unwrap();
+    assert_eq!(plugins["plugins"][0]["id"], "dev.echo");
+    assert_eq!(plugins["plugins"][0]["enabled"], false);
+
+    client
+        .call(
+            "com.ibexwall.Core.SetPluginEnabled",
+            json!({ "id": "dev.echo", "enabled": true }),
+        )
+        .await
+        .unwrap();
+    client
+        .call("com.ibexwall.Core.RunChecks", json!({}))
+        .await
+        .unwrap();
+
+    let findings = client
+        .call("com.ibexwall.Core.ListFindings", json!({}))
+        .await
+        .unwrap();
+    assert_eq!(findings["findings"].as_array().map(Vec::len), Some(1));
+    let none = client
+        .call(
+            "com.ibexwall.Core.ListFindings",
+            json!({ "plugin": "other.plugin" }),
+        )
+        .await
+        .unwrap();
+    assert!(none["findings"].as_array().unwrap().is_empty());
+
+    let posture = client
+        .call("com.ibexwall.Core.GetPosture", json!({}))
+        .await
+        .unwrap();
+    assert!(posture["posture"]["score"].as_i64().unwrap() < 100);
+    assert_eq!(posture["posture"]["open_findings"], 1);
+
+    let config = client
+        .call(
+            "com.ibexwall.Core.GetConfig",
+            json!({ "plugin": "dev.echo" }),
+        )
+        .await
+        .unwrap();
+    assert!(config["locks"].as_array().unwrap().is_empty());
+
+    assert!(
+        core.audit_verify() == ibexwall_core::audit::Verification::Valid { entries: 2 }
+            || matches!(
+                core.audit_verify(),
+                ibexwall_core::audit::Verification::Valid { .. }
+            )
+    );
+    let audit = client
+        .call("com.ibexwall.Core.AuditVerify", json!({}))
+        .await
+        .unwrap();
+    assert_eq!(audit["valid"], true);
+    let events = client
+        .call("com.ibexwall.Core.RecentEvents", json!({}))
+        .await
+        .unwrap();
+    assert!(events["events"].is_array());
+    let history = client
+        .call("com.ibexwall.Core.History", json!({ "limit": 5 }))
+        .await
+        .unwrap();
+    assert!(history["entries"].is_array());
+
+    // Error paths.
+    for (method, params, expected) in [
+        (
+            "GetConfig",
+            json!({ "plugin": "nope.nope" }),
+            "com.ibexwall.Core.NotFound",
+        ),
+        (
+            "SetPluginEnabled",
+            json!({ "id": "nope.nope", "enabled": true }),
+            "com.ibexwall.Core.NotFound",
+        ),
+        (
+            "SetPluginEnabled",
+            json!({ "id": "dev.echo" }),
+            "com.ibexwall.Core.InvalidArgument",
+        ),
+        (
+            "PlanChange",
+            json!({ "plugin": "nope.nope", "patch": {} }),
+            "com.ibexwall.Core.NotFound",
+        ),
+        (
+            "PlanChange",
+            json!({ "plugin": "dev.echo", "patch": { "template": "bogus" } }),
+            "com.ibexwall.Core.Conflict",
+        ),
+        (
+            "Apply",
+            json!({ "plan_id": "plan-missing" }),
+            "com.ibexwall.Core.NotFound",
+        ),
+        ("Apply", json!({}), "org.varlink.service.InvalidParameter"),
+        (
+            "Confirm",
+            json!({ "transaction_id": "tx-missing" }),
+            "com.ibexwall.Core.NotFound",
+        ),
+        (
+            "Rollback",
+            json!({ "target": "tx-missing" }),
+            "com.ibexwall.Core.NotFound",
+        ),
+        (
+            "ListProposals",
+            json!({}),
+            "org.varlink.service.MethodNotImplemented",
+        ),
+        (
+            "CreateProposal",
+            json!({}),
+            "org.varlink.service.MethodNotImplemented",
+        ),
+        (
+            "DecideProposal",
+            json!({}),
+            "org.varlink.service.MethodNotImplemented",
+        ),
+        (
+            "NoSuchMethod",
+            json!({}),
+            "org.varlink.service.MethodNotFound",
+        ),
+    ] {
+        let err = client
+            .call(&format!("com.ibexwall.Core.{method}"), params)
+            .await
+            .expect_err(method);
+        assert_eq!(err.name, expected, "{method}");
+    }
+
+    // Confirming a transaction that is not pending is refused.
+    let plan = plan_with(&mut client, "dropin_file").await;
+    let value = client
+        .call("com.ibexwall.Core.Apply", json!({ "plan_id": plan["id"] }))
+        .await
+        .unwrap();
+    let err = client
+        .call(
+            "com.ibexwall.Core.Confirm",
+            json!({ "transaction_id": value["transaction"]["id"] }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.name, "com.ibexwall.Core.InvalidArgument");
+}
+
+#[tokio::test]
+async fn config_change_makes_a_plan_stale() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let (_core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+    client
+        .call(
+            "com.ibexwall.Core.SetPluginEnabled",
+            json!({ "id": "dev.echo", "enabled": true }),
+        )
+        .await
+        .unwrap();
+    let plan = plan_with(&mut client, "dropin_file").await;
+
+    // A new daemon with a changed user layer has a different fingerprint.
+    std::fs::write(
+        sandbox.root.join("etc/ibexwall/config.toml"),
+        "[plugins.\"dev.echo\"]\nmode = \"changed\"\n",
+    )
+    .unwrap();
+    let (_core2, mut client2) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+    let err = client2
+        .call("com.ibexwall.Core.Apply", json!({ "plan_id": plan["id"] }))
+        .await
+        .unwrap_err();
+    assert_eq!(err.name, "com.ibexwall.Core.PlanStale");
+}
+
+#[tokio::test]
+async fn subscribe_streams_transaction_events() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let (_core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+    client
+        .call(
+            "com.ibexwall.Core.SetPluginEnabled",
+            json!({ "id": "dev.echo", "enabled": true }),
+        )
+        .await
+        .unwrap();
+    let socket = std::fs::read_dir(sandbox.root.join("run/ibexwall"))
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .find(|p| {
+            p.extension().is_some_and(|x| x == "sock")
+                && p.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with("core-")
+        })
+        .unwrap();
+    let mut watcher = Client::connect(&socket).await.unwrap();
+    // The first frame only arrives with an event, so subscribe in a task
+    // and trigger the event from here.
+    let subscriber = tokio::spawn(async move {
+        let mut stream = watcher
+            .call_more("com.ibexwall.Core.Subscribe", json!({}))
+            .await
+            .expect("subscribe");
+        stream.next_reply().await.unwrap().unwrap()
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    let plan = plan_with(&mut client, "dropin_file").await;
+    client
+        .call("com.ibexwall.Core.Apply", json!({ "plan_id": plan["id"] }))
+        .await
+        .unwrap();
+    let event = tokio::time::timeout(std::time::Duration::from_secs(5), subscriber)
+        .await
+        .expect("event arrives")
+        .unwrap();
+    assert!(event["kind"].as_str().unwrap().starts_with("transaction."));
+}

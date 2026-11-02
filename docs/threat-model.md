@@ -228,3 +228,29 @@ first mandatory review point.
 - The ops and manifests the helper reads are core-written files under
   /run/ibexwall and /var/lib/ibexwall; the helper decides nothing
   (validation, snapshotting and auditing all happened in the core).
+
+## 12. Secure DNS (F3)
+
+- The resolver is a separate unprivileged process; it parses untrusted
+  input (DNS packets, list files, list downloads). Lists are validated name
+  by name, capped at 64 MiB and replaced by atomic rename; a download that
+  does not parse or is empty never replaces a working list. Downloads are
+  https only, with few redirects.
+- No query names are logged; only per-category counters exist. A test
+  asserts the handler has no logging of names.
+- Upstreams are addressed by IP with a certificate name, trust anchors are
+  bundled (`webpki-roots`), so reaching the upstream needs neither the
+  host's DNS nor its trust store.
+- `FallbackDNS=` is emptied in the resolved drop-in: a dead local resolver
+  can never make the machine fall back to plain public servers.
+- Enforcement is an owned nftables chain (`net_dns_guard`) that refuses
+  port 53 and 853 for every user except the resolver; loopback stays open.
+  It does not stop DoH on 443; the canary, known endpoints and browser
+  policies (with consent) address that and remain best effort.
+- Risk: enforcement plus a dead resolver means no DNS. Mitigations: the
+  resolver restarts on failure, three failures in 60 s run the failsafe
+  (removes the chain and the drop-in, restarts the system resolver), a
+  network-risk apply must be confirmed or it reverts.
+- Residual: a VPN client or a local application with its own resolver on
+  loopback is not affected; per-link DNS of a VPN with routing domains can
+  still win for those domains.

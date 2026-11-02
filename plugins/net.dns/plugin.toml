@@ -21,11 +21,12 @@ pt-BR = "Criptografa as consultas DNS, bloqueia rastreadores e domínios malicio
 write_paths = ["/etc/ibexwall/dns", "/etc/systemd/resolved.conf.d"]
 units = ["ibexwall-dns.service", "systemd-resolved.service"]
 unit_actions = ["start", "stop", "restart", "enable", "disable"]
+nft_prefix = "net_dns"
 
 [sandbox]
 user = "dynamic"
 capabilities = []
-read_paths = ["/etc/resolv.conf", "/etc/systemd/resolved.conf.d", "/run/systemd/resolve", "/run/systemd/netif", "/run/NetworkManager", "/proc/net/udp"]
+read_paths = ["/etc/resolv.conf", "/etc/systemd/resolved.conf.d", "/run/systemd/resolve", "/run/systemd/netif", "/run/NetworkManager", "/proc/net/udp", "/etc/passwd"]
 network = false
 
 [risk]

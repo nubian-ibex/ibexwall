@@ -82,6 +82,12 @@ if [ ! -e /usr/lib/systemd/system/systemd-resolved.service ] && [ ! -e /lib/syst
     sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install -y -qq systemd-resolved
   fi
 fi
+if ! command -v nft >/dev/null; then
+  if command -v dnf >/dev/null; then sudo dnf install -y -q nftables
+  elif command -v apt-get >/dev/null; then sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install -y -qq nftables
+  elif command -v pacman >/dev/null; then sudo pacman -S --noconfirm --needed nftables
+  fi
+fi
 if ! command -v tcpdump >/dev/null; then
   if command -v dnf >/dev/null; then sudo dnf install -y -q tcpdump
   elif command -v apt-get >/dev/null; then sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install -y -qq tcpdump
@@ -96,6 +102,7 @@ getent hosts example.com
 sudo mkdir -p /etc/systemd/resolved.conf.d
 sudo sh -c 'cat /etc/systemd/resolved.conf /etc/systemd/resolved.conf.d/* 2>/dev/null | sha256sum' > /tmp/ibx-dns-baseline
 cat /tmp/ibx-dns-baseline
+sudo nft list ruleset | sha256sum > /tmp/ibx-nft-baseline
 "#
     );
 
@@ -141,6 +148,43 @@ echo "$PKTS" | grep -Eq '\.853[: ]|\.853$'
     );
 
     scenario!(
+        "d2b clear DNS and DoT are refused for everyone but the resolver",
+        r#"
+set -e
+python3 - <<'EOF'
+import socket
+QUERY = b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x07example\x03com\x00\x00\x01\x00\x01"
+def refused(kind, port):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM if kind == "udp" else socket.SOCK_STREAM)
+    sock.settimeout(4)
+    try:
+        sock.connect(("9.9.9.9", port))
+        if kind == "udp":
+            sock.send(QUERY)
+            sock.recv(512)
+        return False
+    except (ConnectionRefusedError, PermissionError):
+        # Refused by the local output hook: TCP sees ECONNREFUSED, UDP EPERM.
+        return True
+    except OSError as error:
+        print("unexpected", kind, port, error)
+        return False
+results = {(k, p): refused(k, p) for k in ("udp", "tcp") for p in (53, 853)}
+print(results)
+assert all(results.values()), results
+EOF
+sudo python3 -c 'import socket,sys; s=socket.socket(); s.settimeout(4)
+try:
+    s.connect(("9.9.9.9", 53))
+except ConnectionRefusedError:
+    sys.exit(0)
+sys.exit(1)'
+getent hosts example.com >/dev/null
+sudo nft list chain inet ibexwall net_dns_guard
+"#
+    );
+
+    scenario!(
         "d3 the Firefox DoH canary answers NXDOMAIN",
         r#"
 set -e
@@ -178,6 +222,7 @@ for i in $(seq 1 40); do [ ! -e /etc/systemd/resolved.conf.d/50-ibexwall.conf ] 
 for i in $(seq 1 15); do getent hosts example.com >/dev/null && break; sleep 1; done
 getent hosts example.com
 ! resolvectl status | grep -q 127.0.0.153
+! sudo nft list chain inet ibexwall net_dns_guard 2>/dev/null
 "#
     );
 
@@ -198,6 +243,7 @@ chk [ "$STATE" != "enabled" ]
 NOW=$(sudo sh -c 'cat /etc/systemd/resolved.conf /etc/systemd/resolved.conf.d/* 2>/dev/null | sha256sum')
 echo "now=$NOW base=$(cat /tmp/ibx-dns-baseline)"
 chk [ "$NOW" = "$(cat /tmp/ibx-dns-baseline)" ]
+chk [ "$(sudo nft list ruleset | sha256sum)" = "$(cat /tmp/ibx-nft-baseline)" ]
 for i in $(seq 1 15); do getent hosts example.com >/dev/null && break; sleep 1; done
 chk getent hosts example.com
 "#
@@ -219,6 +265,7 @@ sudo test -f /etc/systemd/resolved.conf.d/50-ibexwall.conf
 sudo ibexctl rollback "$TX" --json >/dev/null
 NOW=$(sudo sh -c 'cat /etc/systemd/resolved.conf /etc/systemd/resolved.conf.d/* 2>/dev/null | sha256sum')
 [ "$NOW" = "$(cat /tmp/ibx-dns-baseline)" ]
+[ "$(sudo nft list ruleset | sha256sum)" = "$(cat /tmp/ibx-nft-baseline)" ]
 sudo test ! -e /etc/ibexwall/dns/resolver.json
 STATE=$(systemctl is-enabled ibexwall-dns 2>&1 || true)
 [ "$STATE" != "enabled" ] || {{ echo "unit still enabled after rollback" >&2; exit 1; }}

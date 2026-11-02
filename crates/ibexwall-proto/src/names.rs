@@ -116,6 +116,8 @@ pub fn artifact_paths() -> [&'static str; 3] {
 
 // nftables.
 pub const NFT_TABLE: &str = "ibexwall";
+/// The secure DNS enforcement chain (prefix `net_dns` per the plugin id).
+pub const DNS_NFT_CHAIN: &str = "net_dns_guard";
 
 // Local DNS resolver defaults (configurable).
 pub const DNS_BIND_ADDR: &str = "127.0.0.153";

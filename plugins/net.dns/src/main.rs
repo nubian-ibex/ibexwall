@@ -20,6 +20,7 @@ use ibexwall_proto::{
     CheckOutcome, CheckReport, CheckResult, Finding, FindingStatus, Op, Severity, UnitAction, names,
 };
 use ibexwall_sdk::{Plugin, PluginError, Sandbox};
+use ibexwall_sys::nft::{Chain, Fragment, Proto, Rule, Verdict};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -51,6 +52,9 @@ struct Config {
     block_response: BlockResponse,
     block_doh: bool,
     allow: Vec<String>,
+    /// Refuse clear DNS (port 53) and DoT (port 853) from everyone but
+    /// the resolver.
+    enforcement: bool,
 }
 
 impl Default for Config {
@@ -63,6 +67,7 @@ impl Default for Config {
             block_response: BlockResponse::default(),
             block_doh: true,
             allow: vec![],
+            enforcement: true,
         }
     }
 }
@@ -162,7 +167,7 @@ fn plan(sandbox: &Sandbox, config: Config) -> Result<Vec<Op>, PluginError> {
         owner: "root".into(),
         group: "root".into(),
     };
-    Ok(vec![
+    let mut ops = vec![
         write(settings_path, format!("{settings_json}\n")),
         write(names::ARTIFACT_RESOLVED.into(), dropin_content()),
         // The resolver must be up before resolved is pointed at it.
@@ -176,7 +181,58 @@ fn plan(sandbox: &Sandbox, config: Config) -> Result<Vec<Op>, PluginError> {
             action: UnitAction::Restart,
             now: None,
         },
-    ])
+    ];
+    // Last, so a failure above can never leave clear DNS blocked with no
+    // resolver to answer.
+    if config.enforcement {
+        ops.push(enforcement_op(sandbox)?);
+    }
+    Ok(ops)
+}
+
+/// Looks up a user's uid in `/etc/passwd` (read-only).
+fn uid_of(sandbox: &Sandbox, user: &str) -> Option<u32> {
+    sandbox.read("/etc/passwd")?.lines().find_map(|line| {
+        let mut fields = line.split(':');
+        (fields.next() == Some(user)).then(|| fields.nth(1)?.parse().ok())?
+    })
+}
+
+/// Refuse clear DNS and DoT from every user except the resolver. Loopback
+/// stays open so applications can reach the local stub.
+fn enforcement_op(sandbox: &Sandbox) -> Result<Op, PluginError> {
+    let uid = uid_of(sandbox, names::DNS_USER).ok_or_else(|| {
+        PluginError::invalid(
+            "enforcement",
+            format!("the `{}` user does not exist", names::DNS_USER),
+        )
+    })?;
+    let guard = Fragment {
+        chains: vec![Chain {
+            name: names::DNS_NFT_CHAIN.into(),
+            priority: 0,
+            rules: vec![
+                Rule {
+                    oif_loopback: true,
+                    uid_not: None,
+                    protocols: vec![],
+                    dports: vec![],
+                    verdict: Verdict::Accept,
+                },
+                Rule {
+                    oif_loopback: false,
+                    uid_not: Some(uid),
+                    protocols: vec![Proto::Udp, Proto::Tcp],
+                    dports: vec![53, 853],
+                    verdict: Verdict::Reject,
+                },
+            ],
+        }],
+    };
+    Ok(Op::NftFragment {
+        fragment: serde_json::to_value(guard)
+            .map_err(|e| PluginError::invalid("enforcement", e.to_string()))?,
+    })
 }
 
 /// `/proc/net/udp` lists a local address as little-endian hex.
@@ -255,6 +311,11 @@ mod tests {
         std::fs::create_dir_all(root.join("etc")).unwrap();
         std::fs::create_dir_all(root.join("run/systemd/resolve")).unwrap();
         std::fs::create_dir_all(root.join("proc/net")).unwrap();
+        std::fs::write(
+            root.join("etc/passwd"),
+            "root:x:0:0:root:/root:/bin/bash\nibexwall-dns:x:990:988::/var/lib/ibexwall:/usr/sbin/nologin\n",
+        )
+        .unwrap();
         symlink(
             "../run/systemd/resolve/stub-resolv.conf",
             root.join("etc/resolv.conf"),
@@ -289,12 +350,19 @@ mod tests {
                     action: UnitAction::Restart,
                     ..
                 } if unit == RESOLVED => "restart-resolved",
+                Op::NftFragment { .. } => "enforce",
                 _ => "other",
             })
             .collect();
         assert_eq!(
             kinds,
-            ["settings", "dropin", "enable-resolver", "restart-resolved"]
+            [
+                "settings",
+                "dropin",
+                "enable-resolver",
+                "restart-resolved",
+                "enforce"
+            ]
         );
     }
 
@@ -320,6 +388,62 @@ mod tests {
         );
         assert_eq!(settings.lists[0].id, "hagezi-pro");
         assert!(settings.block_doh);
+    }
+
+    #[test]
+    fn enforcement_is_last_optional_and_exempts_only_the_resolver_user() {
+        let (_root, sandbox) = resolved_tree("enforce");
+        let ops = plan(&sandbox, Config::default()).unwrap();
+        let Some(Op::NftFragment { fragment }) = ops.last() else {
+            panic!("the nft fragment must come last");
+        };
+        // The core's own typed parser and prefix rule accept it.
+        let parsed = ibexwall_sys::ops::parse_fragment(fragment).unwrap();
+        assert!(
+            parsed
+                .chain_names()
+                .iter()
+                .all(|n| n.starts_with("net_dns_"))
+        );
+        let rules = &parsed.chains[0].rules;
+        assert_eq!(rules[0].verdict, Verdict::Accept);
+        assert!(rules[0].oif_loopback);
+        assert_eq!(rules[1].uid_not, Some(990));
+        assert_eq!(rules[1].dports, vec![53, 853]);
+        assert_eq!(rules[1].verdict, Verdict::Reject);
+
+        let off = Config::parse(json!({ "enforcement": false })).unwrap();
+        let ops = plan(&sandbox, off).unwrap();
+        assert_eq!(ops.len(), 4);
+        assert!(!ops.iter().any(|op| matches!(op, Op::NftFragment { .. })));
+    }
+
+    #[test]
+    fn enforcement_needs_the_resolver_user_to_exist() {
+        let (root, sandbox) = resolved_tree("nouser");
+        std::fs::write(root.join("etc/passwd"), "root:x:0:0:root:/root:/bin/bash\n").unwrap();
+        let err = plan(&sandbox, Config::default()).unwrap_err();
+        assert!(format!("{err:?}").contains("enforcement"), "{err:?}");
+        assert!(
+            plan(
+                &sandbox,
+                Config::parse(json!({ "enforcement": false })).unwrap()
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn uid_lookup_matches_the_whole_user_name() {
+        let (root, sandbox) = resolved_tree("uid");
+        std::fs::write(
+            root.join("etc/passwd"),
+            "ibexwall-dns2:x:5:5::/:/bin/false\nibexwall-dns:x:990:988::/:/bin/false\nbad:x:notanumber:1::/:/bin/false\n",
+        )
+        .unwrap();
+        assert_eq!(uid_of(&sandbox, "ibexwall-dns"), Some(990));
+        assert_eq!(uid_of(&sandbox, "bad"), None);
+        assert_eq!(uid_of(&sandbox, "absent"), None);
     }
 
     #[test]

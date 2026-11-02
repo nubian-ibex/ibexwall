@@ -29,6 +29,13 @@ const SERVICE: &str = "ibexwall-dns.service";
 const RESOLVED: &str = "systemd-resolved.service";
 const CHECK_ID: &str = "dns.secure_resolver";
 
+/// Known DNS-over-HTTPS endpoints, so browsers cannot route around the
+/// stub while it is on (HaGeZi's Encrypted DNS Bypass list, GPL-3.0,
+/// consulted 2026-11-02).
+const DOH_ENDPOINTS_URL: &str =
+    "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/wildcard/doh-onlydomains.txt";
+const DOH_ENDPOINTS_ID: &str = "doh_endpoints";
+
 fn main() {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -109,6 +116,10 @@ impl Config {
             allow: self.allow.clone(),
             doh_endpoints: vec![],
             lists: self.lists.clone(),
+            doh_list: self.block_doh.then(|| ListRef {
+                id: DOH_ENDPOINTS_ID.into(),
+                url: Some(DOH_ENDPOINTS_URL.into()),
+            }),
             update_interval_hours: 24,
         })
     }
@@ -388,6 +399,13 @@ mod tests {
         );
         assert_eq!(settings.lists[0].id, "hagezi-pro");
         assert!(settings.block_doh);
+        let doh = settings.doh_list.expect("the endpoints list is planned");
+        assert_eq!(doh.id, "doh_endpoints");
+        assert!(
+            doh.url
+                .as_deref()
+                .is_some_and(|url| url.starts_with("https://"))
+        );
     }
 
     #[test]
@@ -415,6 +433,8 @@ mod tests {
         let off = Config::parse(json!({ "enforcement": false })).unwrap();
         let ops = plan(&sandbox, off).unwrap();
         assert_eq!(ops.len(), 4);
+        let no_doh = Config::parse(json!({ "block_doh": false, "enforcement": false })).unwrap();
+        assert!(no_doh.settings().unwrap().doh_list.is_none());
         assert!(!ops.iter().any(|op| matches!(op, Op::NftFragment { .. })));
     }
 

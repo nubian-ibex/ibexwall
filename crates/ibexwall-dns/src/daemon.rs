@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use crate::config::Settings;
 use crate::handler::Handler;
-use crate::lists::{self, Fetcher, Store};
+use crate::lists::{self, Fetcher, ListRef, Store};
 use crate::policy::Policy;
 
 /// Settings rules plus every stored list. Lists that were never fetched
@@ -21,6 +21,12 @@ pub fn build_policy(settings: &Settings, store: &Store) -> Policy {
             policy.block(parsed.block);
             policy.allow(parsed.allow);
         }
+    }
+    if settings.block_doh
+        && let Some(list) = &settings.doh_list
+        && let Some(parsed) = store.load(&list.id)
+    {
+        policy.doh_endpoints(parsed.block);
     }
     policy
 }
@@ -36,7 +42,11 @@ pub fn refresh(
     mut on_error: impl FnMut(&str, &lists::ListError),
 ) -> usize {
     let mut updated = 0;
-    for list in &settings.lists {
+    let mut targets: Vec<&ListRef> = settings.lists.iter().collect();
+    if let Some(list) = &settings.doh_list {
+        targets.push(list);
+    }
+    for list in targets {
         match lists::update(store, fetcher, list) {
             Ok(_) => updated += 1,
             Err(error) => on_error(&list.id, &error),
@@ -120,6 +130,7 @@ mod tests {
             "block": ["static.example"],
             "allow": ["fine.ads.example"],
             "lists": lists,
+            "doh_list": { "id": "doh_endpoints", "url": "https://x.example/doh" },
         }))
         .unwrap()
     }
@@ -147,13 +158,23 @@ mod tests {
             },
         )
         .unwrap();
+        lists::update(
+            &store,
+            &Counting(0.into(), "doh1.example\n"),
+            &ListRef {
+                id: "doh_endpoints".into(),
+                url: Some("https://x.example/doh".into()),
+            },
+        )
+        .unwrap();
         let policy = build_policy(&settings, &store);
-        use crate::policy::Category::List;
+        use crate::policy::Category::{DohEndpoint, List};
         use crate::policy::Verdict::{Block, Forward};
         assert_eq!(policy.decide("ads.example"), Block(List));
         assert_eq!(policy.decide("static.example"), Block(List));
         assert_eq!(policy.decide("fine.ads.example"), Forward);
         assert_eq!(policy.decide("ok.example"), Forward);
+        assert_eq!(policy.decide("doh1.example"), Block(DohEndpoint));
     }
 
     #[tokio::test]
@@ -170,9 +191,10 @@ mod tests {
         let updated = refresh(&settings, &store, &fetcher, &handler, |id, _| {
             errors.push(id.to_string());
         });
-        assert_eq!(updated, 1);
+        // Two lists updated (good and the DoH endpoints list), one failed.
+        assert_eq!(updated, 2);
         assert_eq!(errors, vec!["bad".to_string()]);
-        assert_eq!(fetcher.0.load(Ordering::SeqCst), 2);
+        assert_eq!(fetcher.0.load(Ordering::SeqCst), 3);
         // The swap is visible through the handler's policy.
         let none = settings.policy();
         assert_eq!(none.blocked_len(), 1);

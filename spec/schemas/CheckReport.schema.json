@@ -1,0 +1,186 @@
+{
+  "$defs": {
+    "CheckOutcome": {
+      "description": "Outcome of one check. `NotApplicable` checks are left out of the score\ndenominator; `NotAssessed` checks cannot be evaluated yet (e.g. they\nneed a plugin that ships later) and are shown honestly, never as passes.",
+      "enum": [
+        "pass",
+        "fail",
+        "not_applicable",
+        "not_assessed"
+      ],
+      "type": "string"
+    },
+    "CheckResult": {
+      "additionalProperties": false,
+      "description": "One evaluated check; the score is computed from these (spec §5.4).",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "outcome": {
+          "$ref": "#/$defs/CheckOutcome"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        }
+      },
+      "required": [
+        "id",
+        "severity",
+        "outcome"
+      ],
+      "type": "object"
+    },
+    "Finding": {
+      "additionalProperties": false,
+      "description": "A check result (spec §5.4).",
+      "properties": {
+        "args": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "detected_at": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "plugin": {
+          "type": "string"
+        },
+        "references": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Reference"
+          },
+          "type": "array"
+        },
+        "remediation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Remediation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "status": {
+          "$ref": "#/$defs/FindingStatus"
+        },
+        "summary_key": {
+          "type": "string"
+        },
+        "title_key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "plugin",
+        "severity",
+        "title_key",
+        "summary_key",
+        "status",
+        "detected_at"
+      ],
+      "type": "object"
+    },
+    "FindingStatus": {
+      "description": "Lifecycle of a finding.",
+      "enum": [
+        "open",
+        "accepted_risk",
+        "resolved"
+      ],
+      "type": "string"
+    },
+    "Reference": {
+      "additionalProperties": false,
+      "description": "Reference to a control in an external framework (own wording only;\nnever copy protected norm texts).",
+      "properties": {
+        "framework": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "url": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "framework",
+        "id"
+      ],
+      "type": "object"
+    },
+    "Remediation": {
+      "additionalProperties": false,
+      "description": "Remediation metadata for a finding.",
+      "properties": {
+        "may_affect_keys": {
+          "default": [],
+          "description": "Fluent keys for the \"may affect\" callout.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "plan_template": {
+          "default": null,
+          "description": "Plan template id the core can render into a previewable plan.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "Severity": {
+      "description": "Finding severity. Weights drive the posture score (spec §5.4).",
+      "enum": [
+        "info",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What a plugin `Check` call returns.",
+  "properties": {
+    "findings": {
+      "default": [],
+      "description": "Findings for the failed checks.",
+      "items": {
+        "$ref": "#/$defs/Finding"
+      },
+      "type": "array"
+    },
+    "results": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/CheckResult"
+      },
+      "type": "array"
+    }
+  },
+  "title": "CheckReport",
+  "type": "object"
+}

@@ -543,8 +543,10 @@ async fn read_methods_and_error_paths() {
         .call("com.ibexwall.Core.GetPosture", json!({}))
         .await
         .unwrap();
-    assert!(posture["posture"]["score"].as_i64().unwrap() < 100);
+    // dev.echo reports one failed low-severity check: 0 of 1 weight passed.
+    assert_eq!(posture["posture"]["score"], 0);
     assert_eq!(posture["posture"]["open_findings"], 1);
+    assert_eq!(posture["posture"]["results"][0]["outcome"], "fail");
 
     let config = client
         .call(

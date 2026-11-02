@@ -337,23 +337,14 @@ fn info(_core: &Arc<Core>) -> Value {
 }
 
 fn posture(core: &Arc<Core>) -> Value {
-    let findings = core.state.list_findings(None).unwrap_or_default();
-    let open: Vec<&Value> = findings
+    let results = core.state.list_check_results().unwrap_or_default();
+    let open_findings = core
+        .state
+        .list_findings(None)
+        .unwrap_or_default()
         .iter()
         .filter(|f| f.get("status").and_then(Value::as_str) == Some("open"))
-        .collect();
-    let weight: i64 = open
-        .iter()
-        .filter_map(|f| f.get("severity").and_then(Value::as_str))
-        .map(|sev| match sev {
-            "critical" => 10,
-            "high" => 6,
-            "medium" => 3,
-            "low" => 1,
-            _ => 0,
-        })
-        .sum();
-    let score = 100i64.saturating_sub(weight * 5).clamp(0, 100);
+        .count();
     let protections: Vec<Value> = core
         .plugins
         .plugins()
@@ -367,10 +358,11 @@ fn posture(core: &Arc<Core>) -> Value {
         .collect();
     json!({
         "posture": {
-            "score": score,
+            "score": ibexwall_proto::posture_score(&results),
             "generated_at": ibexwall_sys::RealClock.rfc3339_now(),
             "protections": protections,
-            "open_findings": open.len(),
+            "open_findings": open_findings,
+            "results": results,
         }
     })
 }
@@ -427,32 +419,16 @@ async fn run_checks(core: &Arc<Core>, plugin: Option<&str>) -> Result<Reply, Var
         if !core.state.plugin_enabled(&id).map_err(internal)? {
             continue;
         }
-        let result = core.plugins.check(&id, serde_json::Value::Null).await;
-        let plugin_findings =
-            result.map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?;
-        for finding in plugin_findings {
-            let id = finding
-                .get("id")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string();
-            let severity = finding
-                .get("severity")
-                .and_then(Value::as_str)
-                .unwrap_or("info")
-                .to_string();
-            let detected_at = ibexwall_sys::RealClock.rfc3339_now();
-            core.state
-                .upsert_finding(
-                    &id,
-                    finding.get("plugin").and_then(Value::as_str).unwrap_or(""),
-                    &severity,
-                    &finding.to_string(),
-                    &detected_at,
-                )
-                .map_err(internal)?;
-            findings.push(finding);
-        }
+        let report = core
+            .plugins
+            .check(&id, serde_json::Value::Null)
+            .await
+            .map_err(|e| err("Conflict", json!({ "reason": format!("{e:#}") })))?;
+        let checked_at = ibexwall_sys::RealClock.rfc3339_now();
+        core.state
+            .replace_check_run(&id, &report, &checked_at)
+            .map_err(internal)?;
+        findings.extend(report.findings);
     }
     core.audit("user", "core", None, "", "run-checks");
     Ok(Reply::result(json!({ "findings": findings })))

@@ -63,10 +63,14 @@ pub struct ProtectionStatus {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Posture {
-    pub score: u8,
+    /// `None` until at least one applicable check has run.
+    pub score: Option<u8>,
     pub generated_at: String,
     pub protections: Vec<ProtectionStatus>,
     pub open_findings: u32,
+    /// The check results the score was computed from ("How we calculate").
+    #[serde(default)]
+    pub results: Vec<CheckResult>,
 }
 
 /// Reference to a control in an external framework (own wording only;
@@ -118,6 +122,60 @@ pub struct Finding {
     pub remediation: Option<Remediation>,
     pub status: FindingStatus,
     pub detected_at: String,
+}
+
+/// Outcome of one check. `NotApplicable` checks are left out of the score
+/// denominator; `NotAssessed` checks cannot be evaluated yet (e.g. they
+/// need a plugin that ships later) and are shown honestly, never as passes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CheckOutcome {
+    Pass,
+    Fail,
+    NotApplicable,
+    NotAssessed,
+}
+
+/// One evaluated check; the score is computed from these (spec §5.4).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CheckResult {
+    pub id: String,
+    pub severity: Severity,
+    pub outcome: CheckOutcome,
+}
+
+/// What a plugin `Check` call returns.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CheckReport {
+    #[serde(default)]
+    pub results: Vec<CheckResult>,
+    /// Findings for the failed checks.
+    #[serde(default)]
+    pub findings: Vec<Finding>,
+}
+
+/// Posture score: weights of passed checks over weights of applicable
+/// checks, times 100 (spec §5.4). `NotApplicable` and `NotAssessed` are
+/// excluded; with nothing applicable there is no score.
+pub fn posture_score(results: &[CheckResult]) -> Option<u8> {
+    let (mut passed, mut total) = (0u32, 0u32);
+    for result in results {
+        let weight = u32::from(result.severity.weight());
+        match result.outcome {
+            CheckOutcome::Pass => {
+                passed += weight;
+                total += weight;
+            }
+            CheckOutcome::Fail => total += weight,
+            CheckOutcome::NotApplicable | CheckOutcome::NotAssessed => {}
+        }
+    }
+    if total == 0 {
+        return None;
+    }
+    Some(((passed * 100 + total / 2) / total) as u8)
 }
 
 /// Plugin card data.
@@ -248,6 +306,70 @@ pub struct Proposal {
 
 #[cfg(test)]
 mod tests {
+    fn result(severity: Severity, outcome: CheckOutcome) -> CheckResult {
+        CheckResult {
+            id: "x".into(),
+            severity,
+            outcome,
+        }
+    }
+
+    #[test]
+    fn score_follows_the_spec_formula() {
+        use CheckOutcome::*;
+        let results = [
+            result(Severity::Critical, Pass), // 10
+            result(Severity::High, Fail),     // 6 applicable, not passed
+            result(Severity::Medium, Pass),   // 3
+            result(Severity::Low, Pass),      // 1
+        ];
+        // (10 + 3 + 1) / (10 + 6 + 3 + 1) = 14 / 20 = 70
+        assert_eq!(posture_score(&results), Some(70));
+    }
+
+    #[test]
+    fn score_ignores_not_applicable_not_assessed_and_info() {
+        use CheckOutcome::*;
+        let results = [
+            result(Severity::High, Pass),
+            result(Severity::Critical, NotApplicable),
+            result(Severity::Critical, NotAssessed),
+            result(Severity::Info, Fail), // weight 0
+        ];
+        assert_eq!(posture_score(&results), Some(100));
+    }
+
+    #[test]
+    fn no_applicable_checks_means_no_score() {
+        assert_eq!(posture_score(&[]), None);
+        assert_eq!(
+            posture_score(&[result(Severity::High, CheckOutcome::NotAssessed)]),
+            None
+        );
+        assert_eq!(
+            posture_score(&[result(Severity::Info, CheckOutcome::Pass)]),
+            None
+        );
+    }
+
+    #[test]
+    fn score_rounds_to_the_nearest_integer() {
+        use CheckOutcome::*;
+        // 1 / 3 = 33.33 -> 33 ; 2 / 3 = 66.67 -> 67
+        let one = [
+            result(Severity::Low, Pass),
+            result(Severity::Low, Fail),
+            result(Severity::Low, Fail),
+        ];
+        assert_eq!(posture_score(&one), Some(33));
+        let two = [
+            result(Severity::Low, Pass),
+            result(Severity::Low, Pass),
+            result(Severity::Low, Fail),
+        ];
+        assert_eq!(posture_score(&two), Some(67));
+    }
+
     use super::*;
 
     #[test]

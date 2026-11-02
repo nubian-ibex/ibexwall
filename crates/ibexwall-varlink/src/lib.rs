@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! In-repo varlink implementation (ADR-0024): NUL-delimited JSON
 //! messages, `more`/`continues` streaming and named errors, over tokio

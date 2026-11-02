@@ -50,9 +50,10 @@ pub struct State {
     snapshots_dir: PathBuf,
 }
 
-const MIGRATIONS: &[(&str, &str)] = &[(
-    "0001_initial",
-    "CREATE TABLE transactions (
+const MIGRATIONS: &[(&str, &str)] = &[
+    (
+        "0001_initial",
+        "CREATE TABLE transactions (
          id TEXT PRIMARY KEY,
          plan_id TEXT NOT NULL,
          plugin TEXT NOT NULL,
@@ -91,7 +92,19 @@ const MIGRATIONS: &[(&str, &str)] = &[(
          enabled INTEGER NOT NULL DEFAULT 0
      );
      ",
-)];
+    ),
+    (
+        "0002_check_results",
+        "CREATE TABLE check_results (
+             plugin TEXT NOT NULL,
+             id TEXT NOT NULL,
+             severity TEXT NOT NULL,
+             outcome TEXT NOT NULL,
+             checked_at TEXT NOT NULL,
+             PRIMARY KEY (plugin, id)
+         );",
+    ),
+];
 
 impl State {
     pub fn open(state_dir: &Path) -> Result<Self> {
@@ -276,24 +289,6 @@ impl State {
 
     // findings / events / plugins --------------------------------------
 
-    pub fn upsert_finding(
-        &self,
-        plugin: &str,
-        id: &str,
-        severity: &str,
-        json: &str,
-        detected_at: &str,
-    ) -> Result<()> {
-        self.with_conn(|conn| {
-            conn.execute(
-                "INSERT INTO findings (id, plugin, severity, json, detected_at) VALUES (?1, ?2, ?3, ?4, ?5)
-                 ON CONFLICT(id) DO UPDATE SET json = excluded.json, severity = excluded.severity",
-                rusqlite::params![id, plugin, severity, json, detected_at],
-            )?;
-            Ok(())
-        })
-    }
-
     pub fn list_findings(&self, plugin: Option<&str>) -> Result<Vec<serde_json::Value>> {
         self.with_conn(|conn| {
             let (sql, param): (&str, Option<String>) = match plugin {
@@ -310,6 +305,77 @@ impl State {
             let mut out = Vec::new();
             for row in rows {
                 out.push(serde_json::from_str(&row?)?);
+            }
+            Ok(out)
+        })
+    }
+
+    /// Replaces everything a plugin reported in its previous check run
+    /// (results and findings) with the new report, atomically.
+    pub fn replace_check_run(
+        &self,
+        plugin: &str,
+        report: &ibexwall_proto::CheckReport,
+        checked_at: &str,
+    ) -> Result<()> {
+        self.with_conn(|conn| {
+            let tx = conn.unchecked_transaction()?;
+            tx.execute("DELETE FROM check_results WHERE plugin = ?1", [plugin])?;
+            tx.execute("DELETE FROM findings WHERE plugin = ?1", [plugin])?;
+            for result in &report.results {
+                tx.execute(
+                    "INSERT INTO check_results (plugin, id, severity, outcome, checked_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    rusqlite::params![
+                        plugin,
+                        result.id,
+                        enum_name(&result.severity)?,
+                        enum_name(&result.outcome)?,
+                        checked_at
+                    ],
+                )?;
+            }
+            for finding in &report.findings {
+                tx.execute(
+                    "INSERT INTO findings (id, plugin, severity, json, detected_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    rusqlite::params![
+                        finding.id,
+                        plugin,
+                        enum_name(&finding.severity)?,
+                        serde_json::to_string(finding)?,
+                        finding.detected_at
+                    ],
+                )?;
+            }
+            tx.commit()?;
+            Ok(())
+        })
+    }
+
+    /// Stored results of the enabled plugins (the score input).
+    pub fn list_check_results(&self) -> Result<Vec<ibexwall_proto::CheckResult>> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT r.id, r.severity, r.outcome FROM check_results r
+                 JOIN plugins p ON p.id = r.plugin WHERE p.enabled = 1
+                 ORDER BY r.plugin, r.id",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })?;
+            let mut out = Vec::new();
+            for row in rows {
+                let (id, severity, outcome) = row?;
+                out.push(ibexwall_proto::CheckResult {
+                    id,
+                    severity: serde_json::from_value(severity.into())?,
+                    outcome: serde_json::from_value(outcome.into())?,
+                });
             }
             Ok(out)
         })
@@ -372,6 +438,14 @@ impl State {
                 })?;
             Ok(enabled.unwrap_or(0) != 0)
         })
+    }
+}
+
+/// Serializes a unit enum to its lowercase/snake_case name.
+fn enum_name<T: serde::Serialize>(value: &T) -> Result<String> {
+    match serde_json::to_value(value)? {
+        serde_json::Value::String(name) => Ok(name),
+        other => anyhow::bail!("expected a string enum, got {other}"),
     }
 }
 
@@ -475,6 +549,40 @@ mod tests {
         assert!(!state.plugin_enabled("dev.echo").unwrap());
         state.set_plugin_enabled("dev.echo", true).unwrap();
         assert!(state.plugin_enabled("dev.echo").unwrap());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn check_runs_replace_previous_results_and_only_enabled_plugins_count() {
+        use ibexwall_proto::{CheckOutcome, CheckReport, CheckResult, Severity};
+        let (dir, state) = temp_state();
+        let result = |id: &str, outcome| CheckResult {
+            id: id.into(),
+            severity: Severity::High,
+            outcome,
+        };
+        let first = CheckReport {
+            results: vec![
+                result("a", CheckOutcome::Fail),
+                result("b", CheckOutcome::Pass),
+            ],
+            findings: vec![],
+        };
+        state.replace_check_run("p.one", &first, "t").unwrap();
+        // Not enabled yet: nothing counts.
+        assert!(state.list_check_results().unwrap().is_empty());
+        state.set_plugin_enabled("p.one", true).unwrap();
+        assert_eq!(state.list_check_results().unwrap().len(), 2);
+
+        // A new run replaces the old one completely.
+        let second = CheckReport {
+            results: vec![result("a", CheckOutcome::Pass)],
+            findings: vec![],
+        };
+        state.replace_check_run("p.one", &second, "t2").unwrap();
+        let stored = state.list_check_results().unwrap();
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0].outcome, CheckOutcome::Pass);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

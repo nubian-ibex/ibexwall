@@ -196,7 +196,7 @@ impl Supervisor {
         &self,
         id: &str,
         config: serde_json::Value,
-    ) -> Result<Vec<serde_json::Value>> {
+    ) -> Result<ibexwall_proto::CheckReport> {
         self.ensure_running(id).await?;
         let entry = self
             .plugins
@@ -209,11 +209,13 @@ impl Supervisor {
         )
         .await
         .map_err(|e| anyhow::anyhow!("plugin Check call failed: {e}"))?;
-        Ok(reply
-            .get("findings")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default())
+        let mut report: ibexwall_proto::CheckReport = serde_json::from_value(reply)
+            .context("plugin Check reply does not match CheckReport")?;
+        // A plugin may only report on itself.
+        for finding in &mut report.findings {
+            finding.plugin = id.to_string();
+        }
+        Ok(report)
     }
 
     /// Calls `com.ibexwall.Plugin.Verify` after applying a transaction.

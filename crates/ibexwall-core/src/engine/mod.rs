@@ -104,13 +104,14 @@ impl Engine {
                         prior,
                     });
                 }
-                Op::SystemdUnit { unit, .. } => {
+                Op::SystemdUnit { unit, action, .. } => {
                     let snapshot = self.sys.systemd.snapshot(unit)?;
                     entries.push(SnapshotEntry::Unit {
                         op_index: index,
                         unit: unit.clone(),
                         enabled: serde_json::to_string(&snapshot.enabled)?,
                         active: snapshot.active,
+                        restarted: *action == ibexwall_proto::UnitAction::Restart,
                     });
                 }
                 Op::SysctlSet { key, .. } => {
@@ -469,6 +470,70 @@ mod tests {
                 assert_eq!(after.enabled, enabled);
             }
         }
+    }
+
+    #[test]
+    fn a_restarted_unit_is_restarted_again_after_files_are_restored() {
+        // A service that reads a config file must reload the restored
+        // content: the restart goes after the file inverses, not before.
+        let rig = rig("rs", false);
+        rig.systemd.seed(
+            "ibexwall-test.service",
+            UnitSnapshot {
+                enabled: Enabled::Enabled,
+                active: true,
+            },
+        );
+        let ops = vec![
+            Op::FileWrite {
+                path: "/etc/ibexwall-tests/a.conf".into(),
+                content: "new\n".into(),
+                mode: "0644".into(),
+                owner: "root".into(),
+                group: "root".into(),
+            },
+            Op::SystemdUnit {
+                unit: "ibexwall-test.service".into(),
+                action: UnitAction::Restart,
+                now: None,
+            },
+        ];
+        rig.engine.snapshot(&rig.state, "txr", &ops).unwrap();
+        rig.engine.execute(None, &ops).unwrap();
+        let before = rig.systemd.log.len();
+        rig.engine.rollback(&rig.state, "txr").unwrap();
+        let during_rollback = rig.systemd.log.snapshot()[before..].to_vec();
+        assert_eq!(
+            during_rollback.last().map(String::as_str),
+            Some("Restart ibexwall-test.service now=false"),
+            "{during_rollback:?}"
+        );
+    }
+
+    #[test]
+    fn a_unit_that_was_stopped_is_not_restarted_by_rollback() {
+        let rig = rig("rs2", false);
+        rig.systemd.seed(
+            "ibexwall-test.service",
+            UnitSnapshot {
+                enabled: Enabled::Enabled,
+                active: false,
+            },
+        );
+        let ops = vec![Op::SystemdUnit {
+            unit: "ibexwall-test.service".into(),
+            action: UnitAction::Restart,
+            now: None,
+        }];
+        rig.engine.snapshot(&rig.state, "txr2", &ops).unwrap();
+        rig.engine.execute(None, &ops).unwrap();
+        let before = rig.systemd.log.len();
+        rig.engine.rollback(&rig.state, "txr2").unwrap();
+        let during = rig.systemd.log.snapshot()[before..].to_vec();
+        assert!(
+            !during.iter().any(|e| e.starts_with("Restart")),
+            "{during:?}"
+        );
     }
 
     #[test]

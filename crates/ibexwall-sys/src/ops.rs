@@ -32,6 +32,10 @@ pub enum SnapshotEntry {
         unit: String,
         enabled: String,
         active: bool,
+        /// The forward op restarted the unit, so rollback restarts it
+        /// again once the files it reads are restored.
+        #[serde(default)]
+        restarted: bool,
     },
     Sysctl {
         op_index: usize,
@@ -317,6 +321,20 @@ pub fn apply_snapshot_inverses(
                 }
             }
             SnapshotEntry::NoInverse { .. } => {}
+        }
+    }
+    // Second pass: services restarted by the transaction pick up the
+    // restored files. Only units that were running before are restarted;
+    // a stopped one was already stopped by the first pass.
+    for entry in &manifest.entries {
+        if let SnapshotEntry::Unit {
+            unit,
+            active: true,
+            restarted: true,
+            ..
+        } = entry
+        {
+            sys.systemd.apply(unit, UnitAction::Restart, false)?;
         }
     }
     Ok(())

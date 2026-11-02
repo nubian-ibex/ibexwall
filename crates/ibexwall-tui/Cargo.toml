@@ -1,6 +1,6 @@
 [package]
 name = "ibexwall-tui"
-description = "IbexWall terminal UI, used by ibexctl tui"
+description = "IbexWall terminal UI (used by ibexctl tui)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,3 +10,12 @@ publish = false
 
 [lints]
 workspace = true
+
+[dependencies]
+ibexwall-proto.workspace = true
+ibexwall-varlink.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true

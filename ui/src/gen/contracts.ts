@@ -126,6 +126,7 @@ export interface AllContracts {
   CheckReport?: CheckReport;
   CheckResult?: CheckResult;
   Conflicts?: Conflicts;
+  DnsStatus?: DnsStatus;
   Event?: Event;
   ExecAllow?: ExecAllow;
   Finding?: Finding;
@@ -237,6 +238,22 @@ export interface CheckResult {
 }
 export interface Conflicts {
   units?: string[];
+}
+/**
+ * Secure DNS counters, published by the resolver. Counts only: the
+ * resolver never records query names.
+ */
+export interface DnsStatus {
+  blocked_canary: number;
+  blocked_doh: number;
+  blocked_list: number;
+  forwarded: number;
+  /**
+   * False when no resolver has published anything.
+   */
+  running: boolean;
+  updated_at: string;
+  upstream_errors: number;
 }
 /**
  * Event on the bus. `data` is structured by source; `untrusted` carries

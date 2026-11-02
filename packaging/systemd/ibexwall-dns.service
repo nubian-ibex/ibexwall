@@ -21,6 +21,8 @@ NoNewPrivileges=yes
 
 # Reads /etc/ibexwall/dns/resolver.json; writes only its own block lists.
 StateDirectory=ibexwall/blocklists
+# Where the counters are published for the core (tmpfiles.d creates it).
+ReadWritePaths=/run/ibexwall/dns
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes

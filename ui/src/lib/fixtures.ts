@@ -2,6 +2,7 @@
 // Scenarios mirror real situations; the "attention" data comes from the
 // Fedora cloud-image fixtures collected for the check plugins.
 import type {
+  DnsStatus,
   CheckResult,
   Finding,
   HistoryEntry,
@@ -113,7 +114,7 @@ const DNS_PLUGIN: PluginInfo = {
   name: 'Secure DNS',
   version: '0.1.0',
   kinds: ['check', 'control'],
-  enabled: false,
+  // On in the protected scenario: secure DNS is what protects it.
   origin: 'official',
   status: 'ok',
   compatible: true,
@@ -176,7 +177,7 @@ export class FixtureTransport implements Transport {
   }
 
   listPlugins() {
-    return this.gate(() => [...PLUGINS, DNS_PLUGIN]);
+    return this.gate(() => [...PLUGINS, { ...DNS_PLUGIN, enabled: this.scenario === 'protected' }]);
   }
 
   listFindings(plugin?: string) {
@@ -184,6 +185,18 @@ export class FixtureTransport implements Transport {
       if (this.scenario === 'empty' || this.scenario === 'protected') return [];
       return plugin ? FINDINGS.filter((f) => f.plugin === plugin) : FINDINGS;
     });
+  }
+
+  getDnsStatus() {
+    return this.gate((): DnsStatus => ({
+      running: this.scenario === 'protected',
+      updated_at: '2026-11-01T12:00:00Z',
+      forwarded: this.scenario === 'protected' ? 8421 : 0,
+      blocked_list: this.scenario === 'protected' ? 356 : 0,
+      blocked_canary: 1,
+      blocked_doh: 2,
+      upstream_errors: 0,
+    }));
   }
 
   runChecks(plugin?: string) {

@@ -167,6 +167,7 @@ async fn dispatch(
     match method {
         "GetInfo" => Ok(Reply::result(info(core))),
         "GetPosture" => Ok(Reply::result(posture(core))),
+        "GetDnsStatus" => Ok(Reply::result(dns_status(core))),
         "ListPlugins" => Ok(Reply::result(json!({ "plugins": list_plugins(core) }))),
         "SetPluginEnabled" => {
             let id = str_field(&parameters, "id")?;
@@ -285,10 +286,9 @@ async fn dispatch(
 
 fn polkit_action(method: &str) -> Option<&'static str> {
     Some(match method {
-        "GetInfo" | "GetPosture" | "ListPlugins" | "ListFindings" | "GetConfig" | "History"
-        | "Subscribe" | "RunChecks" | "GetPlugin" | "AuditVerify" | "RecentEvents" => {
-            names::POLKIT_READ
-        }
+        "GetInfo" | "GetPosture" | "GetDnsStatus" | "ListPlugins" | "ListFindings"
+        | "GetConfig" | "History" | "Subscribe" | "RunChecks" | "GetPlugin" | "AuditVerify"
+        | "RecentEvents" => names::POLKIT_READ,
         "SetPluginEnabled" => names::POLKIT_PLUGINS_MANAGE,
         "PlanChange" => names::POLKIT_PLAN,
         "Apply" | "Confirm" => names::POLKIT_APPLY,
@@ -350,6 +350,30 @@ fn info(_core: &Arc<Core>) -> Value {
             "degraded": [],
         }
     })
+}
+
+/// The resolver's published counters; counts only, never query names.
+fn dns_status(core: &Arc<Core>) -> Value {
+    let path = ibexwall_proto::names::dns_status_file();
+    let status: Value = core
+        .engine
+        .sys
+        .fs
+        .read(&path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_else(|| {
+            json!({
+                "running": false,
+                "updated_at": String::new(),
+                "forwarded": 0,
+                "blocked_list": 0,
+                "blocked_canary": 0,
+                "blocked_doh": 0,
+                "upstream_errors": 0,
+            })
+        });
+    json!({ "dns_status": status })
 }
 
 fn posture(core: &Arc<Core>) -> Value {

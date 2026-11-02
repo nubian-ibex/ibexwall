@@ -80,6 +80,11 @@ pub fn local_plugin_dir() -> PathBuf {
     path_under(&root(), LOCAL_PLUGIN_DIR)
 }
 
+/// Where the resolver publishes its counters (refreshed while running).
+pub fn dns_status_file() -> PathBuf {
+    runtime_dir().join("dns").join("status.json")
+}
+
 pub fn core_socket() -> PathBuf {
     runtime_dir().join("core.sock")
 }
@@ -108,10 +113,19 @@ pub fn mcp_config() -> PathBuf {
 pub const ARTIFACT_SYSCTL: &str = "/etc/sysctl.d/90-ibexwall.conf";
 pub const ARTIFACT_RESOLVED: &str = "/etc/systemd/resolved.conf.d/50-ibexwall.conf";
 pub const ARTIFACT_NM_DNS: &str = "/etc/NetworkManager/conf.d/50-ibexwall-dns.conf";
+/// The secure DNS resolver's settings file, written by `net.dns` and read
+/// by `ibexwall-dns` (canonical path; the engine translates under a
+/// sandbox root).
+pub const ARTIFACT_DNS_SETTINGS: &str = "/etc/ibexwall/dns/resolver.json";
 
 /// Every system artifact path IbexWall is allowed to create.
-pub fn artifact_paths() -> [&'static str; 3] {
-    [ARTIFACT_SYSCTL, ARTIFACT_RESOLVED, ARTIFACT_NM_DNS]
+pub fn artifact_paths() -> [&'static str; 4] {
+    [
+        ARTIFACT_SYSCTL,
+        ARTIFACT_RESOLVED,
+        ARTIFACT_NM_DNS,
+        ARTIFACT_DNS_SETTINGS,
+    ]
 }
 
 // nftables.

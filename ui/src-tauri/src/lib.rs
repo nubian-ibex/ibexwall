@@ -41,6 +41,7 @@ macro_rules! command {
 
 command!(get_info, "GetInfo");
 command!(get_posture, "GetPosture");
+command!(get_dns_status, "GetDnsStatus");
 command!(list_plugins, "ListPlugins");
 command!(list_findings, "ListFindings");
 command!(run_checks, "RunChecks");
@@ -154,6 +155,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_info,
             get_posture,
+            get_dns_status,
             list_plugins,
             list_findings,
             run_checks,

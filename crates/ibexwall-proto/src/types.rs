@@ -73,6 +73,21 @@ pub struct Posture {
     pub results: Vec<CheckResult>,
 }
 
+/// Secure DNS counters, published by the resolver. Counts only: the
+/// resolver never records query names.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DnsStatus {
+    /// False when no resolver has published anything.
+    pub running: bool,
+    pub updated_at: String,
+    pub forwarded: u64,
+    pub blocked_list: u64,
+    pub blocked_canary: u64,
+    pub blocked_doh: u64,
+    pub upstream_errors: u64,
+}
+
 /// Reference to a control in an external framework (own wording only;
 /// never copy protected norm texts).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

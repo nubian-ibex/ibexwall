@@ -3,7 +3,7 @@
 
 # STATUS
 
-Last updated: 2026-11-01 (F1 complete, awaiting review)
+Last updated: 2026-11-01 (F2 in progress: M1-M8 done)
 
 ## Current phase
 
@@ -105,3 +105,38 @@ Still open:
 - Adapter ops stay validate-only until F3-F5.
 - Fedora VM first provision needs network (also true for every distro
   now: polkit and python3 are installed from the distro mirror).
+
+## F2 progress (2026-11-01)
+
+Done and verified (workspace 157 tests, clippy/fmt/deny clean, pushed):
+- M1 SDK + check results contract + real score (ADR-0027 permissive
+  varlink crate; core stores results, computes the spec formula).
+- M2 system.ports; M3 system.posture (14 checks) with real fixtures from
+  five distros collected by `xtask vm-test --phase fixtures`; two check
+  bugs found and fixed by those fixtures (suid_dumpable=2 is safe;
+  ufw.service runs even when ufw is disabled).
+- M4/M5 UI (Svelte 5): tokens, Fluent en/pt-BR, generated TS contracts,
+  fixture transport, Overview, Posture (formula disclosed), Plugins
+  (permissions, simulate/apply/confirm/undo), History; StateMessage for
+  loading/empty/error/denied.
+- M6 (part): Playwright e2e with axe (12 tests, 2 themes x 2 locales,
+  keyboard, skip link) against the built app.
+- M7 TUI behind `ibexctl tui` (ratatui 0.30; bumped to drop the
+  unmaintained `paste` crate, RUSTSEC-2024-0436).
+- M8 session agent (user unit, notifications for high/critical, .desktop
+  inventory with proptest-hardened parser).
+
+Remaining for F2:
+- M6 (rest): the Tauri shell itself. BLOCKED on host packages
+  (webkit2gtk4.1-devel, libsoup3-devel, librsvg2-devel): the user was
+  asked to `sudo dnf install` them.
+- M9: ADR-0026 executor (ibexwall-exec in a transient unit; daemon unit
+  drops /etc from ReadWritePaths; VM scenario for out-of-dir writes).
+- M10: VM phase f2 (posture/ports on five distros, UI e2e against a real
+  daemon), threat model + capabilities matrix updates, phase report.
+
+Notes:
+- Local lesson: pipe-to-tail masks exit codes; the CI workflow runs the
+  checks directly, so it does not have this problem.
+- `cargo deny` flags nothing; coverage numbers from F1 still hold for the
+  core (the new UI/TUI/agent are not in the 80% core target).

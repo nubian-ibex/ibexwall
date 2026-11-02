@@ -3,7 +3,7 @@ app-tagline = Proteção do sistema
 nav-label = Navegação principal
 nav-overview = Visão geral
 nav-plugins = Plugins
-nav-posture = Postura do sistema
+nav-posture = Segurança do sistema
 nav-history = Histórico
 nav-settings = Configurações
 sidebar-status-active = Proteção ativa
@@ -128,7 +128,7 @@ applied-committed = Alterações aplicadas
 applied-rolled-back = Alterações desfeitas
 simulate-empty = Nada a alterar
 
-posture-title = Postura do sistema
+posture-title = Segurança do sistema
 posture-subtitle = Cada verificação, o que significa e quanto vale
 posture-how-title = Como calculamos
 posture-how-intro = Cada verificação tem um peso por severidade. A pontuação é a soma dos pesos das verificações em dia, dividida pelos pesos das verificações que se aplicam a este computador.

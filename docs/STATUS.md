@@ -15,7 +15,8 @@ remainder (DoH endpoints, browser policies, captive portal, counters,
 latency evidence) is being finished. Plan: `docs/plans/F3-secure-dns.md`.
 Run the app with `scripts/dev-sandbox.sh` (sandboxed daemon, host
 untouched). Manual runs on Omarchy and EndeavourOS are deferred by the
-maintainer. Next: F4 planning.
+maintainer. F4 is planned (`docs/plans/F4-apps-traffic.md`, spikes S4-a to
+S4-c first: eBPF portability across the five distros is the gate).
 
 ## What exists
 

@@ -32,6 +32,8 @@ tokio = { version = "1", features = [
   "signal",
 ] }
 tokio-stream = { version = "0.1", features = ["sync"] }
+hickory-server = { version = "0.26", default-features = false, features = ["resolver"] }
+hickory-resolver = { version = "0.26", default-features = false, features = ["tokio", "tls-ring", "https-ring", "quic-ring", "h3-ring", "webpki-roots"] }
 zbus = { version = "6", default-features = false, features = ["tokio"] }
 rusqlite = { version = "0.41", features = ["bundled"] }
 rustix = { version = "1", features = ["fs", "net", "process", "system"] }

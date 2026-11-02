@@ -56,6 +56,10 @@ struct Config {
     /// Custom upstreams; when present they replace the provider.
     servers: Vec<Server>,
     lists: Vec<ListRef>,
+    /// One block list by preset id, for the command line
+    /// (`ibexctl plan net.dns --set list=oisd-small`).
+    #[serde(default)]
+    list: Option<String>,
     block_response: BlockResponse,
     block_doh: bool,
     allow: Vec<String>,
@@ -79,6 +83,7 @@ impl Default for Config {
             allow: vec![],
             enforcement: true,
             browser_policies: false,
+            list: None,
         }
     }
 }
@@ -107,7 +112,16 @@ impl Config {
     }
 
     fn settings(&self) -> Result<Settings, PluginError> {
-        for list in &self.lists {
+        let mut lists = self.lists.clone();
+        if let Some(list) = &self.list
+            && !lists.iter().any(|entry| &entry.id == list)
+        {
+            lists.push(ListRef {
+                id: list.clone(),
+                url: None,
+            });
+        }
+        for list in &lists {
             list.resolve()
                 .map_err(|e| PluginError::invalid("lists", e.to_string()))?;
         }
@@ -119,7 +133,7 @@ impl Config {
             block: vec![],
             allow: self.allow.clone(),
             doh_endpoints: vec![],
-            lists: self.lists.clone(),
+            lists,
             doh_list: self.block_doh.then(|| ListRef {
                 id: DOH_ENDPOINTS_ID.into(),
                 url: Some(DOH_ENDPOINTS_URL.into()),
@@ -170,11 +184,7 @@ fn plan(sandbox: &Sandbox, config: Config) -> Result<Vec<Op>, PluginError> {
     let settings = config.settings()?;
     let settings_json = serde_json::to_string_pretty(&settings)
         .map_err(|e| PluginError::invalid("settings", e.to_string()))?;
-    let settings_path = names::config_dir()
-        .join("dns")
-        .join("resolver.json")
-        .to_string_lossy()
-        .into_owned();
+    let settings_path = names::ARTIFACT_DNS_SETTINGS.to_string();
     let write = |path: String, content: String| Op::FileWrite {
         path,
         content,
@@ -536,6 +546,23 @@ mod tests {
         )
         .unwrap();
         assert!(!ops.iter().any(|op| matches!(op, Op::BrowserPolicy { .. })));
+    }
+
+    #[test]
+    fn a_single_list_choice_resolves_like_the_array_form() {
+        let (_root, _sandbox) = resolved_tree("onelist");
+        let config = Config::parse(json!({ "list": "oisd-small" })).unwrap();
+        let settings = config.settings().unwrap();
+        assert_eq!(
+            settings.lists,
+            vec![ListRef {
+                id: "oisd-small".into(),
+                url: None
+            }]
+        );
+        // A custom list id still needs a url and is refused.
+        let bad = Config::parse(json!({ "list": "mine" })).unwrap();
+        assert!(bad.settings().is_err());
     }
 
     #[test]

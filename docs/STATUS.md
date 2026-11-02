@@ -3,20 +3,19 @@
 
 # STATUS
 
-Last updated: 2026-11-02 (F2 and F3 accepted; F3 remainder in progress)
+Last updated: 2026-11-02 (F3 delivered, report ready for acceptance)
 
 ## Current phase
 
-**F3: secure DNS, remainder in progress (autonomous mode): enforcement,
-DoH endpoints, browser policies, counters, latency evidence and both
-failure modes done; 13 VM scenarios green on five distros.** F0 to F2
+**F3: secure DNS, delivered (report: `docs/reports/F3-report.md`, awaiting
+maintainer acceptance).** 13 VM scenarios green on five distros. F0 to F2
 accepted (F2 report: `docs/reports/F2-report.md`); the F3 core (resolver,
 lists, resolved backend, enforcement, DNS screen) is accepted and the
 remainder (DoH endpoints, browser policies, captive portal, counters,
 latency evidence) is being finished. Plan: `docs/plans/F3-secure-dns.md`.
 Run the app with `scripts/dev-sandbox.sh` (sandboxed daemon, host
 untouched). Manual runs on Omarchy and EndeavourOS are deferred by the
-maintainer.
+maintainer. Next: F4 planning.
 
 ## What exists
 

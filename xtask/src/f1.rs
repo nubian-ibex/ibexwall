@@ -33,72 +33,7 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
         "building release binaries",
     )?;
     crate::devkey::run()?;
-
-    let release = workspace.join("target/release");
-    let plugin = workspace.join("plugins/dev.echo");
-
-    println!("== f1: provision ==");
-    // Packages must install; a silent failure here hides distro drift.
-    vm.ssh(install)
-        .context("installing polkit and python3 in the VM")?;
-    vm.ssh("sudo systemctl start polkit.service")?;
-    vm.ssh("sudo mkdir -p /usr/lib/ibexwall/plugins/dev.echo /etc/ibexwall /var/lib/ibexwall /run/ibexwall /usr/share/polkit-1/actions")?;
-    pipe_file(
-        vm,
-        &release.join("ibexwalld"),
-        "sudo tee /usr/bin/ibexwalld >/dev/null && sudo chmod 755 /usr/bin/ibexwalld",
-    )?;
-    pipe_file(
-        vm,
-        &release.join("ibexctl"),
-        "sudo tee /usr/bin/ibexctl >/dev/null && sudo chmod 755 /usr/bin/ibexctl",
-    )?;
-    pipe_file(
-        vm,
-        &release.join("ibexwall-exec"),
-        "sudo tee /usr/bin/ibexwall-exec >/dev/null && sudo chmod 755 /usr/bin/ibexwall-exec",
-    )?;
-    pipe_file(
-        vm,
-        &release.join("ibexwall-plugin-echo"),
-        "sudo tee /usr/lib/ibexwall/plugins/dev.echo/ibexwall-plugin-echo >/dev/null && sudo chmod 755 /usr/lib/ibexwall/plugins/dev.echo/ibexwall-plugin-echo",
-    )?;
-    pipe_file(
-        vm,
-        &plugin.join("plugin.toml"),
-        "sudo tee /usr/lib/ibexwall/plugins/dev.echo/plugin.toml >/dev/null",
-    )?;
-    pipe_file(
-        vm,
-        &plugin.join("plugin.toml.sig"),
-        "sudo tee /usr/lib/ibexwall/plugins/dev.echo/plugin.toml.sig >/dev/null",
-    )?;
-    pipe_file(
-        vm,
-        &workspace.join("target/devkey/dev.pub"),
-        "sudo mkdir -p /etc/ibexwall/trust && sudo tee /etc/ibexwall/trust/dev.pub >/dev/null",
-    )?;
-    pipe_data(
-        vm,
-        include_str!("../../packaging/polkit/com.ibexwall.policy"),
-        "sudo tee /usr/share/polkit-1/actions/com.ibexwall.policy >/dev/null",
-    )?;
-    pipe_data(
-        vm,
-        include_str!("../../packaging/systemd/ibexwalld.service"),
-        "sudo tee /etc/systemd/system/ibexwalld.service >/dev/null",
-    )?;
-    pipe_data(
-        vm,
-        include_str!("../../packaging/systemd/ibexwalld.socket"),
-        "sudo tee /etc/systemd/system/ibexwalld.socket >/dev/null",
-    )?;
-    // Test-only drop-in: trust the dev plugin key (not packaged).
-    pipe_data(
-        vm,
-        "[Service]\nExecStart=\nExecStart=/usr/bin/ibexwalld --dev-key=/etc/ibexwall/trust/dev.pub\n",
-        "sudo mkdir -p /etc/systemd/system/ibexwalld.service.d && sudo tee /etc/systemd/system/ibexwalld.service.d/dev.conf >/dev/null",
-    )?;
+    provision(vm, workspace, install)?;
     start_daemon(vm)?;
 
     let mut failures = 0;
@@ -252,7 +187,88 @@ RC=$?
     }
 }
 
-fn start_daemon(vm: &Vm) -> Result<()> {
+/// Installs binaries, units, policy and plugins into the VM. Shared by
+/// the f1 and f2 phases.
+pub(crate) fn provision(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
+    println!("== provision ==");
+    // Packages must install; a silent failure here hides distro drift.
+    vm.ssh(install)
+        .context("installing polkit and python3 in the VM")?;
+    vm.ssh("sudo systemctl start polkit.service")?;
+    vm.ssh(
+        "sudo mkdir -p /usr/lib/ibexwall/plugins /etc/ibexwall /var/lib/ibexwall /run/ibexwall /usr/share/polkit-1/actions",
+    )?;
+
+    let release = workspace.join("target/release");
+    install_binary(vm, &release.join("ibexwalld"), "/usr/bin/ibexwalld")?;
+    install_binary(vm, &release.join("ibexctl"), "/usr/bin/ibexctl")?;
+    install_binary(vm, &release.join("ibexwall-exec"), "/usr/bin/ibexwall-exec")?;
+    install_plugin(vm, workspace, "dev.echo")?;
+    pipe_file(
+        vm,
+        &workspace.join("target/devkey/dev.pub"),
+        "sudo mkdir -p /etc/ibexwall/trust && sudo tee /etc/ibexwall/trust/dev.pub >/dev/null",
+    )?;
+    pipe_data(
+        vm,
+        include_str!("../../packaging/polkit/com.ibexwall.policy"),
+        "sudo tee /usr/share/polkit-1/actions/com.ibexwall.policy >/dev/null",
+    )?;
+    pipe_data(
+        vm,
+        include_str!("../../packaging/systemd/ibexwalld.service"),
+        "sudo tee /etc/systemd/system/ibexwalld.service >/dev/null",
+    )?;
+    pipe_data(
+        vm,
+        include_str!("../../packaging/systemd/ibexwalld.socket"),
+        "sudo tee /etc/systemd/system/ibexwalld.socket >/dev/null",
+    )?;
+    // Test-only drop-in: trust the dev plugin key (not packaged).
+    pipe_data(
+        vm,
+        "[Service]\nExecStart=\nExecStart=/usr/bin/ibexwalld --dev-key=/etc/ibexwall/trust/dev.pub\n",
+        "sudo mkdir -p /etc/systemd/system/ibexwalld.service.d && sudo tee /etc/systemd/system/ibexwalld.service.d/dev.conf >/dev/null",
+    )?;
+    Ok(())
+}
+
+/// Copies a binary to `destination` (0755).
+pub(crate) fn install_binary(vm: &Vm, local: &Path, destination: &str) -> Result<()> {
+    pipe_file(
+        vm,
+        local,
+        &format!("sudo tee {destination} >/dev/null && sudo chmod 755 {destination}"),
+    )
+}
+
+/// Installs one plugin (binary, manifest, signature) from plugins/<id>/.
+pub(crate) fn install_plugin(vm: &Vm, workspace: &Path, id: &str) -> Result<()> {
+    let dir = workspace.join("plugins").join(id);
+    let bin = format!(
+        "ibexwall-plugin-{}",
+        id.rsplit('.').next().unwrap_or_default()
+    );
+    let target = format!("/usr/lib/ibexwall/plugins/{id}");
+    vm.ssh(&format!("sudo mkdir -p {target}"))?;
+    install_binary(
+        vm,
+        &workspace.join("target/release").join(&bin),
+        &format!("{target}/{bin}"),
+    )?;
+    pipe_file(
+        vm,
+        &dir.join("plugin.toml"),
+        &format!("sudo tee {target}/plugin.toml >/dev/null"),
+    )?;
+    pipe_file(
+        vm,
+        &dir.join("plugin.toml.sig"),
+        &format!("sudo tee {target}/plugin.toml.sig >/dev/null"),
+    )
+}
+
+pub(crate) fn start_daemon(vm: &Vm) -> Result<()> {
     vm.ssh("sudo systemctl daemon-reload && sudo systemctl start ibexwalld.socket")?;
     for _ in 0..30 {
         if vm.ssh("sudo ibexctl status --json").is_ok() {
@@ -294,7 +310,7 @@ fn pipe_data(vm: &Vm, data: &str, remote_cmd: &str) -> Result<()> {
     Ok(())
 }
 
-fn run_script(vm: &Vm, name: &str, script: &str) -> bool {
+pub(crate) fn run_script(vm: &Vm, name: &str, script: &str) -> bool {
     let mut child = match vm
         .ssh_base()
         .arg("bash -s")

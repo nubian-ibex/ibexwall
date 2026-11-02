@@ -106,8 +106,9 @@ pub fn run(distro: &str, phase: Option<&str>) -> Result<()> {
     match phase {
         None | Some("f0") => f0_smoke(&vm, &workspace),
         Some("f1") => crate::f1::run(&vm, &workspace, entry.install),
+        Some("f2") => crate::f2::run(&vm, &workspace, entry.install),
         Some("fixtures") => crate::fixtures::run(&vm, &workspace, entry.id),
-        Some(other) => bail!("unknown phase `{other}` (supported: f0, f1, fixtures)"),
+        Some(other) => bail!("unknown phase `{other}` (supported: f0, f1, f2, fixtures)"),
     }
 }
 

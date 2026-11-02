@@ -46,6 +46,10 @@ async fn main() {
 }
 
 async fn run() -> Result<()> {
+    if std::env::args().nth(1).as_deref() == Some("--failsafe") {
+        ibexwall_dns::failsafe::run(&names::root()).context("failsafe")?;
+        return Ok(());
+    }
     let path = settings_path();
     let settings: Settings = serde_json::from_slice(
         &std::fs::read(&path).with_context(|| format!("reading {}", path.display()))?,

@@ -7,6 +7,7 @@
 pub mod blocklist;
 pub mod config;
 pub mod daemon;
+pub mod failsafe;
 pub mod handler;
 pub mod lists;
 pub mod policy;

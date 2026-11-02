@@ -1,0 +1,34 @@
+[Unit]
+Description=IbexWall secure DNS failsafe (restore the previous DNS configuration)
+Documentation=https://ibexwall.org
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/ibexwall-dns --failsafe
+
+# Needs to remove one drop-in and restart the system resolver, nothing else.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+MemoryDenyWriteExecute=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+SystemCallFilter=@system-service
+UMask=0077
+ProtectSystem=strict
+ReadWritePaths=/etc/systemd/resolved.conf.d
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native

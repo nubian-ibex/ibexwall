@@ -2168,6 +2168,18 @@ name = "ibexwall-mcp"
 version = "0.1.0"
 
 [[package]]
+name = "ibexwall-plugin-dns"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-dns",
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "ibexwall-plugin-echo"
 version = "0.1.0"
 dependencies = [

@@ -12,7 +12,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::blocklist::{self, MAX_LIST_BYTES, ParseError, Parsed};
 
@@ -87,12 +87,12 @@ pub fn preset(id: &str) -> Option<&'static Preset> {
 
 /// A list entry in the settings: a preset by id, or a custom HTTPS URL
 /// under a user-chosen id.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ListRef {
     pub id: String,
     /// Required for custom lists; ignored for presets.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
 }
 

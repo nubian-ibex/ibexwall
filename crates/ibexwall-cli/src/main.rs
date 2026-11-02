@@ -214,7 +214,16 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
                     .split_once('=')
                     .with_context(|| format!("--set expects KEY=VALUE, got `{set}`"))
                     .map_err(CliError::Other)?;
-                config.insert(key.into(), serde_json::Value::String(value.into()));
+                // Numbers and booleans arrive as JSON, everything else as a
+                // string: plugins declare real types for their config.
+                let parsed = serde_json::from_str::<serde_json::Value>(value)
+                    .unwrap_or(serde_json::Value::String(value.to_string()));
+                if parsed.is_string() && value.contains('=') {
+                    return Err(CliError::Other(anyhow::anyhow!(
+                        "--set expects KEY=VALUE, got `{set}`"
+                    )));
+                }
+                config.insert(key.into(), parsed);
             }
             let params = serde_json::json!({ "plugin": plugin, "patch": config });
             let value = client.call("com.ibexwall.Core.PlanChange", params).await?;

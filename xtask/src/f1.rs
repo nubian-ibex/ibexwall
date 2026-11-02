@@ -9,11 +9,11 @@
 use std::io::Write;
 use std::path::Path;
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 
 use super::vm::{Vm, run_capture};
 
-pub fn run(vm: &Vm, workspace: &Path) -> Result<()> {
+pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     println!("== f1: build + devkey ==");
     run_capture(
         "cargo",
@@ -36,7 +36,10 @@ pub fn run(vm: &Vm, workspace: &Path) -> Result<()> {
     let plugin = workspace.join("plugins/dev.echo");
 
     println!("== f1: provision ==");
-    vm.ssh("rpm -q polkit >/dev/null 2>&1 || sudo dnf install -y polkit >/dev/null 2>&1; sudo systemctl start polkit.service 2>&1 || true")?;
+    // Packages must install; a silent failure here hides distro drift.
+    vm.ssh(install)
+        .context("installing polkit and python3 in the VM")?;
+    vm.ssh("sudo systemctl start polkit.service")?;
     vm.ssh("sudo mkdir -p /usr/lib/ibexwall/plugins/dev.echo /etc/ibexwall /var/lib/ibexwall /run/ibexwall /usr/share/polkit-1/actions")?;
     pipe_file(
         vm,

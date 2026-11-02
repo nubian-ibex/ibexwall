@@ -75,6 +75,20 @@ impl RealSystemd {
     }
 }
 
+/// Maps the text of `systemctl is-enabled` (documented in systemctl(1)) to
+/// a state. An empty answer or `not-found` means the unit does not exist.
+fn classify_enabled(text: &str) -> anyhow::Result<Enabled> {
+    match text.trim() {
+        "enabled" | "enabled-runtime" => Ok(Enabled::Enabled),
+        // A linked unit file is not enabled: disabling it is the inverse.
+        "disabled" | "linked" | "linked-runtime" => Ok(Enabled::Disabled),
+        "masked" | "masked-runtime" => Ok(Enabled::Masked),
+        "static" | "alias" | "indirect" | "generated" | "transient" => Ok(Enabled::Static),
+        "" | "not-found" => Ok(Enabled::NotFound),
+        other => anyhow::bail!("unexpected is-enabled output: {other}"),
+    }
+}
+
 fn systemctl(args: &[&str]) -> anyhow::Result<String> {
     let output = Command::new("systemctl").args(args).output()?;
     if !output.status.success() {
@@ -148,16 +162,13 @@ impl Systemd for RealSystemd {
             self.enabled,
             "systemd control is disabled under IBEXWALL_ROOT"
         );
-        let enabled = match systemctl(&["is-enabled", unit]) {
-            Ok(text) => match text.trim() {
-                "enabled" => Enabled::Enabled,
-                "disabled" => Enabled::Disabled,
-                "masked" => Enabled::Masked,
-                "static" | "alias" | "indirect" => Enabled::Static,
-                other => anyhow::bail!("unexpected is-enabled output for {unit}: {other}"),
-            },
-            Err(_) => Enabled::NotFound,
-        };
+        // `is-enabled` prints the state but exits non-zero for every state
+        // that is not "enabled" (a disabled unit exits 1), so the exit
+        // status says nothing; only the text does.
+        let output = Command::new("systemctl")
+            .args(["is-enabled", unit])
+            .output()?;
+        let enabled = classify_enabled(&String::from_utf8_lossy(&output.stdout))?;
         let active = systemctl(&["is-active", "--quiet", unit])
             .map(|_| true)
             .unwrap_or(false);
@@ -258,6 +269,24 @@ impl Systemd for FakeSystemd {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn is_enabled_text_maps_to_states_including_the_non_zero_exit_ones() {
+        for (text, expected) in [
+            ("enabled\n", Enabled::Enabled),
+            ("enabled-runtime\n", Enabled::Enabled),
+            ("disabled\n", Enabled::Disabled),
+            ("linked\n", Enabled::Disabled),
+            ("masked\n", Enabled::Masked),
+            ("static\n", Enabled::Static),
+            ("indirect\n", Enabled::Static),
+            ("not-found\n", Enabled::NotFound),
+            ("", Enabled::NotFound),
+        ] {
+            assert_eq!(classify_enabled(text).unwrap(), expected, "{text:?}");
+        }
+        assert!(classify_enabled("surprise").is_err());
+    }
 
     #[test]
     fn fake_systemd_tracks_state_and_logs() {

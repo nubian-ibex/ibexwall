@@ -309,8 +309,8 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
             }
         }
         Command::Tui => {
-            // The TUI owns the terminal and creates its own runtime.
-            drop(client);
+            // The TUI owns the terminal and creates its own runtime; the
+            // control connection stays open (a local unix socket).
             let socket = names::core_socket();
             ibexwall_tui::run(&socket).map_err(CliError::Other)?;
             Ok(Finish::Done)

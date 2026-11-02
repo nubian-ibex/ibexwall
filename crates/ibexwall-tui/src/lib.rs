@@ -66,9 +66,11 @@ fn event_loop(terminal: &mut ratatui::DefaultTerminal, socket: &Path) -> Result<
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-    let mut model = AppModel::default();
     // Initial load; a daemon that is down shows the error state, not a crash.
-    model.loading = true;
+    let mut model = AppModel {
+        loading: true,
+        ..AppModel::default()
+    };
     if let Err(err) = runtime.block_on(refresh(socket, &mut model)) {
         model.error = Some(format!("{err:#}"));
     }
@@ -177,15 +179,17 @@ mod tests {
     #[test]
     fn overview_renders_the_headline_as_text() {
         use ratatui::backend::TestBackend;
-        let mut model = AppModel::default();
-        model.score = Some(88);
-        model.open_findings = 2;
+        let model = AppModel {
+            score: Some(88),
+            open_findings: 2,
+            ..AppModel::default()
+        };
         let mut terminal = ratatui::Terminal::new(TestBackend::new(60, 12)).unwrap();
         terminal.draw(|frame| draw(frame, &model)).unwrap();
         let buffer = terminal.backend().buffer().clone();
         let content: String = buffer
             .content()
-            .into_iter()
+            .iter()
             .map(|cell| cell.symbol().to_string())
             .collect();
         assert!(content.contains("Score 88/100 · 2 open finding(s)"));

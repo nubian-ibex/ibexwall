@@ -2,6 +2,7 @@
   // The reviewed-change flow every control plugin shares: simulate (show
   // exactly what would change), apply, keep within the deadline or undo.
   import { app } from '../lib/app.svelte';
+  import { TransportError } from '../lib/transport';
   import { t } from '../lib/i18n.svelte';
   import type { Plan, Transaction } from '../gen/contracts';
   import Button from './Button.svelte';
@@ -15,12 +16,29 @@
   let busy = $state(false);
   let applied = $state<Transaction | null>(null);
   let keepCountdown = $state<Transaction | null>(null);
+  let failure = $state<string | null>(null);
+
+  function describe(error: unknown): string {
+    // The core reports a named error with details; anything else is a
+    // transport problem the app already describes elsewhere.
+    if (error instanceof TransportError) {
+      const field = error.parameters['field'];
+      const reason = error.parameters['reason'];
+      if (typeof reason === 'string') {
+        return typeof field === 'string' ? `${field}: ${reason}` : reason;
+      }
+    }
+    return t('change-failed-other');
+  }
 
   async function simulate() {
     busy = true;
     plan = null;
+    failure = null;
     try {
       plan = await app.transport.planChange(plugin, patch);
+    } catch (error) {
+      failure = describe(error);
     } finally {
       busy = false;
     }
@@ -29,8 +47,13 @@
   async function apply() {
     if (!plan) return;
     busy = true;
+    failure = null;
     try {
-      applied = await app.transport.apply(plan.id);
+      applied = await app.transport.apply(plan.id).catch((error: unknown) => {
+        failure = describe(error);
+        return null;
+      });
+      if (!applied) return;
       plan = null;
       if (applied.state === 'pending_confirm') keepCountdown = applied;
     } finally {
@@ -55,6 +78,12 @@
   }
 </script>
 
+{#if failure}
+  <p class="failure" role="alert">
+    <strong>{t('change-failed-title')}</strong>
+    {failure}
+  </p>
+{/if}
 <div class="actions">
   <Button {busy} onclick={simulate}>{t('simulate')}</Button>
   {#if plan}
@@ -88,6 +117,15 @@
   }
   .muted {
     color: var(--muted);
+  }
+  .failure {
+    margin: 0;
+    padding: var(--space-3);
+    background: var(--warning-soft);
+    border: 1px solid var(--warning-border);
+    border-radius: var(--radius-control);
+    display: grid;
+    gap: var(--space-1);
   }
   .result {
     font-weight: 600;

@@ -16,9 +16,9 @@ for bin in ibexwalld ibexwall-desktop; do
 done
 
 plugins="$root/usr/lib/ibexwall/plugins"
-for id in system.posture system.ports; do
+for id in system.posture system.ports net.dns; do
     mkdir -p "$plugins/$id"
-    bin="ibexwall-plugin-${id#system.}"
+    bin="ibexwall-plugin-${id#*.}"
     # Copy then rename: a running plugin binary cannot be overwritten in
     # place (ETXTBSY) but it can be replaced.
     for file in "$repo/target/debug/$bin" "$repo/plugins/$id/plugin.toml" \

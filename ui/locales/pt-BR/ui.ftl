@@ -200,3 +200,6 @@ dns-enforcement-body = Nenhum programa consegue enviar consultas DNS em claro ou
 dns-block-doh = Impedir que os navegadores contornem a proteção
 dns-block-doh-body = Pede ao Firefox que mantenha o DNS próprio desligado. Nenhuma configuração do navegador muda sem a sua aprovação.
 dns-review-note = Nada muda até você revisar as alterações exatas e aplicá-las.
+
+change-failed-title = O IbexWall não pôde continuar
+change-failed-other = A solicitação falhou. Nada foi alterado.

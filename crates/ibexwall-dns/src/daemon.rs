@@ -66,7 +66,8 @@ pub fn spawn_updater(
     fetcher: Arc<dyn Fetcher>,
     handler: Handler,
 ) {
-    if settings.lists.is_empty() {
+    // Nothing to keep updated: neither block lists nor a DoH endpoints list.
+    if settings.lists.is_empty() && settings.doh_list.is_none() {
         return;
     }
     tokio::spawn(async move {

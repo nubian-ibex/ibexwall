@@ -188,7 +188,10 @@ Done and verified (workspace 202 tests, clippy/fmt/deny clean, pushed):
   start rate limit; `--set` sends typed values; a sandbox root no longer
   breaks manifest path checks.
 
-Next (see `docs/plans/F3-secure-dns.md`): the captive portal flow (M6,
-needs the S3-e decision), the TUI DNS view and agent notifications (M7), M4 adapters B2 to B4; M6 captive portal and
+- Both failure modes (`restore` by default, `block` failing closed) are
+  proven in VM (d5, d10); the agent detects captive portals and announces
+  the relief steps (ADR-0030, never auto-relieved).
+
+Next (see `docs/plans/F3-secure-dns.md`): the TUI DNS view (M7), M4 adapters B2 to B4; M6 captive portal and
 `block` mode; M7 DNS screen; more provider presets after their docs are
 read (Mullvad, AdGuard, DNS4EU, NextDNS/Control D).

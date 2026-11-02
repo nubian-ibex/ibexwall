@@ -818,6 +818,18 @@ dependencies = [
 [[package]]
 name = "ibexwall-agent"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ibexwall-proto",
+ "ibexwall-varlink",
+ "proptest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "zbus",
+]
 
 [[package]]
 name = "ibexwall-cli"

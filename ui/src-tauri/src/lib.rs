@@ -7,6 +7,9 @@
 
 use ibexwall_proto::names;
 use serde_json::{Value, json};
+use tauri::Manager;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
 /// Calls one Core method and returns its `parameters` object.
 async fn core(method: &str, parameters: Value) -> Result<Value, String> {
@@ -89,9 +92,65 @@ async fn rollback(target: String) -> Result<Value, Value> {
         .map_err(|e| err_text(&e))
 }
 
+/// Tray labels follow the session language (en or pt-BR), like the UI.
+fn tray_labels() -> (&'static str, &'static str, &'static str) {
+    let lang = std::env::var("LC_ALL")
+        .or_else(|_| std::env::var("LC_MESSAGES"))
+        .or_else(|_| std::env::var("LANG"))
+        .unwrap_or_default();
+    if lang.to_lowercase().starts_with("pt") {
+        ("Abrir o IbexWall", "Sair", "IbexWall")
+    } else {
+        ("Open IbexWall", "Quit", "IbexWall")
+    }
+}
+
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
+fn build_tray(app: &tauri::App) -> tauri::Result<()> {
+    let (open_label, quit_label, tooltip) = tray_labels();
+    let open = MenuItem::with_id(app, "open", open_label, true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", quit_label, true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&open, &quit])?;
+    let mut tray = TrayIconBuilder::new()
+        .tooltip(tooltip)
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "open" => show_main_window(app),
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                show_main_window(tray.app_handle());
+            }
+        });
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+    tray.build(app)?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            build_tray(app)?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_info,
             get_posture,

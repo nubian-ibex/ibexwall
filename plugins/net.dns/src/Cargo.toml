@@ -19,6 +19,7 @@ path = "main.rs"
 ibexwall-proto.workspace = true
 ibexwall-sdk.workspace = true
 ibexwall-dns.workspace = true
+ibexwall-sys.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

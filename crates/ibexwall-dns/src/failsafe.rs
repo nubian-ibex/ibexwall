@@ -6,15 +6,18 @@
 //! `ibexwall-dns --failsafe` when the resolver unit fails for good
 //! (`OnFailure=`).
 //!
-//! It removes only IbexWall's own drop-in and restarts the system
-//! resolver; the core sees the drift and the user is told (the session
-//! agent reports it in a later step).
+//! It removes only IbexWall's own artifacts: first the nftables chain that
+//! blocks clear DNS (otherwise the machine would have no DNS at all), then
+//! the resolved drop-in, then it restarts the system resolver. The core
+//! sees the drift and the user is told (the session agent reports it in a
+//! later step).
 
 use std::io;
 use std::path::Path;
 use std::process::Command;
 
 use ibexwall_proto::names;
+use ibexwall_sys::{Nft, RealNft};
 
 /// Removes the drop-in under `root`. Returns whether a file was removed;
 /// a missing file is success (the failsafe must be safe to repeat).
@@ -30,6 +33,11 @@ pub fn remove_dropin(root: &Path) -> io::Result<bool> {
 /// The whole failsafe against the real system. Under a sandbox root it
 /// only removes the file and never touches systemd.
 pub fn run(root: &Path) -> io::Result<()> {
+    if root == Path::new("/") {
+        RealNft
+            .restore(names::DNS_NFT_CHAIN, None)
+            .map_err(|e| io::Error::other(format!("removing the DNS guard chain: {e:#}")))?;
+    }
     let removed = remove_dropin(root)?;
     if root == Path::new("/") {
         let status = Command::new("systemctl")

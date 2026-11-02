@@ -17,11 +17,14 @@ Progress:
 - M3 plugin `net.dns`: done for the systemd-resolved stack (ADR-0029);
   failsafe unit and `--failsafe` mode done.
 - M4 backends: B1 (resolved) verified on all five distros; B2 to B4 pending.
-- M5 enforcement and DoH, M6 captive portal and failure modes (the
-  `block` mode), M7 UI/TUI/agent: pending.
-- M8: `--phase f3` has 8 scenarios passing on all five distros (apply,
-  no clear DNS in a packet capture, canary, kill, failsafe, exact
-  rollback twice); the nft enforcement and latency scenarios are pending.
+- M5 enforcement: nft chain refusing 53 and 853 for all but the resolver,
+  typed fragment with exact rollback, failsafe removes it; browser
+  policies and known-DoH endpoint lists pending.
+- M6 captive portal and the `block` failure mode, M7 UI/TUI/agent: pending.
+- M8: `--phase f3` has 9 scenarios passing on all five distros (apply,
+  no clear DNS in a packet capture, enforcement refusal, canary, kill,
+  failsafe, exact rollback twice including `nft list ruleset`); latency
+  targets pending.
 
 ## Facts checked
 

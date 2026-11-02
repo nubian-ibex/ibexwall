@@ -292,8 +292,46 @@ impl Nft for RealNft {
             commands.extend(replay_commands(prior));
         }
         run_batch(&commands, true)?;
-        run_batch(&commands, false)
+        run_batch(&commands, false)?;
+        // Leave no trace when nothing of ours remains: the table goes too.
+        if table_is_empty() {
+            let delete =
+                [json!({ "delete": { "table": { "family": "inet", "name": NFT_TABLE } } })];
+            run_batch(&delete, false)?;
+        }
+        Ok(())
     }
+}
+
+/// True when `table inet ibexwall` exists and holds no chain, set or map.
+fn table_is_empty() -> bool {
+    let Ok(output) = Command::new("nft")
+        .args(["-j", "list", "table", "inet", NFT_TABLE])
+        .output()
+    else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    let Ok(listing) = serde_json::from_slice::<Value>(&output.stdout) else {
+        return false;
+    };
+    listing["nftables"].as_array().is_some_and(|items| {
+        !items.iter().any(|item| {
+            [
+                "chain",
+                "set",
+                "map",
+                "rule",
+                "flowtable",
+                "counter",
+                "quota",
+            ]
+            .iter()
+            .any(|kind| item.get(kind).is_some())
+        })
+    })
 }
 
 /// Fake keeping chain definitions in memory, for engine tests.

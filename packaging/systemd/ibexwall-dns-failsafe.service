@@ -8,9 +8,9 @@ ExecStart=/usr/bin/ibexwall-dns --failsafe
 
 # Needs to remove one drop-in and restart the system resolver, nothing else.
 NoNewPrivileges=yes
-CapabilityBoundingSet=
-PrivateNetwork=yes
-RestrictAddressFamilies=AF_UNIX
+# CAP_NET_ADMIN and netlink only to delete IbexWall's own nftables chain.
+CapabilityBoundingSet=CAP_NET_ADMIN
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
 MemoryDenyWriteExecute=yes
 ProtectKernelLogs=yes
 ProtectClock=yes

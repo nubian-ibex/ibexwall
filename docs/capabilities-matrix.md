@@ -22,3 +22,9 @@ Component, capability and reason. Reviewed at every phase.
   a direct child of the daemon; unit-based launch arrives with packaging.
 - polkit subject: `unix-process` with pid and start-time (ADR-0025).
   pidfd subjects remain a tracked follow-up.
+- ibexwall-dns (user `ibexwall-dns`): `CAP_NET_BIND_SERVICE` only, no
+  privileges to write outside `/var/lib/ibexwall/blocklists`; exposure 1.4
+  in `systemd-analyze security --offline`.
+- ibexwall-dns-failsafe (oneshot, root): `CAP_NET_ADMIN` and netlink only
+  to delete IbexWall's own nftables chain, plus write access to
+  `/etc/systemd/resolved.conf.d`; exposure 1.8.

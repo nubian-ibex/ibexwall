@@ -7,7 +7,7 @@ Last updated: 2026-11-02 (F2 delivered; F3 planned and starting)
 
 ## Current phase
 
-**F3: secure DNS, in progress (autonomous mode): M1 to M3 done, backend B1 and 8 VM scenarios green on five distros; M5 enforcement next.** F0, F1 and F2 are
+**F3: secure DNS, in progress (autonomous mode): M1 to M3 and nft enforcement done, backend B1 and 9 VM scenarios green on five distros.** F0, F1 and F2 are
 delivered; the F2 report is `docs/reports/F2-report.md` and awaits
 maintainer acceptance. Plan: `docs/plans/F3-secure-dns.md`. Run the app
 with `scripts/dev-sandbox.sh` (sandboxed daemon, host untouched).
@@ -164,8 +164,12 @@ Done and verified (workspace 202 tests, clippy/fmt/deny clean, pushed):
 - `cargo xtask vm-test --phase f3` (8 scenarios) passes on fedora,
   ubuntu-24.04, ubuntu-26.04, debian, arch; `--phase f1` regression 5/5.
 
-Next (see `docs/plans/F3-secure-dns.md`): M5 nft enforcement (needs a typed
-fragment with an inverse in the core), known DoH endpoints, browser
+- nft enforcement: typed fragment (loopback, uid, protocol, ports,
+  verdict), checked batch, prior chain captured so rollback is exact
+  (`nft list ruleset` identical after rollback); the failsafe removes the
+  chain first.
+
+Next (see `docs/plans/F3-secure-dns.md`): known DoH endpoints, browser
 policies behind consent; M4 adapters B2 to B4; M6 captive portal and
 `block` mode; M7 DNS screen; more provider presets after their docs are
 read (Mullvad, AdGuard, DNS4EU, NextDNS/Control D).

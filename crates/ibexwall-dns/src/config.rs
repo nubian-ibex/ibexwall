@@ -5,17 +5,25 @@
 //! to use. Upstreams are always addressed by IP (bootstrap), so resolving
 //! the resolver's own upstream never needs DNS.
 
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
 use hickory_resolver::Resolver;
 use hickory_resolver::config::{NameServerConfig, ResolveHosts, ResolverConfig};
 use hickory_resolver::net::runtime::TokioRuntimeProvider;
+use ibexwall_proto::names;
+
+use crate::policy::{BlockResponse, Policy};
 use serde::{Deserialize, Serialize};
 
-/// Where the resolver listens (spec: loopback, own address).
-pub const LISTEN: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 153)), 53);
+/// Where the resolver listens by default (spec: loopback, own address).
+pub fn default_listen() -> SocketAddr {
+    let ip: IpAddr = names::DNS_BIND_ADDR
+        .parse()
+        .expect("DNS_BIND_ADDR is a valid IP address");
+    SocketAddr::new(ip, names::DNS_BIND_PORT)
+}
 
 /// Encrypted transports only: a plaintext upstream would defeat the
 /// product.
@@ -42,6 +50,41 @@ pub struct Server {
     /// HTTP path for DoH and DoH3; defaults to `/dns-query`.
     #[serde(default)]
     pub path: Option<String>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// The resolver's settings file, written by the `net.dns` plugin through
+/// the core and read by `ibexwall-dns` at start.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Settings {
+    #[serde(default = "default_listen")]
+    pub listen: SocketAddr,
+    pub servers: Vec<Server>,
+    #[serde(default)]
+    pub block_response: BlockResponse,
+    /// Intercept the browser canary and known DoH endpoints.
+    #[serde(default = "default_true")]
+    pub block_doh: bool,
+    #[serde(default)]
+    pub block: Vec<String>,
+    #[serde(default)]
+    pub allow: Vec<String>,
+    #[serde(default)]
+    pub doh_endpoints: Vec<String>,
+}
+
+impl Settings {
+    pub fn policy(&self) -> Policy {
+        let mut policy = Policy::new(self.block_response, self.block_doh);
+        policy.block(self.block.iter().cloned());
+        policy.allow(self.allow.iter().cloned());
+        policy.doh_endpoints(self.doh_endpoints.iter().cloned());
+        policy
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -138,6 +181,18 @@ mod tests {
             s.transport = transport;
             assert!(build_resolver(&[s]).is_ok(), "{transport:?}");
         }
+    }
+
+    #[test]
+    fn settings_reject_unknown_fields_and_apply_defaults() {
+        let ok = r#"{ "servers": [{ "ip": "9.9.9.9", "server_name": "dns.quad9.net",
+            "transport": "tls" }], "block": ["ads.example"] }"#;
+        let settings: Settings = serde_json::from_str(ok).unwrap();
+        assert_eq!(settings.listen, default_listen());
+        assert!(settings.block_doh);
+        assert_eq!(settings.policy().blocked_len(), 1);
+        let bad = r#"{ "servers": [], "plaintext_upstream": true }"#;
+        assert!(serde_json::from_str::<Settings>(bad).is_err());
     }
 
     #[test]

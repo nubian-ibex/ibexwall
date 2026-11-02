@@ -3,7 +3,7 @@
 
 # ADR-0026: Transient-unit executor (spike S1-c)
 
-- Status: Proposed (needs a maintainer decision)
+- Status: Accepted: option 2 (decided by the maintainer, 2026-11-01); implementation scheduled before v0.1 (F2 milestone)
 - Date: 2026-11-01
 - Related: ADR-0007, ADR-0010, docs/threat-model.md
 
@@ -45,7 +45,7 @@ one transaction.
 
 ## Recommendation
 
-Adopt option 2, implemented before v0.1: it is viable and cheap in
+Option 2 was adopted, to be implemented before v0.1: it is viable and cheap in
 latency. Be clear about what it buys: it contains bugs in path
 validation and plugin-proposed operations. It does not protect against a
 fully compromised daemon, which can still ask systemd to start any

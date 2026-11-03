@@ -2184,6 +2184,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "aya",
+ "ibexwall-identity",
  "ibexwall-net-common",
  "rustix",
  "serde_json",
@@ -2202,6 +2203,15 @@ dependencies = [
 [[package]]
 name = "ibexwall-exporters"
 version = "0.1.0"
+
+[[package]]
+name = "ibexwall-identity"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "serde",
+ "sha2 0.11.1",
+]
 
 [[package]]
 name = "ibexwall-mcp"

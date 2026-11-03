@@ -72,8 +72,10 @@ print(f"{len(events)} events")
 assert events, "no events recorded"
 for event in events:
     assert event["port"] < 65536, event
-    assert event["cgroup"], event
     assert event["pid"] > 1, event
+# Unrelated host processes may exit before /proc is read; ours stay alive.
+ours = [e for e in events if e["comm"] in ("python3", "curl")]
+assert ours and all(e["cgroup"] for e in ours), ours
 py = [e for e in events if e["exe"] and "python3" in e["exe"]]
 curl = [e for e in events if e["exe"] and e["exe"].endswith("/curl")]
 assert any(e["dst"] == "149.112.112.112" and e["port"] == 443 for e in py), py
@@ -82,6 +84,11 @@ assert any(e["port"] == 80 for e in curl), curl
 # The kernel's own record of the exec, independent of /proc timing.
 assert any((e["exe_kernel"] or "").endswith("/curl") for e in curl), curl
 assert any((e["exe_kernel"] or "").startswith("/usr/bin/python3") for e in py), py
+# Identity per section 4.9: a terminal session is a CLI, identified by its
+# exe; the distro package manager names the owner; the hash is SHA-256.
+assert all(e["kind"] == "cli" for e in curl), curl
+assert any(e["package"] == "curl" for e in curl), [e["package"] for e in curl]
+assert all(e["exe_hash"] and len(e["exe_hash"]) == 64 for e in curl), curl
 print("attribution ok: python3 and curl events with the right destinations and kernel-side exe")
 EOF
 "#

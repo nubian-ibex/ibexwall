@@ -21,6 +21,13 @@ Progress:
   an LRU pid-to-exec-path map; the connect hook copies the path into the
   event (128 bytes), so processes that exit before userspace reads
   `/proc` stay attributable. Pass on the five distros.
+- M1 identity done: `ibexwall-identity` classifies cgroups per spec 4.9
+  (Flatpak, Snap, desktop `app-*` units with `\x2d` unescaping, system
+  services, containers, CLI sessions), hashes executables (SHA-256) and
+  asks rpm, dpkg or pacman for the owning package through an allowlisted
+  argv runner. The loader enriches events with kind, id, hash and package
+  (cached per exe). Verified on the five distros (curl is a `cli`
+  owned by `curl`). Origin and signature status come with M3.
 - The `--phase f4` spike scenarios (attribution with asymmetric v4 and
   v6 destinations, overhead) pass 2/2 on the five distros.
 

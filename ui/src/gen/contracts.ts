@@ -133,6 +133,9 @@ export interface AllContracts {
   ExecAllow?: ExecAllow;
   Finding?: Finding;
   FindingStatus?: FindingStatus;
+  FirewallNetwork?: FirewallNetwork;
+  FirewallPort?: FirewallPort;
+  FirewallState?: FirewallState;
   HistoryEntry?: HistoryEntry;
   Info?: Info;
   Manifest?: Manifest;
@@ -317,6 +320,72 @@ export interface ExecAllow {
   path: string;
 }
 /**
+ * A network this computer is on and the profile suggested for it.
+ */
+export interface FirewallNetwork {
+  /**
+   * `wired`, `wifi_secured`, `wifi_open` or `other`.
+   */
+  kind: string;
+  /**
+   * The connection's name; untrusted display text.
+   */
+  name: string;
+  /**
+   * `home`, `work`, `public` or `travel`.
+   */
+  recommended: string;
+  /**
+   * A Fluent key for the warning that goes with the suggestion.
+   */
+  warning?: string | null;
+}
+/**
+ * One allowed or listening port.
+ */
+export interface FirewallPort {
+  port: number;
+  /**
+   * `tcp` or `udp`.
+   */
+  proto: string;
+}
+/**
+ * The inbound firewall as IbexWall can read it (spec 4.7). Names from
+ * configuration files are untrusted display text.
+ */
+export interface FirewallState {
+  /**
+   * Whether the manager is filtering; absent when it cannot be told.
+   */
+  active?: boolean | null;
+  /**
+   * `firewalld`, `ufw` or `nftables` (IbexWall's own chain).
+   */
+  backend: string;
+  /**
+   * Ports with a socket bound on every address.
+   */
+  listening: FirewallPort[];
+  /**
+   * The networks this computer is on, with the suggested profile.
+   */
+  networks: FirewallNetwork[];
+  /**
+   * Rules read but not edited (ranges, rich rules, other targets).
+   */
+  other: string[];
+  /**
+   * Ports the firewall allows in.
+   */
+  ports: FirewallPort[];
+  services: string[];
+  /**
+   * firewalld's default zone.
+   */
+  zone?: string | null;
+}
+/**
  * Audit/history row.
  */
 export interface HistoryEntry {
@@ -374,6 +443,11 @@ export interface Conflicts1 {
  */
 export interface Privileges {
   exec?: ExecAllow[];
+  /**
+   * Firewall managers the plugin may drive through `firewall.adapter`
+   * (`firewalld`, `ufw`).
+   */
+  firewall_backends?: string[];
   nft_prefix?: string | null;
   sysctl_keys?: string[];
   unit_actions?: UnitAction[];

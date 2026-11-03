@@ -65,3 +65,25 @@ test('apps: the monitor being off is stated, not hidden', async ({ page }) => {
   await page.getByRole('button', { name: /apps and network/i }).click();
   await expect(page.getByText(/connection monitor is off/i)).toBeVisible();
 });
+
+test('firewall: state, a reviewed port change and a profile', async ({ page }) => {
+  await page.goto('/?scenario=attention');
+  await page.getByRole('button', { name: /^firewall$/i }).click();
+  await expect(page.getByRole('heading', { name: 'The firewall is on' })).toBeVisible();
+  await expect(page.getByText('8080/tcp', { exact: true })).toBeVisible();
+  // With the plugin off, the controls are visibly inert and say why.
+  await expect(page.getByText('The firewall controls are off')).toBeVisible();
+  await expect(page.getByRole('button', { name: /allow this port/i })).toBeDisabled();
+  // Profiles are offered (firewalld) but their switch is inert too.
+  await page.getByRole('radio', { name: /travel/i }).check();
+  await expect(page.getByRole('button', { name: /switch to travel/i })).toBeDisabled();
+  // The choice spells out what it means, before anyone commits to it.
+  await expect(page.getByText(/nothing comes in unasked/i)).toBeVisible();
+});
+
+test('firewall: an open network is called out', async ({ page }) => {
+  await page.goto('/?scenario=attention');
+  await page.getByRole('button', { name: /^firewall$/i }).click();
+  await expect(page.getByText('Cafe WiFi')).toBeVisible();
+  await expect(page.getByText(/this network is open/i)).toBeVisible();
+});

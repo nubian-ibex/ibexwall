@@ -3,6 +3,7 @@
 // design work use the fixture implementation.
 import type {
   AppDestination,
+  FirewallState,
   AppEntry,
   DnsStatus,
   Finding,
@@ -42,6 +43,7 @@ export interface Transport {
   getInfo(): Promise<Info>;
   getPosture(): Promise<Posture>;
   getDnsStatus(): Promise<DnsStatus>;
+  getFirewall(): Promise<FirewallState>;
   listApps(): Promise<AppsListing>;
   getAppDestinations(app: string): Promise<AppDestination[]>;
   listPlugins(): Promise<PluginInfo[]>;

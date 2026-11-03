@@ -2,6 +2,7 @@
 // client). Errors arrive as { code, parameters } and become TransportError.
 import type {
   AppDestination,
+  FirewallState,
   DnsStatus,
   Finding,
   HistoryEntry,
@@ -57,6 +58,10 @@ export class TauriTransport implements Transport {
 
   getDnsStatus() {
     return unwrapped<DnsStatus>('get_dns_status', 'dns_status');
+  }
+
+  getFirewall() {
+    return unwrapped<FirewallState>('get_firewall', 'firewall');
   }
 
   listApps() {

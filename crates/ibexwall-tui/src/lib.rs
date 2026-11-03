@@ -179,6 +179,7 @@ mod tests {
         assert_eq!(Tab::Plugins.next(), Tab::History);
         assert_eq!(Tab::History.next(), Tab::Overview);
         assert_eq!(Tab::Overview.prev(), Tab::History);
+        assert_eq!(Tab::Apps.prev(), Tab::Overview);
     }
 
     #[test]

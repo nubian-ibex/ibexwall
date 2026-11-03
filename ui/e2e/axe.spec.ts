@@ -18,7 +18,13 @@ for (const theme of ['light', 'dark'] as const) {
 
       // Overview first, then the Apps and network screen (list, filters,
       // details) and the Secure DNS screen (a form with a flow).
-      for (const screen of ['overview', 'apps', 'dns']) {
+      for (const screen of ['overview', 'firewall', 'apps', 'dns']) {
+        if (screen === 'firewall') {
+          await page.getByRole('button', { name: /firewall/i }).click();
+          await expect(
+            page.getByText(/managed by firewalld|gerenciado por firewalld/i),
+          ).toBeVisible();
+        }
         if (screen === 'apps') {
           await page.getByRole('button', { name: /apps and network|apps e rede/i }).click();
           await page
@@ -46,7 +52,7 @@ test('keyboard navigation reaches every navigation item', async ({ page }) => {
   await page.goto('/?scenario=attention');
   const overview = page.getByRole('button', { name: 'Overview' });
   await overview.focus();
-  for (let step = 0; step < 7; step += 1) {
+  for (let step = 0; step < 8; step += 1) {
     await page.keyboard.press('Tab');
   }
   // After the nav, focus moves into the content: the "Check now" button.

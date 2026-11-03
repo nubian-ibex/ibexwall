@@ -18,12 +18,13 @@ pub fn draw(frame: &mut Frame, model: &AppModel) {
         .constraints([Constraint::Length(3), Constraint::Min(1)])
         .split(frame.area());
 
-    let titles = ["Overview (j/k)", "Apps", "Plugins", "History"];
+    let titles = ["Overview (j/k)", "Apps", "Firewall", "Plugins", "History"];
     let selected = match model.tab {
         crate::model::Tab::Overview => 0,
         crate::model::Tab::Apps => 1,
-        crate::model::Tab::Plugins => 2,
-        crate::model::Tab::History => 3,
+        crate::model::Tab::Firewall => 2,
+        crate::model::Tab::Plugins => 3,
+        crate::model::Tab::History => 4,
     };
     frame.render_widget(
         Tabs::new(titles)
@@ -35,6 +36,7 @@ pub fn draw(frame: &mut Frame, model: &AppModel) {
     match model.tab {
         crate::model::Tab::Overview => draw_overview(frame, model, chunks[1]),
         crate::model::Tab::Apps => draw_apps(frame, model, chunks[1]),
+        crate::model::Tab::Firewall => draw_firewall(frame, model, chunks[1]),
         crate::model::Tab::Plugins => draw_plugins(frame, model, chunks[1]),
         crate::model::Tab::History => draw_history(frame, model, chunks[1]),
     }
@@ -90,6 +92,22 @@ fn draw_apps(frame: &mut Frame, model: &AppModel, area: ratatui::layout::Rect) {
                 .borders(Borders::ALL)
                 .title("Apps and network"),
         ),
+        area,
+    );
+}
+
+/// One line each: manager, zone, allowed, listening, the networks.
+pub fn firewall_lines(model: &AppModel) -> Vec<String> {
+    if model.firewall.is_empty() {
+        return vec!["no firewall state read yet".into()];
+    }
+    model.firewall.clone()
+}
+
+fn draw_firewall(frame: &mut Frame, model: &AppModel, area: ratatui::layout::Rect) {
+    let rows: Vec<Line> = firewall_lines(model).into_iter().map(Line::from).collect();
+    frame.render_widget(
+        List::new(rows).block(Block::default().borders(Borders::ALL).title("Firewall")),
         area,
     );
 }
@@ -166,5 +184,16 @@ mod tests {
         assert_eq!(lines[0], "monitor: running");
         assert!(lines[1].starts_with("cli:/usr/bin/curl"));
         assert!(lines[1].contains("3 conns"));
+    }
+
+    #[test]
+    fn the_firewall_tab_shows_the_manager_and_honesty_when_empty() {
+        let mut model = AppModel::default();
+        assert_eq!(firewall_lines(&model), ["no firewall state read yet"]);
+        model.firewall = vec![
+            "manager: firewalld (on)".into(),
+            "allowed ports:    8080/tcp".into(),
+        ];
+        assert_eq!(firewall_lines(&model).len(), 2);
     }
 }

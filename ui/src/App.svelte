@@ -6,6 +6,7 @@
   import AppShell from './components/AppShell.svelte';
   import Apps from './screens/Apps.svelte';
   import Dns from './screens/Dns.svelte';
+  import Firewall from './screens/Firewall.svelte';
   import History from './screens/History.svelte';
   import Overview from './screens/Overview.svelte';
   import Plugins from './screens/Plugins.svelte';
@@ -24,6 +25,8 @@
     <Overview />
   {:else if app.route === 'apps'}
     <Apps />
+  {:else if app.route === 'firewall'}
+    <Firewall />
   {:else if app.route === 'dns'}
     <Dns />
   {:else if app.route === 'posture'}

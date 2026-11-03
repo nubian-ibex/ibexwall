@@ -2217,6 +2217,16 @@ name = "ibexwall-exporters"
 version = "0.1.0"
 
 [[package]]
+name = "ibexwall-firewall"
+version = "0.1.0"
+dependencies = [
+ "roxmltree",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "ibexwall-identity"
 version = "0.1.0"
 dependencies = [
@@ -4253,6 +4263,15 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "roxmltree"
+version = "0.21.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9da7f59328b09405b181fee1018925fad50f157afb43c0c0f5c522c256dd5907"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]

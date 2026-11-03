@@ -55,6 +55,12 @@ pub mod ibexwall_agent {
             if let Some(finding) = finding_from(&event) {
                 notify(&finding).await?;
             }
+            if let Some((summary, body)) = ask_notification_for(&session_language(), &event) {
+                // A failed notification must not end the watch.
+                if let Err(error) = notify_with(&summary, &body).await {
+                    tracing::warn!(%error, "ask notification failed");
+                }
+            }
         }
         Ok(())
     }
@@ -111,13 +117,50 @@ pub mod ibexwall_agent {
         Ok(portal == 2)
     }
 
-    /// The portal notice, in the session language.
-    pub fn portal_notification() -> (&'static str, &'static str) {
-        let lang = std::env::var("LC_ALL")
+    fn session_language() -> String {
+        std::env::var("LC_ALL")
             .or_else(|_| std::env::var("LC_MESSAGES"))
             .or_else(|_| std::env::var("LANG"))
-            .unwrap_or_default();
-        portal_notification_for(&lang)
+            .unwrap_or_default()
+    }
+
+    /// The portal notice, in the session language.
+    pub fn portal_notification() -> (&'static str, &'static str) {
+        portal_notification_for(&session_language())
+    }
+
+    /// Control characters and length: the app and destination come from
+    /// other programs and the network.
+    fn plain(text: &str) -> String {
+        text.chars()
+            .map(|c| if c.is_control() { ' ' } else { c })
+            .take(120)
+            .collect()
+    }
+
+    /// A held connection (Ask mode) is time-limited, so it is announced;
+    /// answering happens in IbexWall, never from the notification.
+    pub fn ask_notification_for(lang: &str, event: &serde_json::Value) -> Option<(String, String)> {
+        if event.get("kind")?.as_str()? != "apps.ask" {
+            return None;
+        }
+        let app = plain(event.get("app")?.as_str()?);
+        let untrusted = event.get("untrusted")?;
+        let destination = plain(untrusted.get("destination")?.as_str()?);
+        let port = untrusted.get("port")?.as_u64()?;
+        Some(if lang.to_lowercase().starts_with("pt") {
+            (
+                "Um programa quer se conectar".to_string(),
+                format!(
+                    "{app} para {destination}:{port}. Abra o IbexWall para permitir ou bloquear."
+                ),
+            )
+        } else {
+            (
+                "A program wants to connect".to_string(),
+                format!("{app} to {destination}:{port}. Open IbexWall to allow or block."),
+            )
+        })
     }
 
     /// Pure form for tests: the language string decides the wording.
@@ -192,7 +235,31 @@ fn xdg_data_dirs() -> Vec<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::ibexwall_agent::{finding_from, portal_notification_for};
+    use super::ibexwall_agent::{ask_notification_for, finding_from, portal_notification_for};
+
+    #[test]
+    fn a_held_connection_is_announced_in_both_languages_and_as_plain_text() {
+        let event = serde_json::json!({
+            "kind": "apps.ask", "app": "cli:/usr/bin/curl",
+            "untrusted": { "destination": "evil\u{1b}[31m.example", "port": 443 },
+        });
+        let (summary, body) = ask_notification_for("en_US.UTF-8", &event).unwrap();
+        assert_eq!(summary, "A program wants to connect");
+        assert!(
+            body.contains("cli:/usr/bin/curl to evil [31m.example:443"),
+            "{body}"
+        );
+        assert!(!body.contains('\u{1b}'));
+        let (summary, body) = ask_notification_for("pt_BR.UTF-8", &event).unwrap();
+        assert_eq!(summary, "Um programa quer se conectar");
+        assert!(body.contains("Abra o IbexWall"));
+        // Only questions are announced, and only well formed ones.
+        assert!(
+            ask_notification_for("", &serde_json::json!({ "kind": "apps.first_connection" }))
+                .is_none()
+        );
+        assert!(ask_notification_for("", &serde_json::json!({ "kind": "apps.ask" })).is_none());
+    }
 
     #[test]
     fn only_high_and_critical_findings_are_notifiable() {

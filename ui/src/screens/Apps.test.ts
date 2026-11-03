@@ -63,17 +63,30 @@ describe('Apps screen', () => {
     expect(screen.getByText('Package: firefox')).toBeVisible();
   });
 
-  it('enables only what works: Monitor everywhere, Block for Flatpak apps', async () => {
-    await open();
+  it('offers every mode while the monitor runs, and applies the one chosen', async () => {
+    const transport = await open();
+    const set = vi.spyOn(transport, 'setAppMode');
     const firefox = await screen.findByRole('radiogroup', { name: /network mode for firefox/i });
-    expect(within(firefox).getByRole('radio', { name: 'Monitor' })).toBeEnabled();
-    expect(within(firefox).getByRole('radio', { name: 'Monitor' })).toBeChecked();
-    for (const mode of ['Allow', 'Ask', 'Block']) {
-      expect(within(firefox).getByRole('radio', { name: mode })).toBeDisabled();
+    for (const mode of ['Allow', 'Monitor', 'Ask', 'Block']) {
+      expect(within(firefox).getByRole('radio', { name: mode })).toBeEnabled();
     }
-    const telegram = screen.getByRole('radiogroup', { name: /network mode for telegram/i });
-    expect(within(telegram).getByRole('radio', { name: 'Block' })).toBeEnabled();
-    expect(within(telegram).getByRole('radio', { name: 'Allow' })).toBeDisabled();
+    expect(within(firefox).getByRole('radio', { name: 'Monitor' })).toBeChecked();
+    await fireEvent.click(within(firefox).getByRole('radio', { name: 'Ask' }));
+    expect(set).toHaveBeenCalledWith('app:firefox', 'ask');
+    // The list is reloaded, so the shown mode is the core's.
+    await vi.waitFor(() => {
+      const again = screen.getByRole('radiogroup', { name: /network mode for firefox/i });
+      expect(within(again).getByRole('radio', { name: 'Ask' })).toBeChecked();
+    });
+  });
+
+  it('says so when changing the mode fails, and leaves the old mode shown', async () => {
+    const transport = await open();
+    vi.spyOn(transport, 'setAppMode').mockRejectedValue(new TransportError('unreachable'));
+    const firefox = await screen.findByRole('radiogroup', { name: /network mode for firefox/i });
+    await fireEvent.click(within(firefox).getByRole('radio', { name: 'Block' }));
+    expect(await screen.findByText('Could not change the mode. Try again.')).toBeVisible();
+    expect(within(firefox).getByRole('radio', { name: 'Monitor' })).toBeChecked();
   });
 
   it('turns the Flatpak plugin on, then plans the block for exactly that app', async () => {

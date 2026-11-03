@@ -10,9 +10,10 @@ import type {
   Plan,
   PluginInfo,
   Posture,
+  Prompt,
   Transaction,
 } from '../gen/contracts';
-import { TransportError, type AppsListing, type Transport } from './transport';
+import { TransportError, type AppsListing, type PromptScope, type Transport } from './transport';
 
 /// True when running inside the Tauri shell.
 export function insideTauri(): boolean {
@@ -70,6 +71,22 @@ export class TauriTransport implements Transport {
 
   getAppDestinations(app: string) {
     return unwrapped<AppDestination[]>('get_app_destinations', 'destinations', { app });
+  }
+
+  async setAppMode(app: string, mode: string): Promise<void> {
+    await invoke('set_app_mode', { app, mode });
+  }
+
+  async setDefaultMode(mode: string): Promise<void> {
+    await invoke('set_default_mode', { mode });
+  }
+
+  listPrompts() {
+    return unwrapped<Prompt[]>('list_prompts', 'prompts');
+  }
+
+  async answerPrompt(id: string, decision: 'allow' | 'block', scope: PromptScope): Promise<void> {
+    await invoke('answer_prompt', { id, decision, scope });
   }
 
   listPlugins() {

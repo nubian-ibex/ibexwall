@@ -13,9 +13,10 @@ import type {
   Plan,
   PluginInfo,
   Posture,
+  Prompt,
   Transaction,
 } from '../gen/contracts';
-import { TransportError, type AppsListing, type Transport } from './transport';
+import { TransportError, type AppsListing, type PromptScope, type Transport } from './transport';
 
 export type Scenario = 'attention' | 'protected' | 'empty' | 'error' | 'denied';
 
@@ -268,11 +269,30 @@ const INFO: Info = {
   degraded: [],
 };
 
+const PROMPT = (): Prompt => ({
+  id: '1',
+  app: 'cli:/usr/bin/curl',
+  kind: 'cli',
+  exe_path: '/usr/bin/curl',
+  destination: 'example.com',
+  address: '93.184.216.34',
+  port: 443,
+  created: '2026-11-01T12:00:00Z',
+  expires: '2026-11-01T12:00:30Z',
+});
+
 export class FixtureTransport implements Transport {
+  /** Modes chosen during this session, by app key. */
+  private readonly modes = new Map<string, string>();
+  private prompts: Prompt[];
+
   constructor(
     readonly scenario: Scenario = 'attention',
     private readonly latencyMs = 0,
-  ) {}
+    withPrompt = false,
+  ) {
+    this.prompts = withPrompt ? [PROMPT()] : [];
+  }
 
   private async gate<T>(value: () => T): Promise<T> {
     if (this.latencyMs > 0) await new Promise((done) => setTimeout(done, this.latencyMs));
@@ -362,8 +382,34 @@ export class FixtureTransport implements Transport {
     return this.gate((): AppsListing =>
       this.scenario === 'empty'
         ? { monitor: { running: false, reason: 'waiting for ibexwall-monitor' }, apps: [] }
-        : { monitor: { running: true, reason: null }, apps: APPS() },
+        : {
+            monitor: { running: true, reason: null },
+            apps: APPS().map((a) => ({ ...a, mode: this.modes.get(a.key) ?? a.mode })),
+          },
     );
+  }
+
+  setAppMode(app: string, mode: string) {
+    return this.gate(() => {
+      this.modes.set(app, mode);
+    });
+  }
+
+  setDefaultMode() {
+    return this.gate(() => undefined);
+  }
+
+  listPrompts() {
+    return this.gate(() => [...this.prompts]);
+  }
+
+  answerPrompt(id: string, decision: 'allow' | 'block', scope: PromptScope) {
+    return this.gate(() => {
+      const prompt = this.prompts.find((p) => p.id === id);
+      if (!prompt) throw new TransportError('com.ibexwall.Core.NotFound');
+      this.prompts = this.prompts.filter((p) => p.id !== id);
+      if (scope === 'always') this.modes.set(prompt.app, decision);
+    });
   }
 
   getAppDestinations(appKey: string) {

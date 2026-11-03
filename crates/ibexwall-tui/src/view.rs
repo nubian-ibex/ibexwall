@@ -72,14 +72,28 @@ pub fn apps_lines(model: &AppModel) -> Vec<String> {
         Some((false, reason)) => lines.push(format!("monitor: off ({reason})")),
         None => lines.push("monitor: unknown".into()),
     }
+    // Waiting connections come before the list: they are time-limited.
+    for prompt in &model.prompts {
+        lines.push(format!(
+            "WAITING #{}: {} -> {}:{}   (y: allow once, b: block once)",
+            prompt.id, prompt.app, prompt.destination, prompt.port
+        ));
+    }
     if model.apps.is_empty() {
         lines.push("no applications seen yet".into());
     }
-    for app in &model.apps {
+    for (index, app) in model.apps.iter().enumerate() {
+        let cursor = if index == model.selected { '>' } else { ' ' };
         lines.push(format!(
-            "{:<38} {:<15} {:>5} conns {:>4} dests  {}",
-            app.key, app.kind, app.connections, app.destinations, app.last_seen
+            "{cursor}{:<38} {:<14} {:<8} {:>5} conns {:>4} dests  {}",
+            app.key, app.kind, app.mode, app.connections, app.destinations, app.last_seen
         ));
+    }
+    if !model.apps.is_empty() {
+        lines.push("up/down: select · 1 allow · 2 monitor · 3 ask · 4 block".into());
+    }
+    if let Some(notice) = &model.notice {
+        lines.push(notice.clone());
     }
     lines
 }
@@ -164,6 +178,7 @@ mod tests {
         AppRow {
             key: key.into(),
             kind: "cli".into(),
+            mode: "monitor".into(),
             connections: 3,
             destinations: 2,
             last_seen: "2026-11-03T10:00:00Z".into(),
@@ -182,8 +197,37 @@ mod tests {
         model.apps = vec![row("cli:/usr/bin/curl")];
         let lines = apps_lines(&model);
         assert_eq!(lines[0], "monitor: running");
-        assert!(lines[1].starts_with("cli:/usr/bin/curl"));
+        assert!(lines[1].starts_with(">cli:/usr/bin/curl"));
+        assert!(lines[1].contains("monitor"));
         assert!(lines[1].contains("3 conns"));
+    }
+
+    #[test]
+    fn waiting_connections_come_first_and_the_cursor_marks_one_app() {
+        use crate::model::PromptRow;
+        let mut model = AppModel {
+            monitor: Some((true, String::new())),
+            apps: vec![row("cli:/usr/bin/curl"), row("cli:/usr/bin/wget")],
+            prompts: vec![PromptRow {
+                id: "7".into(),
+                app: "cli:/usr/bin/curl".into(),
+                destination: "example.com".into(),
+                port: 443,
+            }],
+            ..AppModel::default()
+        };
+        model.move_selection(true);
+        model.move_selection(true);
+        assert_eq!(model.selected, 1, "the cursor stays inside the list");
+        let lines = apps_lines(&model);
+        assert!(lines[1].starts_with("WAITING #7: cli:/usr/bin/curl -> example.com:443"));
+        assert!(lines[2].starts_with(' '));
+        assert!(lines[3].starts_with(">cli:/usr/bin/wget"));
+        model.move_selection(false);
+        model.move_selection(false);
+        assert_eq!(model.selected, 0);
+        model.notice = Some("done".into());
+        assert_eq!(apps_lines(&model).last().unwrap(), "done");
     }
 
     #[test]

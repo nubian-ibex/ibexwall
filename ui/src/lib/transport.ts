@@ -13,6 +13,7 @@ import type {
   Plan,
   PluginInfo,
   Posture,
+  Prompt,
   Transaction,
 } from '../gen/contracts';
 
@@ -34,6 +35,8 @@ export class TransportError extends Error {
   }
 }
 
+export type PromptScope = 'once' | 'destination' | 'always';
+
 export interface AppsListing {
   monitor: MonitorStatus;
   apps: AppEntry[];
@@ -46,6 +49,11 @@ export interface Transport {
   getFirewall(): Promise<FirewallState>;
   listApps(): Promise<AppsListing>;
   getAppDestinations(app: string): Promise<AppDestination[]>;
+  setAppMode(app: string, mode: string): Promise<void>;
+  setDefaultMode(mode: string): Promise<void>;
+  /** Connections held in Ask mode, oldest first. */
+  listPrompts(): Promise<Prompt[]>;
+  answerPrompt(id: string, decision: 'allow' | 'block', scope: PromptScope): Promise<void>;
   listPlugins(): Promise<PluginInfo[]>;
   listFindings(plugin?: string): Promise<Finding[]>;
   runChecks(plugin?: string): Promise<Finding[]>;

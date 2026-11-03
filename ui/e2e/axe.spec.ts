@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test';
 for (const theme of ['light', 'dark'] as const) {
   for (const locale of ['en', 'pt-BR'] as const) {
     test(`no serious axe violations (${theme}, ${locale})`, async ({ page }) => {
-      await page.goto(`/?scenario=attention&theme=${theme}&locale=${locale}`);
+      await page.goto(`/?scenario=attention&theme=${theme}&locale=${locale}&prompts=1`);
       await page.evaluate(
         ([t, l]) => {
           if (t) document.documentElement.dataset['theme'] = t;
@@ -14,7 +14,9 @@ for (const theme of ['light', 'dark'] as const) {
         [theme, locale],
       );
       await page.reload();
-      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+      await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible();
+      // The held connection is on screen for every check below.
+      await expect(page.getByRole('alertdialog')).toBeVisible();
 
       // Overview first, then the Apps and network screen (list, filters,
       // details) and the Secure DNS screen (a form with a flow).

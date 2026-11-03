@@ -3,7 +3,7 @@
 
 # STATUS
 
-Last updated: 2026-11-02 (F3 delivered, report ready for acceptance)
+Last updated: 2026-11-03 (F4 delivered, report ready for acceptance)
 
 ## Current phase
 
@@ -15,12 +15,12 @@ remainder (DoH endpoints, browser policies, captive portal, counters,
 latency evidence) is being finished. Plan: `docs/plans/F3-secure-dns.md`.
 Run the app with `scripts/dev-sandbox.sh` (sandboxed daemon, host
 untouched). Manual runs on Omarchy and EndeavourOS are deferred by the
-maintainer. F4 is under way: spike S4-a is done (ADR-0031), the connect
-monitor loads, attaches and attributes on all five distros with bounded
-overhead (`--phase f4`), and `cargo xtask ebpf` builds the eBPF ELF.
-Kernel-side exec identity (M1 capture) is done on all five distros. Next:
-identity mapping (Flatpak, snap, units, package owner), rollups and the
-IP-to-domain correlation (M3).
+maintainer. **F4: apps and traffic (monitor), delivered** (report:
+`docs/reports/F4-report.md`, awaiting acceptance): `--phase f4` green on
+five distros (attribution through the real core, Flatpak block with
+byte-exact rollback, overhead 0.65% to 1.26% of a CPU at 1000
+connections per second). Plan: `docs/plans/F4-apps-traffic.md`; ADRs
+0031 to 0033. Open: Snap block, alerts as findings, per-user Flatpak.
 
 ## What exists
 

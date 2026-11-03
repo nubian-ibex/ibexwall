@@ -408,6 +408,40 @@ sudo systemctl stop ibexwall-monitor.service
 "#
     );
 
+    scenario!(
+        "m7 Firefox, installed from the distro's package, is attributed to its package",
+        r#"
+set -e
+. /etc/os-release
+# Ubuntu ships Firefox as a snap; the snap path is proven in m6.
+if [ "$ID" = ubuntu ]; then echo "METRIC: firefox skipped on ubuntu (snap)"; exit 0; fi
+if ! command -v firefox >/dev/null && ! command -v firefox-esr >/dev/null; then
+  if command -v dnf >/dev/null; then sudo dnf install -y -q firefox
+  elif command -v apt-get >/dev/null; then sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq firefox-esr
+  elif command -v pacman >/dev/null; then sudo pacman -Sy --noconfirm --needed firefox
+  fi
+fi
+FF=$(command -v firefox || command -v firefox-esr)
+sudo systemctl start ibexwall-monitor.service
+for i in $(seq 1 40); do
+  sudo ibexctl apps list --json | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)["monitor"]["running"] else 1)' && break
+  sleep 0.5
+done
+# Headless: no display needed. The page never answers; the connect is what counts.
+HOME=/tmp/ffhome timeout 40 $FF --headless --no-remote --screenshot /tmp/ff.png http://203.0.113.9/ >/dev/null 2>&1 || true
+sleep 2
+sudo ibexctl apps list --json > /tmp/apps-ff.json
+sudo systemctl stop ibexwall-monitor.service
+python3 - <<'EOF'
+import json
+d = json.load(open("/tmp/apps-ff.json"))
+ff = [a for a in d["apps"] if (a.get("package") or "").startswith("firefox")]
+assert ff, [a["key"] for a in d["apps"]]
+print("METRIC: firefox attributed as", ff[0]["key"], "package", ff[0]["package"])
+EOF
+"#
+    );
+
     if failures == 0 {
         println!("PASS: f4 spike (all scenarios)");
         Ok(())

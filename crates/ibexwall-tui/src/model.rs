@@ -8,6 +8,7 @@ pub enum Tab {
     #[default]
     Overview,
     Apps,
+    Firewall,
     Plugins,
     History,
 }
@@ -16,7 +17,8 @@ impl Tab {
     pub fn next(self) -> Self {
         match self {
             Tab::Overview => Tab::Apps,
-            Tab::Apps => Tab::Plugins,
+            Tab::Apps => Tab::Firewall,
+            Tab::Firewall => Tab::Plugins,
             Tab::Plugins => Tab::History,
             Tab::History => Tab::Overview,
         }
@@ -26,7 +28,8 @@ impl Tab {
         match self {
             Tab::Overview => Tab::History,
             Tab::Apps => Tab::Overview,
-            Tab::Plugins => Tab::Apps,
+            Tab::Firewall => Tab::Apps,
+            Tab::Plugins => Tab::Firewall,
             Tab::History => Tab::Plugins,
         }
     }
@@ -35,6 +38,7 @@ impl Tab {
         match self {
             Tab::Overview => "Overview",
             Tab::Apps => "Apps",
+            Tab::Firewall => "Firewall",
             Tab::Plugins => "Plugins",
             Tab::History => "History",
         }
@@ -84,6 +88,7 @@ pub struct AppModel {
     /// `None` until the daemon answered; then whether the monitor runs and why not.
     pub monitor: Option<(bool, String)>,
     pub apps: Vec<AppRow>,
+    pub firewall: Vec<String>,
     pub plugins: Vec<PluginRow>,
     pub history: Vec<HistoryRow>,
 }

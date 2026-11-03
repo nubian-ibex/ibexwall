@@ -43,6 +43,7 @@ command!(get_info, "GetInfo");
 command!(get_posture, "GetPosture");
 command!(get_dns_status, "GetDnsStatus");
 command!(list_apps, "ListApps");
+command!(get_firewall, "GetFirewall");
 command!(list_plugins, "ListPlugins");
 command!(list_findings, "ListFindings");
 command!(run_checks, "RunChecks");
@@ -165,6 +166,7 @@ pub fn run() {
             get_posture,
             get_dns_status,
             list_apps,
+            get_firewall,
             get_app_destinations,
             list_plugins,
             list_findings,

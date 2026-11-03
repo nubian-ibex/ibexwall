@@ -16,9 +16,9 @@ describe('Plugins', () => {
 
   it('lists plugins with kind, origin and a labelled switch', async () => {
     await show();
-    expect(await screen.findAllByRole('switch')).toHaveLength(4);
-    expect(screen.getAllByText('Read-only').length).toBe(4);
-    expect(screen.getAllByText('Official').length).toBe(4);
+    expect(await screen.findAllByRole('switch')).toHaveLength(5);
+    expect(screen.getAllByText('Read-only').length).toBe(5);
+    expect(screen.getAllByText('Official').length).toBe(5);
   });
 
   it('shows the detail with permissions in plain words and the technical line', async () => {
@@ -42,7 +42,7 @@ describe('Plugins', () => {
     i18n.set('pt-BR');
     await show();
     expect(await screen.findByRole('heading', { name: /plugins/i })).toBeVisible();
-    expect(screen.getAllByText('Somente leitura').length).toBe(4);
-    expect(screen.getAllByText('Oficial').length).toBe(4);
+    expect(screen.getAllByText('Somente leitura').length).toBe(5);
+    expect(screen.getAllByText('Oficial').length).toBe(5);
   });
 });

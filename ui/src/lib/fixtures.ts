@@ -3,6 +3,7 @@
 // Fedora cloud-image fixtures collected for the check plugins.
 import type {
   AppDestination,
+  FirewallState,
   AppEntry,
   DnsStatus,
   CheckResult,
@@ -222,6 +223,41 @@ const DESTINATIONS: Record<string, AppDestination[]> = {
   'cli:/home/user/Downloads/install.sh': [dest('203.0.113.7', 4444, 1, false)],
 };
 
+export const FIREWALL_PLUGIN: PluginInfo = {
+  id: 'net.firewall',
+  name: 'Firewall',
+  version: '0.1.0',
+  kinds: ['check', 'control'],
+  enabled: false,
+  origin: 'official',
+  status: 'ok',
+  compatible: true,
+  conflicts: [],
+  locked: false,
+};
+
+const FIREWALL: FirewallState = {
+  backend: 'firewalld',
+  active: true,
+  zone: 'public',
+  ports: [{ port: 8080, proto: 'tcp' }],
+  services: ['ssh', 'dhcpv6-client'],
+  listening: [
+    { port: 22, proto: 'tcp' },
+    { port: 631, proto: 'tcp' },
+  ],
+  other: ['rich rule: family="ipv4" accept'],
+  networks: [
+    { name: 'Office LAN', kind: 'wired', recommended: 'public', warning: null },
+    {
+      name: 'Cafe WiFi',
+      kind: 'wifi_open',
+      recommended: 'travel',
+      warning: 'firewall-warning-open-network',
+    },
+  ],
+};
+
 const INFO: Info = {
   version: '0.1.0',
   api: 1,
@@ -280,6 +316,7 @@ export class FixtureTransport implements Transport {
     return this.gate(() => [
       ...PLUGINS,
       FLATPAK_PLUGIN,
+      FIREWALL_PLUGIN,
       { ...DNS_PLUGIN, enabled: this.scenario === 'protected' },
     ]);
   }
@@ -301,6 +338,23 @@ export class FixtureTransport implements Transport {
       blocked_doh: 2,
       upstream_errors: 0,
     }));
+  }
+
+  getFirewall() {
+    return this.gate((): FirewallState =>
+      this.scenario === 'empty'
+        ? {
+            backend: 'nftables',
+            active: false,
+            zone: null,
+            ports: [],
+            services: [],
+            listening: [{ port: 22, proto: 'tcp' }],
+            other: [],
+            networks: [],
+          }
+        : FIREWALL,
+    );
   }
 
   listApps() {

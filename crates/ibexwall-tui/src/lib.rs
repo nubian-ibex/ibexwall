@@ -107,6 +107,25 @@ async fn refresh(socket: &Path, model: &mut AppModel) -> Result<()> {
         .unwrap_or_default()
         .to_string();
 
+    let apps = client
+        .call("com.ibexwall.Core.ListApps", serde_json::json!({}))
+        .await?;
+    model.monitor = Some((
+        apps["monitor"]["running"].as_bool().unwrap_or(false),
+        crate::model::sanitize(apps["monitor"]["reason"].as_str().unwrap_or_default()),
+    ));
+    model.apps.clear();
+    for app in apps["apps"].as_array().unwrap_or(&Vec::new()).iter() {
+        let text = |field: &str| crate::model::sanitize(app[field].as_str().unwrap_or("-"));
+        model.apps.push(crate::model::AppRow {
+            key: text("key"),
+            kind: text("kind"),
+            connections: app["connections"].as_u64().unwrap_or(0),
+            destinations: app["destinations"].as_u64().unwrap_or(0),
+            last_seen: text("last_seen"),
+        });
+    }
+
     let plugins = client
         .call("com.ibexwall.Core.ListPlugins", serde_json::json!({}))
         .await?;
@@ -155,7 +174,8 @@ mod tests {
 
     #[test]
     fn tabs_cycle_in_both_directions() {
-        assert_eq!(Tab::Overview.next(), Tab::Plugins);
+        assert_eq!(Tab::Overview.next(), Tab::Apps);
+        assert_eq!(Tab::Apps.next(), Tab::Plugins);
         assert_eq!(Tab::Plugins.next(), Tab::History);
         assert_eq!(Tab::History.next(), Tab::Overview);
         assert_eq!(Tab::Overview.prev(), Tab::History);

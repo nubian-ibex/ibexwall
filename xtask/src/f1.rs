@@ -331,6 +331,12 @@ pub(crate) fn run_script(vm: &Vm, name: &str, script: &str) -> bool {
     let output = child.wait_with_output().expect("wait ssh bash");
     if output.status.success() {
         println!("PASS: {name}");
+        // Measurements worth keeping even when the scenario passes.
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            if let Some(metric) = line.strip_prefix("METRIC: ") {
+                println!("  metric: {metric}");
+            }
+        }
         true
     } else {
         eprintln!(

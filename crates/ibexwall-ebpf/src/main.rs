@@ -17,7 +17,7 @@ use aya_ebpf::{
     maps::{LruHashMap, RingBuf},
     programs::{SockAddrContext, TracePointContext},
 };
-use ibexwall_net_common::{ConnectEvent, EVENT_LEN, EXE_LEN};
+use ibexwall_net_common::{ConnectEvent, EVENT_LEN, EXE_LEN, verdict};
 
 // The map name is "IBEXWALL_CONNECTS" in the macro below (it needs a
 // literal) and EVENTS_MAP on the loader side; keep them in sync.
@@ -29,6 +29,62 @@ static mut EVENTS: RingBuf = RingBuf::with_byte_size(1 << 14, 0);
 /// without an exit hook; a pid reused by a new exec is simply overwritten.
 #[map(name = "IBEXWALL_EXES")]
 static mut EXES: LruHashMap<u32, [u8; EXE_LEN]> = LruHashMap::with_max_entries(8192, 0);
+
+/// Exe rules as a fixed array: the hook walks it (no map iteration in
+/// eBPF) and compares the path the exec tracepoint recorded for this pid.
+/// This closes the first-connect race a pid-keyed map would have.
+#[map(name = "IBEXWALL_EXE_RULES")]
+static mut EXE_RULES: aya_ebpf::maps::Array<[u8; ibexwall_net_common::EXE_RULE_LEN]> =
+    aya_ebpf::maps::Array::with_max_entries(EXE_RULES_MAX_U32, 0);
+
+/// The array bound, as the hook's loop needs it.
+const EXE_RULES_MAX_U32: u32 = ibexwall_net_common::EXE_RULES_MAX as u32;
+
+/// The exe rules as plain bytes, read once per call.
+fn exe_rule_at(slot: u32) -> Option<ibexwall_net_common::ExeRule> {
+    // SAFETY: static map access; the reference lives for the program.
+    let rules = unsafe { &*core::ptr::addr_of!(EXE_RULES) };
+    let bytes = rules.get(slot)?;
+    ibexwall_net_common::ExeRule::parse(bytes.as_slice())
+}
+
+/// The verdict for this call: the cgroup's rule, else the first exe rule
+/// whose prefix matches the path the exec tracepoint recorded for this
+/// pid, else the default. An absent entry is allow (fail open).
+fn verdict_for(pid: u32, cgroup_id: u64) -> u8 {
+    // SAFETY: static map access; the key is a value we just built.
+    let cgroups = unsafe { &*core::ptr::addr_of!(CGROUP_POLICY) };
+    // SAFETY: map lookup with an owned key.
+    if let Some(rule) = unsafe { cgroups.get(&cgroup_id) } {
+        return *rule;
+    }
+    // SAFETY: static map access.
+    let exes = unsafe { &*core::ptr::addr_of!(EXES) };
+    // SAFETY: map lookup with an owned key.
+    if let Some(path) = unsafe { exes.get(&pid) } {
+        for slot in 0..EXE_RULES_MAX_U32 {
+            if let Some(rule) = exe_rule_at(slot)
+                && rule.len != 0
+                && rule.matches(path.as_slice())
+            {
+                return rule.verdict;
+            }
+        }
+    }
+    // SAFETY: static map access.
+    let defaults = unsafe { &*core::ptr::addr_of!(DEFAULTS) };
+    defaults.get(0).copied().unwrap_or(verdict::ALLOW)
+}
+
+/// Verdict per cgroup id (Flatpak scopes, containers, services): stable
+/// for the life of the cgroup, so no race at process start.
+#[map(name = "IBEXWALL_CGROUP_POLICY")]
+static mut CGROUP_POLICY: LruHashMap<u64, u8> = LruHashMap::with_max_entries(4096, 0);
+
+/// The profile default, one entry: allow unless a profile says otherwise.
+#[map(name = "IBEXWALL_DEFAULTS")]
+static mut DEFAULTS: aya_ebpf::maps::Array<u8> =
+    aya_ebpf::maps::Array::with_max_entries(1, 0);
 
 /// Offset of the `__data_loc` filename in `sched_process_exec`, after the
 /// 8-byte common header (stable: see the tracepoint's `format` file).
@@ -65,13 +121,46 @@ const ALLOW: i32 = 1;
 
 #[cgroup_sock_addr(connect4)]
 pub fn ibexwall_connect4(ctx: SockAddrContext) -> i32 {
-    let _ = record(&ctx, 4);
-    ALLOW
+    decide(&ctx, 4)
 }
 
 #[cgroup_sock_addr(connect6)]
 pub fn ibexwall_connect6(ctx: SockAddrContext) -> i32 {
-    let _ = record(&ctx, 6);
+    decide(&ctx, 6)
+}
+
+/// UDP without connect() (DNS, QUIC) goes through sendmsg: the same
+/// verdict, no event per datagram (that would flood the ring buffer).
+#[cgroup_sock_addr(sendmsg4)]
+pub fn ibexwall_sendmsg4(_ctx: SockAddrContext) -> i32 {
+    decide_only()
+}
+
+#[cgroup_sock_addr(sendmsg6)]
+pub fn ibexwall_sendmsg6(_ctx: SockAddrContext) -> i32 {
+    decide_only()
+}
+
+fn decide_only() -> i32 {
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let cgroup_id = unsafe { bpf_get_current_cgroup_id() };
+    if verdict_for(pid, cgroup_id) == verdict::BLOCK {
+        return 0;
+    }
+    ALLOW
+}
+
+/// Observes, then decides: a block verdict fails the call (0); everything
+/// else, including a recording failure, lets it through (1). Ask is not a
+/// verdict the connect hook can act on alone; until the queue lands it
+/// behaves like allow.
+fn decide(ctx: &SockAddrContext, family: u8) -> i32 {
+    let _ = record(ctx, family);
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let cgroup_id = unsafe { bpf_get_current_cgroup_id() };
+    if verdict_for(pid, cgroup_id) == verdict::BLOCK {
+        return 0;
+    }
     ALLOW
 }
 

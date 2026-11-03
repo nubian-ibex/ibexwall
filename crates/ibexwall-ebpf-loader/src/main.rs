@@ -14,6 +14,7 @@ use aya::EbpfLoader;
 use aya::maps::RingBuf;
 use aya::programs::{CgroupSockAddr, TracePoint};
 use ibexwall_identity::{Identity, PackageManager, classify_cgroup, hash_file, package_owner};
+use ibexwall_net_common::{CGROUP_POLICY_MAP, DEFAULTS_MAP, EXE_RULES_MAP};
 use ibexwall_net_common::{ConnectEvent, EVENTS_MAP};
 
 /// Where the built program lives, in order (env override, install dir,
@@ -55,7 +56,12 @@ pub fn load_and_attach(elf: &Path, cgroup_root: &Path) -> Result<(aya::Ebpf, Opt
         .attach("sched", "sched_process_exec")
         .err()
         .map(|error| format!("kernel-side exec capture is off ({error})"));
-    for program in ["ibexwall_connect4", "ibexwall_connect6"] {
+    for program in [
+        "ibexwall_connect4",
+        "ibexwall_connect6",
+        "ibexwall_sendmsg4",
+        "ibexwall_sendmsg6",
+    ] {
         let attached: &mut CgroupSockAddr = ebpf
             .program_mut(program)
             .with_context(|| format!("{program} not found in the ELF"))?
@@ -136,6 +142,15 @@ impl CgroupIndex {
         self.paths.get(&id).map(|path| format!("0::{path}"))
     }
 
+    /// Every (cgroup id, path) known to the index, rescanned first.
+    pub fn cgroup_ids(&mut self) -> Vec<(u64, String)> {
+        self.rescan();
+        self.paths
+            .iter()
+            .map(|(id, path)| (*id, format!("/{path}")))
+            .collect()
+    }
+
     fn rescan(&mut self) {
         use std::os::unix::fs::MetadataExt as _;
         self.scanned = Some(std::time::Instant::now());
@@ -159,6 +174,127 @@ impl CgroupIndex {
         if let Ok(meta) = std::fs::metadata(&self.root) {
             self.paths.insert(meta.ino(), "/".into());
         }
+    }
+}
+
+/// One rule: what to match and what to do. The cgroup path prefix covers
+/// Flatpak scopes, containers and services (stable identity); the exe
+/// prefix covers programs, matched by the hook itself against the exec
+/// path. A rule with neither sets the default.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct Rule {
+    /// Matches the `0::`-stripped cgroup path of the connecting process.
+    pub cgroup_prefix: Option<String>,
+    /// Matches the executable path of the connecting process.
+    pub exe_prefix: Option<String>,
+    /// `allow`, `block` or `ask` (ask behaves like allow until the queue).
+    pub verdict: String,
+}
+
+fn verdict_of(text: &str) -> Option<u8> {
+    match text {
+        "allow" => Some(ibexwall_net_common::verdict::ALLOW),
+        "block" => Some(ibexwall_net_common::verdict::BLOCK),
+        "ask" => Some(ibexwall_net_common::verdict::ASK),
+        _ => None,
+    }
+}
+
+/// Rules from a JSON file, put where the hooks look for them.
+pub struct Rules {
+    rules: Vec<Rule>,
+    index: CgroupIndex,
+}
+
+impl Rules {
+    pub fn load(path: &std::path::Path) -> anyhow::Result<Self> {
+        let text = std::fs::read_to_string(path)?;
+        let rules: Vec<Rule> = serde_json::from_str(&text)?;
+        for rule in &rules {
+            anyhow::ensure!(
+                verdict_of(&rule.verdict).is_some(),
+                "unknown verdict `{}` (allow, block or ask)",
+                rule.verdict
+            );
+        }
+        Ok(Self {
+            rules,
+            index: CgroupIndex::new(PathBuf::from("/sys/fs/cgroup")),
+        })
+    }
+
+    /// Applies the rules to the maps: cgroup rules by id, exe rules as
+    /// prefix entries the hook itself matches against the exec path
+    /// (deterministic from a process's first connect), and the default.
+    pub fn apply(&mut self, ebpf: &mut aya::Ebpf) -> anyhow::Result<()> {
+        let ids = self.index.cgroup_ids();
+        let mut cgroup_updates: Vec<(u64, u8)> = Vec::new();
+        let mut exe_rules: Vec<ibexwall_net_common::ExeRule> = Vec::new();
+        let mut default = ibexwall_net_common::verdict::ALLOW;
+        for rule in &self.rules {
+            let verdict = verdict_of(&rule.verdict).expect("checked at load");
+            if let Some(prefix) = &rule.cgroup_prefix {
+                for (id, path) in &ids {
+                    if path.starts_with(prefix) {
+                        cgroup_updates.push((*id, verdict));
+                    }
+                }
+            } else if let Some(prefix) = &rule.exe_prefix {
+                anyhow::ensure!(
+                    prefix.len() <= ibexwall_net_common::EXE_RULE_PREFIX_LEN,
+                    "exe rule prefix `{prefix}` is longer than {} bytes",
+                    ibexwall_net_common::EXE_RULE_PREFIX_LEN
+                );
+                let mut bytes = [0u8; ibexwall_net_common::EXE_RULE_PREFIX_LEN];
+                bytes[..prefix.len()].copy_from_slice(prefix.as_bytes());
+                exe_rules.push(ibexwall_net_common::ExeRule {
+                    verdict,
+                    len: prefix.len() as u8,
+                    prefix: bytes,
+                });
+            } else {
+                default = verdict;
+            }
+        }
+        anyhow::ensure!(
+            exe_rules.len() <= ibexwall_net_common::EXE_RULES_MAX,
+            "at most {} exe rules are supported",
+            ibexwall_net_common::EXE_RULES_MAX
+        );
+
+        // One map borrowed at a time: each typed map borrows the Ebpf.
+        {
+            let map = ebpf
+                .map_mut(CGROUP_POLICY_MAP)
+                .ok_or_else(|| anyhow::anyhow!("map {CGROUP_POLICY_MAP} not found"))?;
+            let mut cgroups: aya::maps::HashMap<_, u64, u8> =
+                map.try_into().map_err(|e| anyhow::anyhow!("{e}"))?;
+            for (id, verdict) in &cgroup_updates {
+                cgroups.insert(id, verdict, 0)?;
+            }
+        }
+        {
+            let map = ebpf
+                .map_mut(EXE_RULES_MAP)
+                .ok_or_else(|| anyhow::anyhow!("map {EXE_RULES_MAP} not found"))?;
+            let mut rules: aya::maps::Array<_, [u8; ibexwall_net_common::EXE_RULE_LEN]> =
+                map.try_into().map_err(|e| anyhow::anyhow!("{e}"))?;
+            for (slot, rule) in exe_rules.iter().enumerate() {
+                let mut bytes = [0u8; ibexwall_net_common::EXE_RULE_LEN];
+                rule.write_to(&mut bytes);
+                rules.set(slot as u32, &bytes, 0)?;
+            }
+        }
+        {
+            let map = ebpf
+                .map_mut(DEFAULTS_MAP)
+                .ok_or_else(|| anyhow::anyhow!("map {DEFAULTS_MAP} not found"))?;
+            let mut defaults: aya::maps::Array<_, u8> =
+                map.try_into().map_err(|e| anyhow::anyhow!("{e}"))?;
+            defaults.set(0, &default, 0)?;
+        }
+        Ok(())
     }
 }
 
@@ -285,7 +421,7 @@ fn amain() -> Result<()> {
     if !Path::new("/sys/fs/cgroup/cgroup.controllers").exists() {
         bail!("cgroup v2 is required (no controllers file at /sys/fs/cgroup)");
     }
-    let (ebpf, degraded) = load_and_attach(elf, Path::new("/sys/fs/cgroup"))?;
+    let (mut ebpf, degraded) = load_and_attach(elf, Path::new("/sys/fs/cgroup"))?;
     if let Some(reason) = &degraded {
         eprintln!("ibexwall-ebpf-loader: degraded: {reason}");
     }
@@ -297,7 +433,15 @@ fn amain() -> Result<()> {
     let mut cgroups = CgroupIndex::new(PathBuf::from("/sys/fs/cgroup"));
     // With --socket the lines go to the core; without it, to stdout (the
     // VM spike and manual runs).
-    let mut sink = Sink::open(std::env::args().skip(1).collect())?;
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut rules = match args.iter().position(|a| a == "--rules") {
+        Some(at) => Some(Rules::load(std::path::Path::new(&args[at + 1]))?),
+        None => None,
+    };
+    if let Some(rules) = &mut rules {
+        rules.apply(&mut ebpf)?;
+    }
+    let mut sink = Sink::open(args)?;
     if let Some(reason) = degraded {
         sink.send(&serde_json::json!({ "meta": "degraded", "reason": reason }).to_string());
     }
@@ -338,30 +482,43 @@ enum Sink {
 
 impl Sink {
     fn open(args: Vec<String>) -> Result<Self> {
-        match args.as_slice() {
-            [] => Ok(Self::Stdout),
-            [flag, path] if flag == "--socket" => {
-                // The core may still be starting: wait for it, a while.
-                let mut last = None;
-                for _ in 0..60 {
-                    match std::os::unix::net::UnixStream::connect(path) {
-                        Ok(stream) => {
-                            // A core that stops reading must not wedge us:
-                            // the write fails, we exit, systemd restarts us.
-                            stream.set_write_timeout(Some(std::time::Duration::from_secs(5)))?;
-                            return Ok(Self::Socket(stream));
-                        }
-                        Err(error) => last = Some(error),
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(500));
+        // Options in any order: --socket PATH and --rules FILE (the rules
+        // themselves are consumed by main; only --socket matters here).
+        let mut socket: Option<&String> = None;
+        let mut index = 0;
+        while index < args.len() {
+            match args[index].as_str() {
+                "--socket" => {
+                    socket = args.get(index + 1);
+                    index += 2;
                 }
-                bail!(
-                    "cannot reach the core at {path}: {}",
-                    last.map(|e| e.to_string()).unwrap_or_default()
-                )
+                "--rules" => index += 2,
+                other => {
+                    bail!("unknown argument `{other}` (usage: --socket PATH, --rules FILE)")
+                }
             }
-            _ => bail!("usage: ibexwall-ebpf-loader [--socket PATH]"),
         }
+        let Some(path) = socket else {
+            return Ok(Self::Stdout);
+        };
+        // The core may still be starting: wait for it, a while.
+        let mut last = None;
+        for _ in 0..60 {
+            match std::os::unix::net::UnixStream::connect(path) {
+                Ok(stream) => {
+                    // A core that stops reading must not wedge us:
+                    // the write fails, we exit, systemd restarts us.
+                    stream.set_write_timeout(Some(std::time::Duration::from_secs(5)))?;
+                    return Ok(Self::Socket(stream));
+                }
+                Err(error) => last = Some(error),
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        bail!(
+            "cannot reach the core at {path}: {}",
+            last.map(|e| e.to_string()).unwrap_or_default()
+        )
     }
 
     fn send(&mut self, line: &str) {

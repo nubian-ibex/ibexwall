@@ -471,6 +471,175 @@ echo "METRIC: daemon stopped, connection completed after $(last_ms) ms"
 "#
     );
 
+    scenario!(
+        "c0 Docker and Podman containers: blocked by mode, nobody else touched, foreign nft tables unchanged",
+        r#"
+set -e
+install() {
+  if command -v dnf >/dev/null; then sudo dnf install -y -q "$@"
+  elif command -v apt-get >/dev/null; then sudo apt-get update -qq; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$@"
+  elif command -v pacman >/dev/null; then sudo pacman -Sy --noconfirm --needed "$@"
+  fi
+}
+if ! getent hosts registry-1.docker.io >/dev/null; then
+  sudo mkdir -p /etc/systemd/resolved.conf.d
+  printf '[Resolve]
+DNS=10.0.2.3
+' | sudo tee /etc/systemd/resolved.conf.d/10-vm-upstream.conf >/dev/null
+  sudo systemctl restart systemd-resolved
+  sleep 2
+fi
+command -v podman >/dev/null || install podman
+if ! command -v docker >/dev/null; then
+  if command -v dnf >/dev/null; then install moby-engine || install docker
+  elif command -v apt-get >/dev/null; then install docker.io
+  elif command -v pacman >/dev/null; then install docker
+  fi
+fi
+sudo systemctl enable --now docker
+HOST_IP=$(ip -4 -o addr show scope global | awk 'NR==1{split($4,a,"/"); print a[1]}')
+sudo pkill -x python3 2>/dev/null || true
+sudo sh -c "nohup python3 -m http.server 8080 --bind 0.0.0.0 >/dev/null 2>&1 &"
+trap 'sudo docker rm -f ibx-d >/dev/null 2>&1 || true; sudo podman rm -f ibx-p >/dev/null 2>&1 || true; sudo pkill -x python3 2>/dev/null || true' EXIT
+sleep 2
+sudo systemctl start ibexwall-monitor.service
+sudo ibexctl apps set cli:/usr/bin/curl allow >/dev/null 2>&1 || true
+
+# Foreign tables, without counters and handles: the comparison that matters.
+foreign() { sudo nft list ruleset | awk '/^table inet ibexwall /{skip=1} /^table /{ if ($0 !~ /^table inet ibexwall /) skip=0 } !skip' | sed -E 's/counter packets [0-9]+ bytes [0-9]+/counter/; s/# handle [0-9]+//'; }
+
+LOOP="while true; do if wget -q -T 3 -O /dev/null http://$HOST_IP:8080/; then touch /ok; else rm -f /ok; fi; sleep 1; done"
+sudo docker rm -f ibx-d >/dev/null 2>&1 || true
+sudo podman rm -f ibx-p >/dev/null 2>&1 || true
+sudo docker run -d --name ibx-d docker.io/library/busybox sh -c "$LOOP" >/dev/null
+sudo podman run -d --name ibx-p docker.io/library/busybox sh -c "$LOOP" >/dev/null
+works() { sudo $1 exec $2 test -e /ok; }
+until_works() { for i in $(seq 1 40); do works $1 $2 && return 0; sleep 0.5; done; return 1; }
+until_stopped() { for i in $(seq 1 40); do works $1 $2 || return 0; sleep 0.5; done; return 1; }
+until_works docker ibx-d || { echo "DOCKER CONTAINER CANNOT REACH THE HOST"; exit 1; }
+until_works podman ibx-p || { echo "PODMAN CONTAINER CANNOT REACH THE HOST"; exit 1; }
+for i in $(seq 1 60); do
+  [ "$(sudo ibexctl apps list | grep -c '^container:')" -ge 2 ] && break
+  sleep 0.5
+done
+APPS=$(sudo ibexctl apps list | grep '^container:' | awk '{print $1}')
+[ "$(echo "$APPS" | wc -l)" -ge 2 ] || { echo "CONTAINERS NOT ATTRIBUTED"; sudo ibexctl apps list; exit 1; }
+BEFORE=$(foreign)
+echo "METRIC: foreign tables: $(sudo nft list tables | grep -v ibexwall | tr '
+' ',' | cut -c1-100)"
+
+# The id of each container as the monitor names it (its identity already
+# starts with `container:`, and the app key adds the kind in front).
+DID=container:container:$(sudo docker inspect -f '{{.Id}}' ibx-d | cut -c1-12)
+PID=container:container:$(sudo podman inspect -f '{{.Id}}' ibx-p | cut -c1-12)
+echo "$APPS" | grep -qx "$DID" || { echo "DOCKER CONTAINER NOT NAMED $DID"; echo "$APPS"; exit 1; }
+echo "$APPS" | grep -qx "$PID" || { echo "PODMAN CONTAINER NOT NAMED $PID"; echo "$APPS"; exit 1; }
+
+# Block one; the other keeps working.
+sudo ibexctl apps set "$DID" block
+until_stopped docker ibx-d || { echo "DOCKER CONTAINER NOT BLOCKED"; exit 1; }
+works podman ibx-p || { echo "BLOCKING DOCKER'S CONTAINER BLOCKED PODMAN'S"; exit 1; }
+sudo ibexctl apps set "$DID" allow
+until_works docker ibx-d || { echo "DOCKER CONTAINER NOT REOPENED"; exit 1; }
+sudo ibexctl apps set "$PID" block
+until_stopped podman ibx-p || { echo "PODMAN CONTAINER NOT BLOCKED"; exit 1; }
+works docker ibx-d || { echo "BLOCKING PODMAN'S CONTAINER BLOCKED DOCKER'S"; exit 1; }
+echo "METRIC: a container is blocked, the other runtime's is not"
+sudo ibexctl apps set "$PID" allow
+until_works podman ibx-p || { echo "PODMAN CONTAINER NOT REOPENED"; exit 1; }
+
+# Ask for a service puts our chains in place; nothing foreign changes.
+sudo systemctl reset-failed ibx-c0 2>/dev/null || true
+sudo systemd-run --quiet --unit=ibx-c0 sh -c "while true; do curl -s -o /dev/null --max-time 2 http://$HOST_IP:8080/; sleep 1; done"
+for i in $(seq 1 40); do sudo ibexctl apps list | grep -q 'service:ibx-c0.service' && break; sleep 0.5; done
+sudo ibexctl apps set service:ibx-c0.service ask
+for i in $(seq 1 20); do sudo nft list chain inet ibexwall apps_ask >/dev/null 2>&1 && break; sleep 0.5; done
+sudo nft list chain inet ibexwall apps_ask >/dev/null || { echo "ASK CHAIN MISSING"; exit 1; }
+works docker ibx-d && works podman ibx-p || { echo "THE ASK CHAIN BROKE A CONTAINER"; exit 1; }
+sudo ibexctl apps set service:ibx-c0.service allow
+sudo systemctl stop ibx-c0
+for i in $(seq 1 20); do sudo nft list chain inet ibexwall apps_ask >/dev/null 2>&1 || break; sleep 0.5; done
+AFTER=$(foreign)
+[ "$BEFORE" = "$AFTER" ] || { echo "FOREIGN NFT TABLES CHANGED"; diff <(echo "$BEFORE") <(echo "$AFTER") | head -20; exit 1; }
+works docker ibx-d && works podman ibx-p || { echo "A CONTAINER LOST ITS NETWORK"; exit 1; }
+echo "METRIC: foreign nftables untouched, both runtimes fine"
+"#
+    );
+
+    scenario!(
+        "p0 performance: 5000 connections a second are all counted, the core stays small and cheap",
+        r#"
+set -e
+HOST_IP=$(ip -4 -o addr show scope global | awk 'NR==1{split($4,a,"/"); print a[1]}')
+sudo pkill -x python3 2>/dev/null || true
+sudo systemctl restart ibexwall-monitor.service
+for i in $(seq 1 40); do
+  sudo ibexctl apps list --json | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)["monitor"]["running"] else 1)' && break
+  sleep 0.5
+done
+# The core idles: no polling, a small resident set.
+sleep 5
+RSS_KB=$(ps -o rss= -C ibexwalld | head -1 | tr -d ' ')
+echo "METRIC: core idle RSS: $((RSS_KB / 1024)) MB"
+[ "$RSS_KB" -le 40960 ] || { echo "CORE TOO BIG AT IDLE: $RSS_KB kB"; exit 1; }
+ticks() { awk '{print $14 + $15}' /proc/$1/stat; }
+CORE=$(pidof ibexwalld | awk '{print $1}')
+LOADER=$(pidof ibexwall-ebpf-loader | awk '{print $1}')
+C0=$(ticks $CORE); L0=$(ticks $LOADER)
+
+cat > /tmp/sink.py <<'EOF'
+import socket
+s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(("0.0.0.0", 9090)); s.listen(8192)
+while True:
+    c, _ = s.accept(); c.close()
+EOF
+sudo sh -c "nohup python3 /tmp/sink.py >/dev/null 2>&1 &"
+sleep 1
+cat > /tmp/storm.py <<EOF
+import socket, struct, sys, time
+RATE, SECONDS = 5000, 4
+ok = 0
+start = time.perf_counter()
+n = 0
+while time.perf_counter() - start < SECONDS:
+    due = start + n / RATE
+    now = time.perf_counter()
+    if now < due:
+        time.sleep(due - now)
+    s = socket.socket()
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+    try:
+        s.connect(("$HOST_IP", 9090)); ok += 1
+    except OSError:
+        pass
+    s.close()
+    n += 1
+print(ok, n, round(n / (time.perf_counter() - start)))
+EOF
+BEFORE=$(sudo ibexctl apps list --json | python3 -c 'import json,sys; print(sum(a["connections"] for a in json.load(sys.stdin)["apps"] if "python3" in a["key"]))')
+OUT=$(python3 /tmp/storm.py)
+OK=$(echo $OUT | cut -d' ' -f1); RATE=$(echo $OUT | cut -d' ' -f3)
+echo "METRIC: storm: $OK connections at $RATE per second"
+[ "$RATE" -ge 4000 ] || { echo "THE STORM RAN TOO SLOWLY TO PROVE ANYTHING: $OUT"; exit 1; }
+# Let the pipeline drain, then count what the core recorded.
+GOT=0
+for i in $(seq 1 40); do
+  AFTER=$(sudo ibexctl apps list --json | python3 -c 'import json,sys; print(sum(a["connections"] for a in json.load(sys.stdin)["apps"] if "python3" in a["key"]))')
+  GOT=$((AFTER - BEFORE))
+  [ "$GOT" -ge "$OK" ] && break
+  sleep 0.5
+done
+echo "METRIC: recorded $GOT of $OK"
+[ "$((GOT * 1000))" -ge "$((OK * 999))" ] || { echo "EVENTS WERE LOST: $GOT of $OK"; exit 1; }
+C1=$(ticks $CORE); L1=$(ticks $LOADER)
+HZ=$(getconf CLK_TCK)
+echo "METRIC: cpu during the storm: core $(( (C1 - C0) * 100 / HZ / 5 ))%, loader $(( (L1 - L0) * 100 / HZ / 5 ))% of one cpu (about 5 s)"
+RSS_KB=$(ps -o rss= -C ibexwalld | head -1 | tr -d ' ')
+echo "METRIC: core RSS after the storm: $((RSS_KB / 1024)) MB"
+"#
+    );
+
     if failures == 0 {
         println!("PASS: f6 (all scenarios)");
         Ok(())

@@ -175,7 +175,8 @@ mod tests {
     #[test]
     fn tabs_cycle_in_both_directions() {
         assert_eq!(Tab::Overview.next(), Tab::Apps);
-        assert_eq!(Tab::Apps.next(), Tab::Plugins);
+        assert_eq!(Tab::Apps.next(), Tab::Firewall);
+        assert_eq!(Tab::Firewall.next(), Tab::Plugins);
         assert_eq!(Tab::Plugins.next(), Tab::History);
         assert_eq!(Tab::History.next(), Tab::Overview);
         assert_eq!(Tab::Overview.prev(), Tab::History);

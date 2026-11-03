@@ -281,8 +281,13 @@ fn enforcement_op(sandbox: &Sandbox) -> Result<Op, PluginError> {
         chains: vec![Chain {
             name: names::DNS_NFT_CHAIN.into(),
             priority: 0,
+            hook: Default::default(),
             rules: vec![
                 Rule {
+                    iif_loopback: false,
+                    iif_prefix: None,
+                    ct_established: false,
+                    icmp: false,
                     oif_loopback: true,
                     uid_not: None,
                     protocols: vec![],
@@ -290,6 +295,10 @@ fn enforcement_op(sandbox: &Sandbox) -> Result<Op, PluginError> {
                     verdict: Verdict::Accept,
                 },
                 Rule {
+                    iif_loopback: false,
+                    iif_prefix: None,
+                    ct_established: false,
+                    icmp: false,
                     oif_loopback: false,
                     uid_not: Some(uid),
                     protocols: vec![Proto::Udp, Proto::Tcp],

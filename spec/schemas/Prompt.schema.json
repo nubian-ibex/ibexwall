@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A connection held in Ask mode, waiting for the user. The strings come\nfrom other programs and the network: show them, never interpret them.",
+  "properties": {
+    "address": {
+      "type": "string"
+    },
+    "app": {
+      "description": "The app key, as in `AppEntry`.",
+      "type": "string"
+    },
+    "created": {
+      "type": "string"
+    },
+    "destination": {
+      "description": "A domain when the resolver's answer was correlated, else the address.",
+      "type": "string"
+    },
+    "exe_path": {
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "expires": {
+      "description": "When the fallback applies if nobody answers.",
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "port": {
+      "format": "uint16",
+      "maximum": 65535,
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "app",
+    "kind",
+    "destination",
+    "address",
+    "port",
+    "created",
+    "expires"
+  ],
+  "title": "Prompt",
+  "type": "object"
+}

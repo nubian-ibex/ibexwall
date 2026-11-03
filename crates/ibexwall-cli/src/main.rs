@@ -87,6 +87,11 @@ enum Command {
         #[command(subcommand)]
         action: AppsAction,
     },
+    /// Connections held in Ask mode, waiting for an answer.
+    Prompts {
+        #[command(subcommand)]
+        action: PromptsAction,
+    },
     /// The inbound firewall: what is allowed in, and changes to it.
     Firewall {
         #[command(subcommand)]
@@ -130,12 +135,32 @@ enum AppsAction {
     List,
     /// One application and where it connects (key from `apps list`).
     Info { app: String },
+    /// What apps nobody decided about may do: allow, monitor or ask.
+    Default {
+        #[arg(value_parser = ["allow", "monitor", "ask"])]
+        mode: String,
+    },
     /// Choose what an application may do on the network.
     Set {
         /// Key from `apps list`.
         app: String,
         #[arg(value_parser = ["allow", "monitor", "ask", "block"])]
         mode: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum PromptsAction {
+    /// The open questions.
+    List,
+    /// Answer one: allow or block, for this connection, this destination
+    /// or the whole app.
+    Answer {
+        id: String,
+        #[arg(value_parser = ["allow", "block"])]
+        decision: String,
+        #[arg(long, default_value = "once", value_parser = ["once", "destination", "always"])]
+        scope: String,
     },
 }
 
@@ -242,6 +267,7 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
         }
         Command::Plugins { action } => plugins(client, action, json).await,
         Command::Apps { action } => apps(client, action, json).await,
+        Command::Prompts { action } => prompts(client, action, json).await,
         Command::Firewall { action } => firewall(client, action, json).await,
         Command::Check { plugin } => {
             let params = serde_json::json!({ "plugin": plugin });
@@ -619,6 +645,17 @@ async fn apps(
                 print!("{}", render_apps(&value));
             }
         }
+        AppsAction::Default { mode } => {
+            client
+                .call(
+                    "com.ibexwall.Core.SetDefaultMode",
+                    serde_json::json!({ "mode": mode }),
+                )
+                .await?;
+            if !json {
+                println!("apps nobody decided about: {mode}");
+            }
+        }
         AppsAction::Set { app, mode } => {
             let value = client
                 .call(
@@ -658,6 +695,59 @@ async fn apps(
         }
     }
     Ok(Finish::Done)
+}
+
+async fn prompts(
+    client: &mut ibexwall_varlink::Client,
+    action: &PromptsAction,
+    json: bool,
+) -> Result<Finish, CliError> {
+    match action {
+        PromptsAction::List => {
+            let value = client
+                .call("com.ibexwall.Core.ListPrompts", serde_json::json!({}))
+                .await?;
+            if json {
+                emit(value, json);
+            } else {
+                print!("{}", render_prompts(&value));
+            }
+        }
+        PromptsAction::Answer {
+            id,
+            decision,
+            scope,
+        } => {
+            client
+                .call(
+                    "com.ibexwall.Core.AnswerPrompt",
+                    serde_json::json!({ "id": id, "decision": decision, "scope": scope }),
+                )
+                .await?;
+            if !json {
+                println!("{id}: {decision} ({scope})");
+            }
+        }
+    }
+    Ok(Finish::Done)
+}
+
+fn render_prompts(value: &serde_json::Value) -> String {
+    let prompts = value["prompts"].as_array().cloned().unwrap_or_default();
+    if prompts.is_empty() {
+        return "no connections are waiting\n".into();
+    }
+    let mut out = format!("{:<6}  {:<28}  {}\n", "ID", "APP", "DESTINATION");
+    for prompt in &prompts {
+        out.push_str(&format!(
+            "{:<6}  {:<28}  {}:{}\n",
+            text(&prompt["id"]),
+            text(&prompt["app"]),
+            text(&prompt["destination"]),
+            prompt["port"].as_u64().unwrap_or(0),
+        ));
+    }
+    out
 }
 
 /// Process names, paths and domains come from other programs: a terminal

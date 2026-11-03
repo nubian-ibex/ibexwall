@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 [Unit]
-Description=IbexWall connection monitor (eBPF, observe only)
+Description=IbexWall connection monitor and per-app enforcement (eBPF)
 Documentation=https://docs.ibexwall.com
 After=ibexwalld.service
 Wants=ibexwalld.service
@@ -15,7 +15,7 @@ RestartSec=2
 
 # ADR-0032: this is the only unit that loads eBPF, so it is the only one
 # holding these capabilities. BPF and PERFMON load the programs, NET_ADMIN
-# attaches the cgroup hook, SYS_PTRACE and DAC_READ_SEARCH let it name
+# attaches the cgroup hook and binds the Ask queue, SYS_PTRACE and DAC_READ_SEARCH let it name
 # other users' processes and hash their executables.
 CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_NET_ADMIN CAP_SYS_PTRACE CAP_DAC_READ_SEARCH
 NoNewPrivileges=yes
@@ -29,7 +29,8 @@ ProtectKernelLogs=yes
 ProtectControlGroups=no
 ProtectClock=yes
 ProtectHostname=yes
-RestrictAddressFamilies=AF_UNIX
+# AF_NETLINK: the Ask queue (NFQUEUE) is a netlink socket (ADR-0036).
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
 RestrictNamespaces=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes

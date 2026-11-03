@@ -358,6 +358,119 @@ if sudo ibexctl apps set service:ibx-m3.service deny >/dev/null 2>&1; then echo 
 "#
     );
 
+    scenario!(
+        "m4 Ask holds a connection until it is answered, remembers, times out open, and fails open",
+        r#"
+set -e
+HOST_IP=$(ip -4 -o addr show scope global | awk 'NR==1{split($4,a,"/"); print a[1]}')
+sudo pkill -x python3 2>/dev/null || true
+sudo sh -c "nohup python3 -m http.server 8080 --bind 0.0.0.0 >/dev/null 2>&1 &"
+sudo sh -c "nohup python3 -m http.server 8081 --bind 0.0.0.0 >/dev/null 2>&1 &"
+trap 'sudo systemctl stop ibx-m4 2>/dev/null || true; sudo pkill -x python3 2>/dev/null || true' EXIT
+sleep 2
+sudo systemctl start ibexwall-monitor.service
+echo "http://$HOST_IP:8080/" > /tmp/m4.url
+cat > /tmp/m4.sh <<'EOF'
+while true; do
+  s=$(date +%s%N)
+  curl -s -o /dev/null --max-time 90 "$(cat /tmp/m4.url)"
+  rc=$?
+  e=$(( ($(date +%s%N) - s) / 1000000 ))
+  echo "$rc $e" >> /tmp/m4.log
+  sleep 1
+done
+EOF
+# Root appends to it: a file made by another user in /tmp is refused
+# (fs.protected_regular), so root creates it.
+sudo rm -f /tmp/m4.log; sudo sh -c ': > /tmp/m4.log'
+# m3 left curl blocked by its path; the service under test uses curl too.
+sudo ibexctl apps set cli:/usr/bin/curl allow >/dev/null 2>&1 || true
+sudo systemctl reset-failed ibx-m4 2>/dev/null || true
+sudo systemd-run --quiet --unit=ibx-m4 sh /tmp/m4.sh
+APP=service:ibx-m4.service
+for i in $(seq 1 60); do sudo ibexctl apps list | grep -q "$APP" && break; sleep 0.5; done
+sudo ibexctl apps list | grep -q "$APP" || { echo "SERVICE NEVER APPEARED"; exit 1; }
+
+lines() { wc -l < /tmp/m4.log; }
+wait_lines() { for i in $(seq 1 $2); do [ "$(lines)" -ge "$1" ] && return 0; sleep 0.5; done; return 1; }
+last_rc() { tail -n 1 /tmp/m4.log | cut -d' ' -f1; }
+last_ms() { tail -n 1 /tmp/m4.log | cut -d' ' -f2; }
+prompt_id() { sudo ibexctl prompts list --json | python3 -c 'import json,sys; p=json.load(sys.stdin)["prompts"]; print(p[0]["id"] if p else "")'; }
+wait_prompt() { for i in $(seq 1 60); do id=$(prompt_id); if [ -n "$id" ]; then echo "$id"; return 0; fi; sleep 0.5; done; return 1; }
+no_prompts() { [ -z "$(prompt_id)" ]; }
+fail() { echo "$1"; echo "-- log:"; cat /tmp/m4.log; echo "-- prompts:"; sudo ibexctl prompts list; sudo journalctl -u ibexwall-monitor -n 15 --no-pager; echo "-- core:"; sudo journalctl -u ibexwalld -n 25 --no-pager; exit 1; }
+
+wait_lines 2 20 || fail "SERVICE NEVER CONNECTED"
+[ "$(last_rc)" = 0 ] || fail "SERVICE FAILED BEFORE ASK"
+
+# Ask: the connection is held, not failed.
+sudo ibexctl apps set $APP ask
+ID=$(wait_prompt) || fail "NO QUESTION APPEARED"
+sudo nft list chain inet ibexwall apps_ask >/dev/null || fail "ASK CHAIN MISSING"
+N=$(lines)
+sleep 2
+[ "$(lines)" = "$N" ] || fail "THE CONNECTION WAS NOT HELD"
+sudo ibexctl prompts answer $ID allow --scope once
+wait_lines $((N + 1)) 20 || fail "ALLOW DID NOT RELEASE THE CONNECTION"
+[ "$(last_rc)" = 0 ] && [ "$(last_ms)" -ge 1500 ] || fail "ALLOW: rc=$(last_rc) after $(last_ms) ms"
+echo "METRIC: held then released: $(last_ms) ms"
+
+# Block once: refused at once, and the next connection asks again.
+ID=$(wait_prompt) || fail "NO SECOND QUESTION"
+N=$(lines)
+sudo ibexctl prompts answer $ID block --scope once
+wait_lines $((N + 1)) 20 || fail "BLOCK DID NOT END THE CONNECTION"
+[ "$(last_rc)" != 0 ] || fail "BLOCK LET IT THROUGH"
+echo "METRIC: refused, curl exit $(last_rc)"
+
+# Allow this destination: the next connection is not asked at all.
+ID=$(wait_prompt) || fail "NO THIRD QUESTION"
+N=$(lines)
+sudo ibexctl prompts answer $ID allow --scope destination
+wait_lines $((N + 1)) 20 || fail "DESTINATION ALLOW DID NOT RELEASE"
+wait_lines $((N + 2)) 20 || fail "THE NEXT CONNECTION WAS HELD"
+no_prompts || fail "A REMEMBERED DESTINATION ASKED AGAIN"
+[ "$(last_rc)" = 0 ] && [ "$(last_ms)" -lt 1000 ] || fail "REMEMBERED: rc=$(last_rc) after $(last_ms) ms"
+
+# Nobody answers: the fallback (open) applies after the timeout.
+echo "http://$HOST_IP:8081/" > /tmp/m4.url
+ID=$(wait_prompt) || fail "NO QUESTION FOR THE NEW DESTINATION"
+N=$(lines)
+wait_lines $((N + 1)) 100 || fail "THE UNANSWERED CONNECTION NEVER ENDED"
+[ "$(last_rc)" = 0 ] || fail "TIMEOUT: rc=$(last_rc)"
+[ "$(last_ms)" -ge 25000 ] && [ "$(last_ms)" -lt 45000 ] || fail "TIMEOUT AFTER $(last_ms) ms"
+echo "METRIC: unanswered, released open after $(last_ms) ms"
+# The loop asks again at once, as a new question; the old one is gone.
+[ "$(prompt_id)" != "$ID" ] || fail "THE EXPIRED QUESTION IS STILL LISTED"
+
+# Always block: the mode changes, no more questions, refused.
+echo "http://$HOST_IP:8080/" > /tmp/m4.url
+ID=$(wait_prompt) || true
+if [ -n "$ID" ]; then sudo ibexctl prompts answer $ID block --scope always; else sudo ibexctl apps set $APP block; fi
+sudo ibexctl apps list | grep "$APP" | grep -q block || fail "MODE NOT BLOCK"
+N=$(lines)
+wait_lines $((N + 2)) 40 || fail "NO CONNECTIONS AFTER BLOCK"
+[ "$(last_rc)" != 0 ] || fail "ALWAYS BLOCK LET IT THROUGH"
+no_prompts || fail "A BLOCKED APP ASKED"
+
+# Back to allow: the Ask chains are gone (nothing is in Ask mode).
+sudo ibexctl apps set $APP allow
+for i in $(seq 1 20); do sudo nft list chain inet ibexwall apps_ask >/dev/null 2>&1 || break; sleep 0.5; done
+if sudo nft list chain inet ibexwall apps_ask >/dev/null 2>&1; then fail "THE ASK CHAIN SURVIVED"; fi
+
+# The daemon goes away while a connection is being asked: the network opens.
+# (8080 is a remembered destination; 8081 is not.)
+echo "http://$HOST_IP:8081/" > /tmp/m4.url
+sudo ibexctl apps set $APP ask
+ID=$(wait_prompt) || fail "NO QUESTION BEFORE STOPPING THE DAEMON"
+N=$(lines)
+sudo systemctl stop ibexwalld.service ibexwalld.socket
+wait_lines $((N + 1)) 120 || fail "STOPPING THE DAEMON LEFT THE CONNECTION HELD"
+[ "$(last_rc)" = 0 ] && [ "$(last_ms)" -lt 20000 ] || fail "AFTER THE DAEMON STOPPED: rc=$(last_rc) after $(last_ms) ms"
+echo "METRIC: daemon stopped, connection completed after $(last_ms) ms"
+"#
+    );
+
     if failures == 0 {
         println!("PASS: f6 (all scenarios)");
         Ok(())

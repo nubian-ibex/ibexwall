@@ -60,6 +60,7 @@ const CORE_TYPES: &[&str] = &[
     "MonitorStatus",
     "AppEntry",
     "AppDestination",
+    "Prompt",
     "ProposalStatus",
     "Proposal",
 ];
@@ -91,6 +92,9 @@ method RecentEvents(limit: ?int) -> (events: []Event)
 # Added in v1 (additive): per-app traffic from the connection monitor.
 method ListApps() -> (monitor: MonitorStatus, apps: []AppEntry)
 method SetAppMode(app: string, mode: string) -> ()
+method SetDefaultMode(mode: string) -> ()
+method ListPrompts() -> (prompts: []Prompt)
+method AnswerPrompt(id: string, decision: string, scope: string) -> ()
 method GetAppDestinations(app: string) -> (destinations: []AppDestination)
 
 # Added in v1 (additive): the inbound firewall, as read from the manager.

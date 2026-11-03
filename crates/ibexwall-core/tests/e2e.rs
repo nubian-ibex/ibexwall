@@ -1136,3 +1136,191 @@ async fn choosing_a_mode_pushes_the_policy_to_the_monitor_unit() {
     assert!(refused.is_err());
     task.abort();
 }
+
+fn ask_line(dst: &str, port: u16, ask_id: u16) -> String {
+    json!({ "ask": {
+        "pid": 4242, "comm": "curl", "exe": "/usr/bin/curl", "dst": dst, "port": port,
+        "family": 4, "kind": "cli", "id": "", "ask_id": ask_id,
+    }})
+    .to_string()
+}
+
+/// Reads the next line the unit would receive.
+async fn next_answer(
+    reader: &mut std::io::BufReader<std::os::unix::net::UnixStream>,
+) -> serde_json::Value {
+    use std::io::BufRead as _;
+    let mut line = String::new();
+    let read = tokio::task::block_in_place(|| reader.read_line(&mut line));
+    assert!(read.unwrap() > 0, "the unit got nothing");
+    serde_json::from_str(&line).unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_held_connection_becomes_a_question_and_the_answer_reaches_the_unit() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
+        return;
+    }
+    use std::io::Write as _;
+    let sandbox = prepare_sandbox();
+    let (core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+    let path = sandbox.root.join("run/ibexwall/monitor.sock");
+    let task = tokio::spawn(ibexwall_core::monitor::serve_monitor(
+        Arc::clone(&core),
+        path.clone(),
+    ));
+    for _ in 0..50 {
+        if path.exists() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    let mut stream = std::os::unix::net::UnixStream::connect(&path).unwrap();
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+        .unwrap();
+    let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
+    // The connection itself is ingested first (the hook records, then asks).
+    writeln!(
+        stream,
+        "{}",
+        connection_line("198.51.100.4", "cli", "", &"cc".repeat(32))
+    )
+    .unwrap();
+    let first = next_answer(&mut reader).await;
+    assert!(first["policy"].is_object());
+    // Wait for the app to be known, then put it in Ask mode.
+    for _ in 0..50 {
+        let listed = client
+            .call("com.ibexwall.Core.ListApps", json!({}))
+            .await
+            .unwrap();
+        if listed["apps"].as_array().is_some_and(|a| !a.is_empty()) {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    client
+        .call(
+            "com.ibexwall.Core.SetAppMode",
+            json!({ "app": "cli:/usr/bin/curl", "mode": "ask" }),
+        )
+        .await
+        .unwrap();
+    let pushed = next_answer(&mut reader).await;
+    assert_eq!(pushed["policy"]["rules"][0]["verdict"], "ask");
+
+    // A held connection, and its retransmission: one question.
+    writeln!(stream, "{}", ask_line("198.51.100.4", 443, 7)).unwrap();
+    writeln!(stream, "{}", ask_line("198.51.100.4", 443, 8)).unwrap();
+    let mut prompts = json!([]);
+    for _ in 0..50 {
+        prompts = client
+            .call("com.ibexwall.Core.ListPrompts", json!({}))
+            .await
+            .unwrap()["prompts"]
+            .clone();
+        if prompts.as_array().is_some_and(|p| !p.is_empty()) {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert_eq!(prompts.as_array().unwrap().len(), 1);
+    assert_eq!(prompts[0]["app"], "cli:/usr/bin/curl");
+    assert_eq!(prompts[0]["port"], 443);
+    let id = prompts[0]["id"].as_str().unwrap().to_string();
+
+    // Allow this destination: both held ids are released, and the same
+    // destination is answered without asking again.
+    client
+        .call(
+            "com.ibexwall.Core.AnswerPrompt",
+            json!({ "id": id, "decision": "allow", "scope": "destination" }),
+        )
+        .await
+        .unwrap();
+    let mut released = [
+        next_answer(&mut reader).await,
+        next_answer(&mut reader).await,
+    ];
+    released.sort_by_key(|a| a["answer"]["id"].as_u64());
+    assert_eq!(
+        released[0]["answer"],
+        json!({ "id": 7, "decision": "allow" })
+    );
+    assert_eq!(
+        released[1]["answer"],
+        json!({ "id": 8, "decision": "allow" })
+    );
+    writeln!(stream, "{}", ask_line("198.51.100.4", 443, 9)).unwrap();
+    let again = next_answer(&mut reader).await;
+    assert_eq!(again["answer"], json!({ "id": 9, "decision": "allow" }));
+    assert_eq!(
+        client
+            .call("com.ibexwall.Core.ListPrompts", json!({}))
+            .await
+            .unwrap()["prompts"],
+        json!([])
+    );
+
+    // Another destination is a new question; blocking the app changes its
+    // mode and the policy the unit enforces.
+    writeln!(stream, "{}", ask_line("203.0.113.9", 80, 10)).unwrap();
+    let mut other = String::new();
+    for _ in 0..50 {
+        let p = client
+            .call("com.ibexwall.Core.ListPrompts", json!({}))
+            .await
+            .unwrap()["prompts"]
+            .clone();
+        if let Some(first) = p.as_array().and_then(|a| a.first()) {
+            other = first["id"].as_str().unwrap().to_string();
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert!(!other.is_empty());
+    client
+        .call(
+            "com.ibexwall.Core.AnswerPrompt",
+            json!({ "id": other, "decision": "block", "scope": "always" }),
+        )
+        .await
+        .unwrap();
+    let mut seen_block = false;
+    for _ in 0..2 {
+        let line = next_answer(&mut reader).await;
+        if line["answer"] == json!({ "id": 10, "decision": "block" }) {
+            seen_block = true;
+        } else {
+            assert_eq!(line["policy"]["rules"][0]["verdict"], "block");
+        }
+    }
+    assert!(seen_block);
+
+    // Nothing is waiting under that id any more, and bad input is refused.
+    assert!(
+        client
+            .call(
+                "com.ibexwall.Core.AnswerPrompt",
+                json!({ "id": other, "decision": "allow", "scope": "once" })
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        client
+            .call(
+                "com.ibexwall.Core.AnswerPrompt",
+                json!({ "id": "1", "decision": "maybe", "scope": "once" })
+            )
+            .await
+            .is_err()
+    );
+    // An app whose stored mode is not Ask is answered without a question.
+    writeln!(stream, "{}", ask_line("192.0.2.77", 22, 11)).unwrap();
+    let direct = next_answer(&mut reader).await;
+    assert_eq!(direct["answer"], json!({ "id": 11, "decision": "block" }));
+    task.abort();
+}

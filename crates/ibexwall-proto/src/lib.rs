@@ -27,8 +27,8 @@ pub use report::{BlockedConnectionsSummary, Report, ReportError};
 pub use types::{
     AppDestination, AppEntry, CheckOutcome, CheckReport, CheckResult, DnsStatus, Event, Finding,
     FindingStatus, FirewallNetwork, FirewallPort, FirewallState, HistoryEntry, Info, MonitorStatus,
-    OpPreview, Plan, PluginInfo, Posture, Proposal, ProposalStatus, ProtectionStatus, Reference,
-    Remediation, Severity, Transaction, TransactionState, posture_score,
+    OpPreview, Plan, PluginInfo, Posture, Prompt, Proposal, ProposalStatus, ProtectionStatus,
+    Reference, Remediation, Severity, Transaction, TransactionState, posture_score,
 };
 
 /// Schema export support used by `cargo xtask schemas`.
@@ -69,6 +69,7 @@ pub mod export {
         "MonitorStatus" => crate::types::MonitorStatus,
         "AppEntry" => crate::types::AppEntry,
         "AppDestination" => crate::types::AppDestination,
+        "Prompt" => crate::types::Prompt,
         "Reference" => crate::types::Reference,
         "Remediation" => crate::types::Remediation,
         "FindingStatus" => crate::types::FindingStatus,

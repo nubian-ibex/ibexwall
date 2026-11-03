@@ -49,6 +49,9 @@ struct Meta {
     reason: String,
 }
 
+const ASK_CHAIN: &str = "apps_ask";
+const REFUSE_CHAIN: &str = "apps_ask_refuse";
+
 /// How often the package-manager database mtime is re-read.
 const DB_MTIME_TTL: i64 = 5;
 
@@ -60,6 +63,9 @@ pub struct Monitor {
     /// The policy line the monitor unit should be enforcing; every
     /// connection of the unit gets the current one, then each change.
     policy: tokio::sync::watch::Sender<String>,
+    /// Lines for the unit that are events, not state: answers to Ask.
+    outbound: tokio::sync::broadcast::Sender<String>,
+    pub(crate) asks: crate::ask::Asks,
 }
 
 impl Monitor {
@@ -73,7 +79,23 @@ impl Monitor {
             package_db: Mutex::new((0, None)),
             root,
             policy: tokio::sync::watch::channel(String::new()).0,
+            outbound: tokio::sync::broadcast::channel(256).0,
+            asks: crate::ask::Asks::default(),
         }
+    }
+
+    /// Sends a line to the monitor unit, if one is connected.
+    pub(crate) fn send_to_unit(&self, line: String) {
+        let _ = self.outbound.send(line);
+    }
+
+    /// The domain the resolver last answered with this address.
+    pub(crate) fn lookup_domain(&self, ip: IpAddr, now: i64) -> Option<String> {
+        self.correlator
+            .lock()
+            .unwrap()
+            .lookup(ip, now.max(0) as u64)
+            .map(str::to_string)
     }
 
     /// Rebuilds the policy from the stored modes and pushes it.
@@ -82,16 +104,64 @@ impl Monitor {
             let apps = ibexwall_apps::list_apps(conn)?;
             let modes = ibexwall_apps::policy::modes(conn)?;
             let default = ibexwall_apps::policy::default_mode(conn)?;
-            Ok::<_, ibexwall_apps::store::Error>(ibexwall_apps::policy::build(
+            let (timeout, fallback) = ibexwall_apps::policy::ask_settings(conn)?;
+            let mut policy = ibexwall_apps::policy::build(
                 &apps,
                 &modes,
                 default,
                 &std::collections::HashMap::new(),
-            ))
+            );
+            policy.ask_timeout_secs = timeout;
+            policy.ask_fallback = fallback;
+            Ok::<_, ibexwall_apps::store::Error>(policy)
         })?;
+        let wants_ask = policy.default == "ask" || policy.rules.iter().any(|r| r.verdict == "ask");
         let line = serde_json::to_string(&serde_json::json!({ "policy": policy }))?;
         self.policy.send_replace(line);
+        self.reconcile_ask_chains(core, wants_ask);
         Ok(())
+    }
+
+    /// Installs the chains that hold an Ask connection's first packet while
+    /// any app is in Ask mode, and removes them when none is (ADR-0036).
+    /// Derived state, own table only: the queue rule carries `bypass`, so
+    /// with no listener the packet is accepted.
+    fn reconcile_ask_chains(&self, core: &Core, wanted: bool) {
+        use ibexwall_sys::nft::Fragment;
+        let engine = &core.engine;
+        if !engine.sys.allow_system_executors {
+            return;
+        }
+        let nft = &engine.sys.nft;
+        let present = nft.capture(ASK_CHAIN).ok().flatten().is_some();
+        let result = if wanted {
+            let fragment: Fragment = serde_json::from_value(serde_json::json!({ "chains": [
+                { "name": ASK_CHAIN, "priority": 5, "rules": [{
+                    "ct_new": true,
+                    "mark": { "mask": ibexwall_net_common::ASK_MARK_MASK,
+                              "value": ibexwall_net_common::ASK_MARK_VALUE },
+                    "verdict": { "queue": { "num": ibexwall_net_common::ASK_QUEUE } },
+                }]},
+                // A queue verdict resumes at the next hook entry, so the
+                // refusal lives in a chain that runs after the queue.
+                { "name": REFUSE_CHAIN, "priority": 6, "rules": [{
+                    "mark": { "mask": ibexwall_net_common::ASK_MARK_MASK,
+                              "value": ibexwall_net_common::REFUSED_MARK_VALUE },
+                    "verdict": "reject",
+                }]},
+            ]}))
+            .expect("the Ask fragment is well formed");
+            nft.apply(&fragment)
+        } else if present {
+            nft.restore(ASK_CHAIN, None)
+                .and_then(|()| nft.restore(REFUSE_CHAIN, None))
+        } else {
+            return;
+        };
+        match result {
+            Ok(()) => core.persist_nft(),
+            Err(error) => tracing::error!(%error, "reconciling the Ask chains failed"),
+        }
     }
 
     pub fn status(&self) -> MonitorStatus {
@@ -126,6 +196,9 @@ impl Monitor {
     /// cares about (loopback, unspecified) or not valid are skipped; a
     /// storage failure is returned.
     pub fn ingest_line(&self, core: &Core, line: &str, now: i64) -> Result<()> {
+        if let Ok(envelope) = serde_json::from_str::<crate::ask::AskEnvelope>(line) {
+            return self.handle_ask(core, envelope.ask, now);
+        }
         if let Ok(meta) = serde_json::from_str::<Meta>(line) {
             // The loader runs, with a limitation worth showing.
             if meta.meta == "degraded" {
@@ -362,18 +435,39 @@ pub async fn serve_monitor(core: Arc<Core>, path: PathBuf) -> Result<()> {
             // The policy goes out on connect and on every change, from
             // its own task so a slow unit never delays ingestion.
             let mut changes = core.monitor.policy.subscribe();
+            let mut answers = core.monitor.outbound.subscribe();
             let writer = tokio::spawn(async move {
                 use tokio::io::AsyncWriteExt as _;
+                let mut send = async |line: &str| {
+                    write.write_all(line.as_bytes()).await.is_ok()
+                        && write.write_all(b"\n").await.is_ok()
+                };
+                let first = changes.borrow_and_update().clone();
+                if !first.is_empty() && !send(&first).await {
+                    return;
+                }
                 loop {
-                    let line = changes.borrow_and_update().clone();
-                    if !line.is_empty()
-                        && (write.write_all(line.as_bytes()).await.is_err()
-                            || write.write_all(b"\n").await.is_err())
-                    {
-                        return;
-                    }
-                    if changes.changed().await.is_err() {
-                        return;
+                    tokio::select! {
+                        changed = changes.changed() => {
+                            if changed.is_err() {
+                                return;
+                            }
+                            let line = changes.borrow_and_update().clone();
+                            if !send(&line).await {
+                                return;
+                            }
+                        }
+                        answer = answers.recv() => match answer {
+                            Ok(line) => {
+                                if !send(&line).await {
+                                    return;
+                                }
+                            }
+                            // Lagged: some answers were dropped, which the
+                            // unit's timeout covers. Closed: we are done.
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                            Err(_) => return,
+                        },
                     }
                 }
             });

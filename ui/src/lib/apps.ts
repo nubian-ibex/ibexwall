@@ -120,10 +120,25 @@ const CGROUP_KINDS = new Set(['flatpak', 'snap', 'system_service', 'container'])
 export function modeAvailable(
   app: AppEntry,
   monitor: { running: boolean; reason?: string | null } | null,
+  mode?: NetMode,
 ): boolean {
-  if (!monitor?.running) return false;
-  if (CGROUP_KINDS.has(app.kind)) return true;
-  return !(monitor.reason ?? '').includes('exec capture');
+  return unavailableKey(app, monitor, mode) === null;
+}
+
+/**
+ * The Fluent key that says why a mode cannot be chosen, or null when it
+ * can. Ask cannot hold a container's first packet: it leaves through
+ * another network namespace, where the queue rule does not run.
+ */
+export function unavailableKey(
+  app: AppEntry,
+  monitor: { running: boolean; reason?: string | null } | null,
+  mode?: NetMode,
+): string | null {
+  if (!monitor?.running) return 'apps-mode-unavailable';
+  if (mode === 'ask' && app.kind === 'container') return 'apps-mode-unavailable-container';
+  if (CGROUP_KINDS.has(app.kind)) return null;
+  return (monitor.reason ?? '').includes('exec capture') ? 'apps-mode-unavailable' : null;
 }
 
 /** Blocking is only offered where it works: Flatpak, system-wide. */

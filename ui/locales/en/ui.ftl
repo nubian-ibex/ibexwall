@@ -220,3 +220,70 @@ dns-counter-errors = Upstream failures
 dns-counters-updated = Updated { $when }.
 dns-counters-not-running = The resolver is not reporting right now.
 dns-counters-privacy = Counts only. IbexWall does not record which domains you look up.
+
+nav-apps = Apps and network
+apps-title = Apps and network
+apps-subtitle = See which programs use the internet and where they connect.
+apps-mode-allow = Allow
+apps-mode-allow-body = Free access to the internet.
+apps-mode-monitor = Monitor
+apps-mode-monitor-body = Free access, but everything is recorded.
+apps-mode-ask = Ask
+apps-mode-ask-body = You decide at every new destination.
+apps-mode-block = Block
+apps-mode-block-body = No access to the internet.
+apps-mode-later = Available with the firewall, in a later version.
+apps-mode-group = Network mode for { $app }
+apps-monitor-running = The connection monitor is running.
+apps-monitor-limited = The connection monitor is running with a limit: { $reason }
+apps-monitor-off = The connection monitor is off: { $reason }
+apps-monitor-off-body = Apps and destinations appear here once it is running. Nothing is blocked while it is off.
+apps-search = Search apps
+apps-filters = Filter apps
+apps-filter-all = All · { $count }
+apps-filter-active = Connected now · { $count }
+apps-filter-new = New · { $count }
+apps-list-label = Apps
+apps-empty-title = No apps seen yet
+apps-empty-body = Programs appear here after their first connection.
+apps-none-match = No app matches your search.
+apps-kind-flatpak = Flatpak
+apps-kind-snap = Snap
+apps-kind-desktop_app = App
+apps-kind-system_service = System service
+apps-kind-container = Container
+apps-kind-cli = Program
+apps-kind-unknown = Unknown
+apps-new-badge = New
+apps-summary =
+    { $destinations ->
+        [one] 1 destination
+       *[other] { $destinations } destinations
+    } · { $connections ->
+        [one] 1 connection
+       *[other] { $connections } connections
+    }
+apps-last-activity = Last activity { $when }
+apps-select = Show details for { $app }
+apps-details-title = Details
+apps-details-hint = Choose an app to see where it connects.
+apps-package = Package: { $name }
+apps-exe = Program file: { $path }
+apps-first-seen = First seen { $when }
+apps-where = Where it connects
+apps-no-destinations = No destinations recorded yet.
+apps-no-domain = no domain known
+apps-port = port { $port }
+apps-times =
+    { $count ->
+        [one] 1 time
+       *[other] { $count } times
+    }
+apps-block-title = Cut this app's network access
+apps-block-body = Flatpak will start this app without network access. You can undo it from History.
+apps-block-scope = Works for Flatpak apps installed for the whole system. Apps installed for a single user cannot be changed from here.
+apps-block-start = Block network access
+apps-block-enable-failed = Could not turn on the Flatpak network plugin.
+apps-block-unavailable = Blocking is not available on this system.
+apps-block-other = Blocking a single app arrives with the firewall, in a later version.
+apps-privacy = Everything shown stays on this computer. Only counts and times are kept, never what was sent.

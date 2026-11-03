@@ -1,6 +1,7 @@
 // Transport backed by the Tauri commands (the Rust side is a varlink
 // client). Errors arrive as { code, parameters } and become TransportError.
 import type {
+  AppDestination,
   DnsStatus,
   Finding,
   HistoryEntry,
@@ -10,7 +11,7 @@ import type {
   Posture,
   Transaction,
 } from '../gen/contracts';
-import { TransportError, type Transport } from './transport';
+import { TransportError, type AppsListing, type Transport } from './transport';
 
 /// True when running inside the Tauri shell.
 export function insideTauri(): boolean {
@@ -56,6 +57,14 @@ export class TauriTransport implements Transport {
 
   getDnsStatus() {
     return unwrapped<DnsStatus>('get_dns_status', 'dns_status');
+  }
+
+  listApps() {
+    return invoke<AppsListing>('list_apps');
+  }
+
+  getAppDestinations(app: string) {
+    return unwrapped<AppDestination[]>('get_app_destinations', 'destinations', { app });
   }
 
   listPlugins() {

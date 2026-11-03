@@ -9,6 +9,7 @@
 
   const items: { route: Route; icon: string; key: string }[] = [
     { route: 'overview', icon: 'layout-grid', key: 'nav-overview' },
+    { route: 'apps', icon: 'monitor', key: 'nav-apps' },
     { route: 'dns', icon: 'globe', key: 'nav-dns' },
     { route: 'posture', icon: 'shield-check', key: 'nav-posture' },
     { route: 'plugins', icon: 'clipboard-list', key: 'nav-plugins' },

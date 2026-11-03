@@ -1,6 +1,6 @@
 <script lang="ts">
   import { app } from '../lib/app.svelte';
-  import { t } from '../lib/i18n.svelte';
+  import { i18n, t } from '../lib/i18n.svelte';
   import {
     DNS_DEFAULTS,
     DNS_LISTS,
@@ -175,7 +175,7 @@
           </div>
         </dl>
         <p class="muted">
-          {t('dns-counters-updated', { when: relativeTime(counters.updated_at) })}
+          {t('dns-counters-updated', { when: relativeTime(counters.updated_at, i18n.locale) })}
         </p>
       {:else}
         <p class="muted">{t('dns-counters-not-running')}</p>

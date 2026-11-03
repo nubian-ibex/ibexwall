@@ -51,6 +51,12 @@ Progress:
   debian 1.04%, ubuntu-24.04 0.92%, arch 0.88%, ubuntu-26.04 0.65% of one
   CPU at 1000 connections/s (target below 2%). The loader reads cgroups
   from an in-memory index first.
+- M5 GUI done: Apps and network screen (mockup 02) with the four modes
+  shown (Monitor everywhere, Block only for Flatpak apps), search,
+  Connected now and New filters, destinations with "no domain known"
+  marking, the Flatpak block through the shared change flow; en and
+  pt-BR, axe clean in both themes, keyboard navigation updated. Shows
+  only what is measured (counts, times, package): no bytes or countries.
 - The `--phase f4` spike scenarios (attribution with asymmetric v4 and
   v6 destinations, overhead) pass 2/2 on the five distros.
 

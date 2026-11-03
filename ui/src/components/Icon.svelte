@@ -6,6 +6,7 @@
   import Globe from '@lucide/svelte/icons/globe';
   import HardDrive from '@lucide/svelte/icons/hard-drive';
   import LayoutGrid from '@lucide/svelte/icons/layout-grid';
+  import Monitor from '@lucide/svelte/icons/monitor';
   import LockKeyhole from '@lucide/svelte/icons/lock-keyhole';
   import Lock from '@lucide/svelte/icons/lock';
   import Radio from '@lucide/svelte/icons/radio';
@@ -25,6 +26,7 @@
     globe: Globe,
     'hard-drive': HardDrive,
     'layout-grid': LayoutGrid,
+    monitor: Monitor,
     'lock-keyhole': LockKeyhole,
     lock: Lock,
     radio: Radio,

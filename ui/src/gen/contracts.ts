@@ -120,6 +120,8 @@ export type TransactionState =
 
 export interface AllContracts {
   AppCount?: AppCount;
+  AppDestination?: AppDestination;
+  AppEntry?: AppEntry;
   BlockedConnectionsSummary?: BlockedConnectionsSummary;
   BundleSignature?: BundleSignature;
   CheckOutcome?: CheckOutcome;
@@ -134,6 +136,7 @@ export interface AllContracts {
   HistoryEntry?: HistoryEntry;
   Info?: Info;
   Manifest?: Manifest;
+  MonitorStatus?: MonitorStatus;
   Op?: Op;
   OpPreview?: OpPreview;
   OrgIdentity?: OrgIdentity;
@@ -166,6 +169,39 @@ export interface AllContracts {
 export interface AppCount {
   app: string;
   count: number;
+}
+/**
+ * One destination of an application. `destination` is a domain when the
+ * resolver's answer was correlated, otherwise the bare address.
+ */
+export interface AppDestination {
+  count: number;
+  destination: string;
+  first_seen: string;
+  last_seen: string;
+  port: number;
+  resolved: boolean;
+}
+/**
+ * One application seen by the monitor (counts and times only).
+ */
+export interface AppEntry {
+  connections: number;
+  destinations: number;
+  exe_path?: string | null;
+  first_seen: string;
+  id: string;
+  /**
+   * Stable key, e.g. `flatpak:org.mozilla.firefox` or `cli:/usr/bin/curl`.
+   */
+  key: string;
+  /**
+   * `flatpak`, `snap`, `desktop_app`, `system_service`, `container`,
+   * `cli` or `unknown`.
+   */
+  kind: string;
+  last_seen: string;
+  package?: string | null;
 }
 export interface BlockedConnectionsSummary {
   top_apps?: AppCount[];
@@ -368,6 +404,18 @@ export interface Sandbox {
 export interface Ui {
   icon: string;
   order: number;
+}
+/**
+ * Whether the connection monitor is feeding the Apps screen, and if not
+ * (or if it works with a limitation), why: a plain reason, never a guess
+ * about the cause.
+ */
+export interface MonitorStatus {
+  /**
+   * Why the monitor is off or limited, when it is. Untrusted display text.
+   */
+  reason?: string | null;
+  running: boolean;
 }
 /**
  * One operation as previewed to the user (op kind + target + diff).

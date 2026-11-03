@@ -325,6 +325,22 @@ impl Enforcer {
         self.sync()
     }
 
+    /// The periodic pass: only cgroup rules depend on what exists now, so
+    /// without any there is nothing to walk (an idle loader does no work).
+    pub fn rescan(&mut self) -> Result<()> {
+        let watches_cgroups = self.policy.as_ref().is_some_and(|policy| {
+            policy
+                .rules
+                .iter()
+                .any(|rule| rule.cgroup_prefix.is_some() || rule.cgroup_contains.is_some())
+        });
+        if watches_cgroups || !self.inserted.is_empty() {
+            self.sync()
+        } else {
+            Ok(())
+        }
+    }
+
     /// Brings the maps in line with the policy and the cgroups that exist.
     pub fn sync(&mut self) -> Result<()> {
         let Some(policy) = self.policy.clone() else {
@@ -632,7 +648,7 @@ fn amain() -> Result<()> {
                     }
                 }
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                    if let Err(error) = enforcer.sync() {
+                    if let Err(error) = enforcer.rescan() {
                         eprintln!("ibexwall-ebpf-loader: policy sync failed: {error:#}");
                     }
                 }

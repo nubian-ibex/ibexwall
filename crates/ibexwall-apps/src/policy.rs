@@ -136,7 +136,8 @@ pub const DEFAULT_ASK_TIMEOUT_SECS: u64 = 30;
 
 /// Builds the policy from the apps seen and the modes chosen. `locked`
 /// apps (organization rules) override the user's choice. A mode only needs
-/// a rule when it differs from the default.
+/// a rule when it differs from the default (cgroup-matched apps keep theirs,
+/// see below).
 pub fn build(
     apps: &[AppSummary],
     modes: &HashMap<String, Mode>,
@@ -151,12 +152,17 @@ pub fn build(
             .or_else(|| modes.get(&app.key))
             .copied();
         let Some(mode) = mode else { continue };
-        if mode.verdict() == default_verdict {
+        let Some(rule) = rule_for(app, mode) else {
+            continue;
+        };
+        // A rule equal to the default is redundant, except for apps matched
+        // by cgroup: the kernel checks the cgroup first, so an explicit
+        // allow there is what keeps a program-wide block (a rule on the
+        // executable) from reaching into a service the user allowed.
+        if mode.verdict() == default_verdict && rule.cgroup_contains.is_none() {
             continue;
         }
-        if let Some(rule) = rule_for(app, mode) {
-            rules.push(rule);
-        }
+        rules.push(rule);
     }
     Policy {
         rules,
@@ -384,6 +390,36 @@ mod tests {
         assert_eq!(policy.default, "ask");
         let verdicts: Vec<_> = policy.rules.iter().map(|r| r.verdict.as_str()).collect();
         assert_eq!(verdicts, ["block", "allow"]);
+    }
+
+    #[test]
+    fn an_explicit_allow_for_a_service_shadows_a_program_wide_block() {
+        let apps = vec![
+            app("cli:/usr/bin/curl", AppKind::Cli, "", Some("/usr/bin/curl")),
+            app(
+                "service:backup.service",
+                AppKind::SystemService,
+                "backup.service",
+                None,
+            ),
+        ];
+        let modes = HashMap::from([
+            ("cli:/usr/bin/curl".to_string(), Mode::Block),
+            ("service:backup.service".to_string(), Mode::Allow),
+        ]);
+        let policy = build(&apps, &modes, Mode::Monitor, &HashMap::new());
+        let service = policy
+            .rules
+            .iter()
+            .find(|r| r.cgroup_contains.is_some())
+            .expect("the service keeps its explicit allow");
+        assert_eq!(service.verdict, "allow");
+        assert!(
+            policy
+                .rules
+                .iter()
+                .any(|r| r.exe_exact.is_some() && r.verdict == "block")
+        );
     }
 
     #[test]

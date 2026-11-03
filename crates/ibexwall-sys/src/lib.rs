@@ -12,6 +12,7 @@
 
 pub mod browser;
 pub mod clock;
+pub mod flatpak;
 pub mod fs;
 pub mod identity;
 pub mod ops;

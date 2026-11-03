@@ -1,0 +1,37 @@
+id = "apps.flatpak-network"
+version = "0.1.0"
+api = 1
+category = "apps"
+kinds = ["check", "control"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-flatpak-network"
+default_enabled = false
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "Flatpak network access"
+pt-BR = "Acesso à rede dos apps Flatpak"
+
+[description]
+en = "Cuts the network access of a Flatpak app with a reversible override."
+pt-BR = "Corta o acesso à rede de um app Flatpak com uma sobreposição reversível."
+
+[privileges]
+write_paths = ["/var/lib/flatpak/overrides"]
+
+[sandbox]
+user = "dynamic"
+capabilities = []
+read_paths = ["/var/lib/flatpak/app", "/var/lib/flatpak/overrides"]
+network = false
+
+[risk]
+affects = ["network"]
+reversible = "immediate"
+confirm_timeout = false
+may_affect = ["the app stops working if it needs the network", "updates and sign-in inside the app"]
+
+[ui]
+icon = "box"
+order = 40

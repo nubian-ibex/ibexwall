@@ -9,14 +9,33 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use super::f1::{install_binary, pipe_file, run_script};
+use super::f1::{install_binary, install_plugin, pipe_file, provision, run_script, start_daemon};
 use super::vm::{Vm, run_capture};
 
-pub fn run(vm: &Vm, workspace: &Path) -> Result<()> {
+/// Reads the transaction or plan id out of `ibexctl --json` output.
+const JSON_ID: &str = "python3 -c 'import json,sys;d=json.JSONDecoder().raw_decode(sys.stdin.read())[0];t=d.get(\"plan\") or d.get(\"transaction\");print(t[\"id\"] if isinstance(t,dict) else t)'";
+
+pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     println!("== f4 (spike): build ==");
     run_capture(
         "cargo",
-        ["build", "--release", "-p", "ibexwall-ebpf-loader"],
+        [
+            "build",
+            "--release",
+            "-p",
+            "ibexwall-ebpf-loader",
+            "-p",
+            "ibexwall-core",
+            "-p",
+            "ibexwall-cli",
+            "-p",
+            "ibexwall-exec",
+            "-p",
+            "ibexwall-plugin-echo",
+            "-p",
+            "ibexwall-plugin-flatpak-network",
+            "--bins",
+        ],
         None,
         "building the loader",
     )?;
@@ -205,6 +224,66 @@ assert bool(degraded) == (distro == "debian"), (distro, degraded)
 print(f"hardened unit ok: {len(events)} lines, curl attributed to {curl[0]['package']}; degraded: {degraded[0]['reason'] if degraded else 'no'}")
 EOF
 "#
+    );
+
+    // From here on the real daemon runs (it binds the same monitor socket
+    // the e2 stand-in used), so the Flatpak block goes through the whole
+    // stack: plan, apply, the executor in its transient unit, rollback.
+    crate::devkey::run()?;
+    provision(vm, workspace, install)?;
+    install_plugin(vm, workspace, "apps.flatpak-network")?;
+    start_daemon(vm)?;
+
+    scenario!(
+        "m4 a Flatpak network block applies, flatpak reads it, and rolls back byte for byte",
+        &format!(
+            r#"
+set -e
+if ! command -v flatpak >/dev/null; then
+  if command -v dnf >/dev/null; then sudo dnf install -y -q flatpak
+  elif command -v apt-get >/dev/null; then sudo apt-get update -qq; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq flatpak
+  elif command -v pacman >/dev/null; then sudo pacman -Sy --noconfirm --needed flatpak
+  fi
+fi
+D=/var/lib/flatpak/overrides
+# Two installed apps (the plugin only accepts installed ones): one with an
+# administrator's override already in place, one without any.
+sudo mkdir -p /var/lib/flatpak/app/org.ibexwall.Mine /var/lib/flatpak/app/org.ibexwall.Fresh $D
+printf '[Context]\nshared=ipc;\nfilesystems=home;\n' | sudo tee $D/org.ibexwall.Mine >/dev/null
+BEFORE=$(sudo sha256sum $D/org.ibexwall.Mine | cut -d' ' -f1)
+sudo ibexctl plugins enable apps.flatpak-network
+
+# An app that is not installed, and an invalid id, are refused at plan time.
+if sudo ibexctl plan apps.flatpak-network --set app=org.ibexwall.Typo >/dev/null 2>&1; then echo "UNINSTALLED APP WAS PLANNED"; exit 1; fi
+if sudo ibexctl plan apps.flatpak-network --set app=../../etc/passwd >/dev/null 2>&1; then echo "INVALID ID WAS PLANNED"; exit 1; fi
+
+P=$(sudo ibexctl plan apps.flatpak-network --set app=org.ibexwall.Mine --json 2>&1 | tee /dev/stderr | {JSON_ID}) || {{ echo "PLAN FAILED"; exit 1; }}
+OUT=$(sudo ibexctl apply $P --json 2>&1) || {{ echo "APPLY FAILED: $OUT"; sudo journalctl -u ibexwalld -n 25 --no-pager >&2; exit 1; }}
+TX=$(echo "$OUT" | {JSON_ID})
+
+# Flatpak's own view of the override file we wrote.
+SHOWN=$(sudo flatpak override --system --show org.ibexwall.Mine)
+echo "$SHOWN" | grep -q '!network' || {{ echo "FLATPAK DOES NOT SEE THE BLOCK: $SHOWN"; exit 1; }}
+echo "$SHOWN" | grep -q 'ipc' || {{ echo "FLATPAK LOST THE ADMIN'S ipc: $SHOWN"; exit 1; }}
+echo "$SHOWN" | grep -q 'home' || {{ echo "FLATPAK LOST THE ADMIN'S home: $SHOWN"; exit 1; }}
+MODE=$(sudo stat -c '%a %U:%G' $D/org.ibexwall.Mine)
+[ "$MODE" = "644 root:root" ] || {{ echo "WRONG MODE $MODE"; exit 1; }}
+
+sudo ibexctl rollback "$TX" --json >/dev/null || {{ echo "ROLLBACK FAILED"; exit 1; }}
+AFTER=$(sudo sha256sum $D/org.ibexwall.Mine | cut -d' ' -f1)
+[ "$AFTER" = "$BEFORE" ] || {{ echo "NOT BYTE FOR BYTE: $AFTER vs $BEFORE"; sudo cat $D/org.ibexwall.Mine >&2; exit 1; }}
+
+# An app with no override file at all: created by apply, removed by rollback.
+P=$(sudo ibexctl plan apps.flatpak-network --set app=org.ibexwall.Fresh --json | {JSON_ID})
+OUT=$(sudo ibexctl apply $P --json 2>&1) || {{ echo "APPLY (fresh) FAILED: $OUT"; exit 1; }}
+TX=$(echo "$OUT" | {JSON_ID})
+[ "$(sudo cat $D/org.ibexwall.Fresh)" = "$(printf '[Context]\nshared=!network;')" ] || {{ echo "FRESH FILE WRONG"; sudo cat $D/org.ibexwall.Fresh >&2; exit 1; }}
+sudo flatpak override --system --show org.ibexwall.Fresh | grep -q '!network'
+sudo ibexctl rollback "$TX" --json >/dev/null
+sudo test ! -e $D/org.ibexwall.Fresh || {{ echo "FRESH FILE SURVIVED ROLLBACK"; exit 1; }}
+"#,
+            JSON_ID = JSON_ID
+        )
     );
 
     if failures == 0 {

@@ -114,14 +114,23 @@ impl Engine {
                         restarted: *action == ibexwall_proto::UnitAction::Restart,
                     });
                 }
-                Op::BrowserPolicy { browser, .. } => {
+                Op::BrowserPolicy { .. } | Op::FlatpakOverride { .. } => {
                     // The inverse is the file the executor writes, captured
                     // like any other file so rollback restores or removes it.
-                    let path = ibexwall_sys::browser::target(browser)
-                        .map(|target| target.path)
-                        .ok_or_else(|| {
-                            anyhow::anyhow!("unknown browser `{browser}` for browser.policy")
-                        })?;
+                    let path: String = match op {
+                        Op::BrowserPolicy { browser, .. } => ibexwall_sys::browser::target(browser)
+                            .map(|target| target.path.to_string())
+                            .ok_or_else(|| {
+                                anyhow::anyhow!("unknown browser `{browser}` for browser.policy")
+                            })?,
+                        Op::FlatpakOverride { app_id, .. } => {
+                            ibexwall_sys::flatpak::override_path(app_id).ok_or_else(|| {
+                                anyhow::anyhow!("`{app_id}` is not an application id")
+                            })?
+                        }
+                        _ => unreachable!("matched above"),
+                    };
+                    let path = path.as_str();
                     let prior = match self.sys.fs.read(Path::new(path)) {
                         Ok(content) if !content.is_empty() => {
                             let meta = self.sys.fs.metadata(Path::new(path))?;
@@ -438,6 +447,36 @@ mod tests {
         assert_eq!(rig.fs.read(Path::new(path)).unwrap(), b"new\n");
         rig.engine.rollback(&rig.state, "tx1").unwrap();
         assert_eq!(rig.fs.read(Path::new(path)).unwrap(), b"old\n");
+    }
+
+    #[test]
+    fn a_flatpak_network_block_is_undone_byte_for_byte() {
+        let rig = rig("fp", false);
+        let overrides = "/var/lib/flatpak/overrides";
+        let mine = format!("{overrides}/org.example.Mine");
+        let fresh = format!("{overrides}/org.example.Fresh");
+        let before = b"[Context]\nshared=ipc;\nfilesystems=home;\n";
+        rig.fs.seed(Path::new(&mine), before);
+        let block = |app: &str| Op::FlatpakOverride {
+            app_id: app.into(),
+            args: vec!["--unshare=network".into()],
+        };
+        let ops = vec![block("org.example.Mine"), block("org.example.Fresh")];
+        rig.engine.snapshot(&rig.state, "txf", &ops).unwrap();
+        rig.engine.execute(None, &ops).unwrap();
+        assert_eq!(
+            rig.fs.read(Path::new(&mine)).unwrap(),
+            b"[Context]\nshared=ipc;!network;\nfilesystems=home;\n"
+        );
+        assert_eq!(
+            rig.fs.read(Path::new(&fresh)).unwrap(),
+            b"[Context]\nshared=!network;\n"
+        );
+        rig.engine.rollback(&rig.state, "txf").unwrap();
+        // What the administrator had comes back exactly; what we created
+        // is gone.
+        assert_eq!(rig.fs.read(Path::new(&mine)).unwrap(), before);
+        assert!(!rig.fs.exists(Path::new(&fresh)));
     }
 
     #[test]

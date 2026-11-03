@@ -104,6 +104,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
              PRIMARY KEY (plugin, id)
          );",
     ),
+    ("0003_apps", ibexwall_apps::SCHEMA),
 ];
 
 impl State {

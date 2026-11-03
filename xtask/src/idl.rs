@@ -54,6 +54,9 @@ const CORE_TYPES: &[&str] = &[
     "Transaction",
     "HistoryEntry",
     "Event",
+    "MonitorStatus",
+    "AppEntry",
+    "AppDestination",
     "ProposalStatus",
     "Proposal",
 ];
@@ -81,6 +84,10 @@ method DecideProposal(id: string, decision: string, patch: ?object) -> (transact
 # Added in v1 (additive): audit chain validation and event history.
 method AuditVerify() -> (valid: bool, entries: int, reason: ?string)
 method RecentEvents(limit: ?int) -> (events: []Event)
+
+# Added in v1 (additive): per-app traffic from the connection monitor.
+method ListApps() -> (monitor: MonitorStatus, apps: []AppEntry)
+method GetAppDestinations(app: string) -> (destinations: []AppDestination)
 
 error PermissionDenied (action: string)
 error NotFound (kind: string, id: string)

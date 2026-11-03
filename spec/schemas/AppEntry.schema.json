@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One application seen by the monitor (counts and times only).",
+  "properties": {
+    "connections": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "destinations": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "exe_path": {
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "first_seen": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "key": {
+      "description": "Stable key, e.g. `flatpak:org.mozilla.firefox` or `cli:/usr/bin/curl`.",
+      "type": "string"
+    },
+    "kind": {
+      "description": "`flatpak`, `snap`, `desktop_app`, `system_service`, `container`,\n`cli` or `unknown`.",
+      "type": "string"
+    },
+    "last_seen": {
+      "type": "string"
+    },
+    "package": {
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "key",
+    "kind",
+    "id",
+    "first_seen",
+    "last_seen",
+    "connections",
+    "destinations"
+  ],
+  "title": "AppEntry",
+  "type": "object"
+}

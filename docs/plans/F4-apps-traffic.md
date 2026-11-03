@@ -28,6 +28,11 @@ Progress:
   argv runner. The loader enriches events with kind, id, hash and package
   (cached per exe). Verified on the five distros (curl is a `cli`
   owned by `curl`). Origin and signature status come with M3.
+- M3 core side done (ADR-0032): `ibexwall-apps` (correlator, rollups,
+  alerts), migration 0003, the core supervises the loader as a child,
+  `ListApps` and `GetAppDestinations` in the contract (spec regenerated),
+  events for first connection and changed binary. Still to do for M3:
+  the resolver-to-core channel for IP-to-domain answers.
 - The `--phase f4` spike scenarios (attribution with asymmetric v4 and
   v6 destinations, overhead) pass 2/2 on the five distros.
 

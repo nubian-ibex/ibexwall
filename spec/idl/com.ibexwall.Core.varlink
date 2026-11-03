@@ -18,6 +18,9 @@ type TransactionState (planned, approved, applying, applied, pending_confirm, co
 type Transaction (confirm_deadline: ?string, id: string, plan_id: string, restore_point: string, started_at: string, state: TransactionState)
 type HistoryEntry (actor: string, plugin: string, result: string, seq: int, transaction: ?string, ts: string)
 type Event (app: ?string, data: ?object, kind: string, severity: Severity, source: string, ts: string, untrusted: ?object)
+type MonitorStatus (reason: ?string, running: bool)
+type AppEntry (connections: int, destinations: int, exe_path: ?string, first_seen: string, id: string, key: string, kind: string, last_seen: string, package: ?string)
+type AppDestination (count: int, destination: string, first_seen: string, last_seen: string, port: int, resolved: bool)
 type ProposalStatus (pending, approved, rejected, expired)
 type Proposal (client: string, created_at: string, id: string, justification: string, plan_id: string, plugin: string, status: ProposalStatus)
 
@@ -43,6 +46,10 @@ method DecideProposal(id: string, decision: string, patch: ?object) -> (transact
 # Added in v1 (additive): audit chain validation and event history.
 method AuditVerify() -> (valid: bool, entries: int, reason: ?string)
 method RecentEvents(limit: ?int) -> (events: []Event)
+
+# Added in v1 (additive): per-app traffic from the connection monitor.
+method ListApps() -> (monitor: MonitorStatus, apps: []AppEntry)
+method GetAppDestinations(app: string) -> (destinations: []AppDestination)
 
 error PermissionDenied (action: string)
 error NotFound (kind: string, id: string)

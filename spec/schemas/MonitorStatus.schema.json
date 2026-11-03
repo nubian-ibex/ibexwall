@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Whether the connection monitor is feeding the Apps screen, and if not,\nwhy (a plain reason, never a guess about the cause).",
+  "properties": {
+    "reason": {
+      "default": null,
+      "description": "Why the monitor is off, when it is. Untrusted display text.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "running": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "running"
+  ],
+  "title": "MonitorStatus",
+  "type": "object"
+}

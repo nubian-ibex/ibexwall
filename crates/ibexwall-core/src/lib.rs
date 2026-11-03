@@ -10,6 +10,7 @@ pub mod audit;
 pub mod config;
 pub mod engine;
 pub mod events;
+pub mod monitor;
 pub mod plugins;
 pub mod state;
 
@@ -35,6 +36,7 @@ pub struct Core {
     pub engine: engine::Engine,
     pub plugins: Arc<plugins::Supervisor>,
     pub events: events::Bus,
+    pub monitor: monitor::Monitor,
 }
 
 /// Serves the varlink API on `socket` (dev/tests) until the process is
@@ -74,6 +76,7 @@ async fn serve_listener(listener: UnixListener, dev_key: Option<PathBuf>) -> Res
         Some(polkit) => api::Api::with_polkit(Arc::new(core), polkit),
         None => api::Api::new(core),
     };
+    start_monitor(api.core());
     serve_varlink(listener, service_info(), Arc::new(api)).await
 }
 
@@ -100,6 +103,18 @@ fn notify_ready() {
             }
         });
     }
+}
+
+/// Starts the connection monitor on the real system root only: a sandbox
+/// root must never load eBPF on the development host.
+fn start_monitor(core: Arc<Core>) {
+    if names::root() != std::path::Path::new("/") {
+        core.monitor
+            .set_status(false, Some("not available in a sandbox root"));
+        return;
+    }
+    let program = std::path::Path::new("/usr/bin").join(names::BIN_EBPF_LOADER);
+    tokio::spawn(monitor::supervise(core, program));
 }
 
 fn service_info() -> ServiceInfo {
@@ -143,6 +158,7 @@ impl Core {
             engine: engine::Engine::with(ibexwall_sys::SysBundle::real_under(&root)),
             plugins,
             events,
+            monitor: monitor::Monitor::new(root.clone()),
         };
         core.recover_pending_transactions()?;
         Ok(core)

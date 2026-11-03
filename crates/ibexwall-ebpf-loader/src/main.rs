@@ -13,6 +13,7 @@ use anyhow::{Context, Result, bail};
 use aya::EbpfLoader;
 use aya::maps::RingBuf;
 use aya::programs::{CgroupSockAddr, TracePoint};
+use ibexwall_identity::{Identity, PackageManager, classify_cgroup, hash_file, package_owner};
 use ibexwall_net_common::{ConnectEvent, EVENTS_MAP};
 
 /// Where the built program lives, in order (env override, install dir,
@@ -88,6 +89,65 @@ pub fn resolve(event: ConnectEvent) -> Sighting {
     Sighting { event, exe, cgroup }
 }
 
+/// Who and what is behind an exe: hash and owning package, cached per path
+/// because package-manager queries are slow and a program connects often.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExeFacts {
+    pub hash: Option<String>,
+    pub package: Option<String>,
+}
+
+#[derive(Default)]
+pub struct Enricher {
+    manager: Option<PackageManager>,
+    detected: bool,
+    cache: std::collections::HashMap<String, ExeFacts>,
+}
+
+impl Enricher {
+    pub fn identity(sighting: &Sighting) -> Identity {
+        classify_cgroup(sighting.cgroup.as_deref().unwrap_or(""))
+    }
+
+    pub fn facts(&mut self, exe: &str) -> ExeFacts {
+        if !self.detected {
+            self.manager = PackageManager::detect(Path::new("/"));
+            self.detected = true;
+        }
+        if let Some(known) = self.cache.get(exe) {
+            return known.clone();
+        }
+        let path = Path::new(exe);
+        let facts = ExeFacts {
+            hash: hash_file(path).ok(),
+            package: self
+                .manager
+                .and_then(|manager| package_owner(manager, path, &run_argv)),
+        };
+        // Bounded: a runaway of distinct paths must not grow without end.
+        if self.cache.len() >= 4096 {
+            self.cache.clear();
+        }
+        self.cache.insert(exe.to_string(), facts.clone());
+        facts
+    }
+}
+
+/// Runs an allowlisted binary with an argv (never a shell) and returns
+/// stdout when it exits successfully.
+fn run_argv(binary: &str, args: &[String]) -> Option<String> {
+    let output = std::process::Command::new(binary)
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
 /// Runs until `stop`, printing one JSON object per event on stdout.
 pub fn run(mut ebpf: aya::Ebpf, on_event: &mut dyn FnMut(Sighting)) -> Result<()> {
     let map = ebpf
@@ -153,7 +213,10 @@ fn amain() -> Result<()> {
         "ibexwall-ebpf-loader: monitoring connect() (elf: {})",
         elf.display()
     );
+    let mut enricher = Enricher::default();
     run(ebpf, &mut |sighting| {
+        let identity = Enricher::identity(&sighting);
+        let facts = sighting.exe.as_deref().map(|exe| enricher.facts(exe));
         let Sighting { event, exe, cgroup } = &sighting;
         let dst = if event.family == 4 {
             std::net::Ipv4Addr::from(event.ip4).to_string()
@@ -167,6 +230,10 @@ fn amain() -> Result<()> {
                 "comm": event.comm_str(),
                 "exe": exe,
                 "exe_kernel": event.exe_str(),
+                "kind": identity.kind,
+                "id": identity.id,
+                "exe_hash": facts.as_ref().and_then(|f| f.hash.as_deref()),
+                "package": facts.as_ref().and_then(|f| f.package.as_deref()),
                 "cgroup": cgroup,
                 "dst": dst,
                 "port": event.port,

@@ -20,4 +20,5 @@ aya = { version = "0.16", default-features = false }
 ibexwall-net-common.workspace = true
 anyhow.workspace = true
 rustix.workspace = true
+ibexwall-identity.workspace = true
 serde_json.workspace = true

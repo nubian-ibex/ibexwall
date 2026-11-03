@@ -4,9 +4,11 @@
 //! Developer tasks: `cargo xtask <command>`.
 
 mod devkey;
+mod ebpf;
 mod f1;
 mod f2;
 mod f3;
+mod f4;
 mod fixtures;
 mod idl;
 mod schemas;
@@ -20,9 +22,11 @@ Usage: cargo xtask <COMMAND>
 Commands:
   schemas [--check]  Export JSON Schemas and varlink IDL to spec/
                      (--check fails if committed files differ)
-  vm-test [--distro <distro>] [--phase f0|f1|f2|f3|fixtures]
+  vm-test [--distro <distro>] [--phase f0|f1|f2|f3|f4|fixtures]
                      Boot a QEMU/KVM VM; phase f0 runs the smoke test,
                      f1 provisions the daemon and runs acceptance tests
+  ebpf               Build the eBPF programs into target/bpf/ (nightly,
+                     rust-src and bpf-linker required)
   devkey             Generate the dev plugin-signing key and sign
                      plugins/*/plugin.toml (dev builds only)
 ";
@@ -35,6 +39,12 @@ fn main() {
         Some("schemas") => {
             let check = args.any(|a| a == "--check");
             if let Err(err) = schemas::run(check) {
+                eprintln!("error: {err:#}");
+                std::process::exit(1);
+            }
+        }
+        Some("ebpf") => {
+            if let Err(err) = ebpf::run() {
                 eprintln!("error: {err:#}");
                 std::process::exit(1);
             }
@@ -53,9 +63,8 @@ fn main() {
                 }
             }
             let result = match phase.as_deref() {
-                None | Some("f0") | Some("f1") | Some("f2") | Some("f3") | Some("fixtures") => {
-                    vm::run(&distro, phase.as_deref())
-                }
+                None | Some("f0") | Some("f1") | Some("f2") | Some("f3") | Some("f4")
+                | Some("fixtures") => vm::run(&distro, phase.as_deref()),
                 Some(other) => {
                     eprintln!("error: unknown phase `{other}`");
                     std::process::exit(2);

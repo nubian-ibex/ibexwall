@@ -1,0 +1,12 @@
+[package]
+name = "ibexwall-net-common"
+description = "Types shared between the eBPF programs and the loader (no_std)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true

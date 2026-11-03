@@ -15,8 +15,11 @@ remainder (DoH endpoints, browser policies, captive portal, counters,
 latency evidence) is being finished. Plan: `docs/plans/F3-secure-dns.md`.
 Run the app with `scripts/dev-sandbox.sh` (sandboxed daemon, host
 untouched). Manual runs on Omarchy and EndeavourOS are deferred by the
-maintainer. F4 is planned (`docs/plans/F4-apps-traffic.md`, spikes S4-a to
-S4-c first: eBPF portability across the five distros is the gate).
+maintainer. F4 is under way: spike S4-a is done (ADR-0031), the connect
+monitor loads, attaches and attributes on all five distros with bounded
+overhead (`--phase f4`), and `cargo xtask ebpf` builds the eBPF ELF.
+Next: kernel-side identity for short-lived processes (M1), rollups and
+the IP-to-domain correlation (M3).
 
 ## What exists
 

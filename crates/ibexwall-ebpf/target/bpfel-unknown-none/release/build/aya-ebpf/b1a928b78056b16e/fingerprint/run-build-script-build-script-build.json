@@ -1,0 +1,1 @@
+{"rustc":12291937197645332040,"features":"","declared_features":"","target":0,"profile":0,"path":0,"deps":[[3186499690143724061,"build_script_build",false,1022132416207145457],[7648903741785607723,"build_script_build",false,1617134200923689595]],"local":[{"RerunIfEnvChanged":{"var":"AYA_BPF_TARGET_ARCH","val":null}}],"rustflags":[],"config":0,"compile_kind":0}

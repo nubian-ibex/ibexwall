@@ -1,12 +1,22 @@
+# Standalone on purpose: this crate only builds for the eBPF target with
+# bpf-linker (`cargo xtask ebpf`), so it cannot be a workspace member.
 [package]
 name = "ibexwall-ebpf"
 description = "IbexWall eBPF programs (aya, CO-RE)"
-version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
+version = "0.1.0"
+edition = "2024"
 license = "GPL-2.0-only OR MIT"
-repository.workspace = true
 publish = false
 
-[lints]
-workspace = true
+[workspace]
+
+[lints.rust]
+unsafe_code = "warn"
+
+[dependencies]
+aya-ebpf = { version = "0.3", default-features = false }
+ibexwall-net-common = { path = "../ibexwall-net-common" }
+
+[[bin]]
+name = "ibexwall-ebpf"
+path = "src/main.rs"

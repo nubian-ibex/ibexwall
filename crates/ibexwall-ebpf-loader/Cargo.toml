@@ -10,3 +10,14 @@ publish = false
 
 [lints]
 workspace = true
+
+[[bin]]
+name = "ibexwall-ebpf-loader"
+path = "src/main.rs"
+
+[dependencies]
+aya = { version = "0.16", default-features = false }
+ibexwall-net-common.workspace = true
+anyhow.workspace = true
+rustix.workspace = true
+serde_json.workspace = true

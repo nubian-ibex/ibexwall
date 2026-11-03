@@ -37,6 +37,8 @@ pub enum FirewallAction {
         #[serde(default)]
         zone: Option<String>,
     },
+    /// firewalld only: the zone interfaces without one fall into.
+    SetDefaultZone { name: String },
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -71,6 +73,7 @@ impl FirewallAction {
             | Self::RemovePort { zone, .. }
             | Self::AllowService { zone, .. }
             | Self::RemoveService { zone, .. } => zone.as_deref(),
+            Self::SetDefaultZone { .. } => None,
         }
     }
 
@@ -80,6 +83,7 @@ impl FirewallAction {
             Self::RemovePort { .. } => "remove_port",
             Self::AllowService { .. } => "allow_service",
             Self::RemoveService { .. } => "remove_service",
+            Self::SetDefaultZone { .. } => "set_default_zone",
         }
     }
 }
@@ -92,7 +96,9 @@ pub fn validate(backend: Backend, action: &FirewallAction) -> Result<(), ActionE
         {
             return Err(ActionError::PortZero);
         }
-        FirewallAction::AllowService { name, .. } | FirewallAction::RemoveService { name, .. }
+        FirewallAction::AllowService { name, .. }
+        | FirewallAction::RemoveService { name, .. }
+        | FirewallAction::SetDefaultZone { name }
             if !valid_name(name) =>
         {
             return Err(ActionError::BadName(name.clone()));
@@ -112,7 +118,9 @@ pub fn validate(backend: Backend, action: &FirewallAction) -> Result<(), ActionE
             if action.zone().is_some()
                 || matches!(
                     action,
-                    FirewallAction::AllowService { .. } | FirewallAction::RemoveService { .. }
+                    FirewallAction::AllowService { .. }
+                        | FirewallAction::RemoveService { .. }
+                        | FirewallAction::SetDefaultZone { .. }
                 )
             {
                 return Err(ActionError::Unsupported {
@@ -146,6 +154,14 @@ pub fn argv(backend: Backend, action: &FirewallAction) -> Vec<Vec<String>> {
                 }
                 FirewallAction::AllowService { name, .. } => format!("--add-service={name}"),
                 FirewallAction::RemoveService { name, .. } => format!("--remove-service={name}"),
+                // The default zone is permanent by nature: one command, and
+                // the daemon applies it at once.
+                FirewallAction::SetDefaultZone { name } => {
+                    return vec![vec![
+                        FIREWALL_CMD.to_string(),
+                        format!("--set-default-zone={name}"),
+                    ]];
+                }
             };
             let command = |permanent: bool| {
                 let mut words = vec![FIREWALL_CMD.to_string()];
@@ -199,6 +215,10 @@ pub fn snapshot_paths(
 ) -> Vec<String> {
     match backend {
         Backend::Firewalld => {
+            if matches!(action, FirewallAction::SetDefaultZone { .. }) {
+                // The setting lives in firewalld.conf; the zone files stay.
+                return vec!["/etc/firewalld/firewalld.conf".into()];
+            }
             let zone = action.zone().unwrap_or(default_zone);
             if valid_name(zone) {
                 vec![format!("/etc/firewalld/zones/{zone}.xml")]
@@ -346,5 +366,27 @@ mod tests {
         assert!(serde_json::from_value::<FirewallAction>(extra).is_err());
         let unknown = serde_json::json!({"action": "flush"});
         assert!(serde_json::from_value::<FirewallAction>(unknown).is_err());
+    }
+
+    #[test]
+    fn the_default_zone_is_one_command_and_snapshots_the_conf_file() {
+        let action = FirewallAction::SetDefaultZone {
+            name: "home".into(),
+        };
+        assert_eq!(
+            argv(Backend::Firewalld, &action),
+            vec![vec![FIREWALL_CMD, "--set-default-zone=home"]]
+        );
+        assert_eq!(
+            snapshot_paths(Backend::Firewalld, &action, "public"),
+            vec!["/etc/firewalld/firewalld.conf"]
+        );
+        assert!(validate(Backend::Ufw, &action).is_err());
+        assert!(validate(Backend::Nftables, &action).is_err());
+        let bad = FirewallAction::SetDefaultZone {
+            name: "--reload".into(),
+        };
+        assert!(validate(Backend::Firewalld, &bad).is_err());
+        assert!(argv(Backend::Firewalld, &bad).is_empty());
     }
 }

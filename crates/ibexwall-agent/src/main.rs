@@ -56,10 +56,13 @@ pub mod ibexwall_agent {
                 notify(&finding).await?;
             }
             if let Some((summary, body)) = ask_notification_for(&session_language(), &event) {
-                // A failed notification must not end the watch.
-                if let Err(error) = notify_with(&summary, &body).await {
-                    tracing::warn!(%error, "ask notification failed");
-                }
+                // The notification waits for a click on its own task; a failed
+                // one must not end the watch.
+                tokio::spawn(async move {
+                    if let Err(error) = notify_ask(&summary, &body).await {
+                        tracing::warn!(%error, "ask notification failed");
+                    }
+                });
             }
         }
         Ok(())
@@ -180,6 +183,66 @@ pub mod ibexwall_agent {
 
     async fn notify(summary: &str) -> Result<()> {
         notify_with(summary, "").await
+    }
+
+    /// A held connection: urgent, and a click opens the prompt window
+    /// (`ibexwall --prompt`). Nothing is answered from the notification.
+    async fn notify_ask(summary: &str, body: &str) -> Result<()> {
+        use futures_util::StreamExt as _;
+        let connection = zbus::Connection::session().await?;
+        let proxy = zbus::Proxy::new(
+            &connection,
+            "org.freedesktop.Notifications",
+            "/org/freedesktop/Notifications",
+            "org.freedesktop.Notifications",
+        )
+        .await?;
+        // Subscribe first: a click can come before Notify returns.
+        let mut invoked = proxy.receive_signal("ActionInvoked").await?;
+        let label = if session_language().to_lowercase().starts_with("pt") {
+            "Responder"
+        } else {
+            "Answer"
+        };
+        let mut hints = std::collections::HashMap::<&str, zbus::zvariant::Variant>::new();
+        hints.insert("urgency", zbus::zvariant::Variant::U8(2));
+        let id: u32 = proxy
+            .call(
+                "Notify",
+                &(
+                    "IbexWall",
+                    0u32,
+                    "ibexwall",
+                    summary,
+                    body,
+                    vec!["default", label],
+                    hints,
+                    // The question expires on its own after the timeout.
+                    35_000i32,
+                ),
+            )
+            .await?;
+        let wait = async {
+            while let Some(signal) = invoked.next().await {
+                let Ok((notification, action)) = signal.body().deserialize::<(u32, String)>()
+                else {
+                    continue;
+                };
+                if notification == id && action == "default" {
+                    return true;
+                }
+            }
+            false
+        };
+        if tokio::time::timeout(std::time::Duration::from_secs(40), wait)
+            .await
+            .unwrap_or(false)
+        {
+            std::process::Command::new("ibexwall")
+                .arg("--prompt")
+                .spawn()?;
+        }
+        Ok(())
     }
 
     async fn notify_with(summary: &str, body: &str) -> Result<()> {

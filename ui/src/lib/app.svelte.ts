@@ -92,7 +92,8 @@ function initialScenario(): Scenario {
 
 /** `?prompts=1` seeds the fixture core with one held connection. */
 function wantsPrompt(): boolean {
-  return new URLSearchParams(globalThis.location?.search ?? '').get('prompts') === '1';
+  const query = new URLSearchParams(globalThis.location?.search ?? '');
+  return query.get('prompts') === '1' || query.get('window') === 'prompt';
 }
 
 export const app = new AppState();

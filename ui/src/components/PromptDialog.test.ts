@@ -28,8 +28,8 @@ describe('PromptDialog', () => {
   it('names the app, the destination and the port, and focuses the decision', async () => {
     await open();
     const dialog = await screen.findByRole('alertdialog');
-    expect(dialog).toHaveAccessibleName('curl wants to connect');
-    expect(dialog).toHaveAccessibleDescription('To example.com on port 443.');
+    expect(dialog).toHaveAccessibleName('curl wants to access the internet');
+    expect(dialog).toHaveAccessibleDescription(/example\.com:443/);
     await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Allow' })).toHaveFocus());
   });
 
@@ -41,7 +41,7 @@ describe('PromptDialog', () => {
   it('sends the decision with the scope chosen, then closes', async () => {
     const transport = await open();
     const answer = vi.spyOn(transport, 'answerPrompt');
-    await fireEvent.click(await screen.findByRole('radio', { name: 'This destination' }));
+    await fireEvent.click(await screen.findByRole('radio', { name: 'Only for this destination' }));
     await fireEvent.click(screen.getByRole('button', { name: 'Block' }));
     expect(answer).toHaveBeenCalledWith('1', 'block', 'destination');
     await vi.waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
@@ -54,6 +54,19 @@ describe('PromptDialog', () => {
     expect(
       await screen.findByText('Could not send the answer. It may have expired.'),
     ).toBeVisible();
+  });
+
+  it('shows how long is left before the default applies', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-01T12:00:10Z'));
+    try {
+      await open();
+      expect(
+        await screen.findByText('No answer in 20 s, the connection goes through.'),
+      ).toBeVisible();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('counts the questions still waiting', async () => {

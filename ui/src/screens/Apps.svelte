@@ -10,7 +10,7 @@
     initialOf,
     isNew,
     kindKey,
-    modeAvailable,
+    unavailableKey,
     type AppFilter,
     type NetMode,
   } from '../lib/apps';
@@ -224,14 +224,14 @@
                   aria-label={t('apps-mode-group', { app: displayName(entry) })}
                 >
                   {#each MODES as mode (mode)}
-                    {@const functional = modeAvailable(entry, monitor)}
+                    {@const why = unavailableKey(entry, monitor, mode)}
                     <button
                       type="button"
                       role="radio"
                       class="seg seg-{mode}"
                       aria-checked={entry.mode === mode}
-                      disabled={!functional}
-                      title={functional ? undefined : t('apps-mode-unavailable')}
+                      disabled={why !== null}
+                      title={why === null ? undefined : t(why)}
                       onclick={() => void chooseMode(entry, mode)}
                     >
                       {t(`apps-mode-${mode}`)}

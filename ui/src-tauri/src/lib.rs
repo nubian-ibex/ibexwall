@@ -179,11 +179,40 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
+/// `ibexwall --prompt`: the held connection alone, in its own small window
+/// (mockup 05), with no tray and no main window.
+fn prompt_mode() -> bool {
+    std::env::args().any(|arg| arg == "--prompt")
+}
+
+/// The prompt window asks to end the process once nothing is waiting.
+#[tauri::command]
+fn finish_prompt(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
-            build_tray(app)?;
+            if prompt_mode() {
+                if let Some(main) = app.get_webview_window("main") {
+                    let _ = main.destroy();
+                }
+                tauri::WebviewWindowBuilder::new(
+                    app,
+                    "prompt",
+                    tauri::WebviewUrl::App("index.html?window=prompt".into()),
+                )
+                .title("IbexWall")
+                .inner_size(440.0, 600.0)
+                .resizable(false)
+                .always_on_top(true)
+                .center()
+                .build()?;
+            } else {
+                build_tray(app)?;
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -197,6 +226,7 @@ pub fn run() {
             set_default_mode,
             list_prompts,
             answer_prompt,
+            finish_prompt,
             list_plugins,
             list_findings,
             run_checks,

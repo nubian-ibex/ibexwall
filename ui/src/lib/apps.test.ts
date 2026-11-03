@@ -10,6 +10,7 @@ import {
   isNew,
   kindKey,
   modeAvailable,
+  unavailableKey,
 } from './apps';
 
 const NOW = new Date('2026-11-03T12:00:00Z');
@@ -35,6 +36,14 @@ describe('modeAvailable', () => {
     expect(modeAvailable(app({}), null)).toBe(false);
     expect(modeAvailable(app({}), { running: false, reason: 'off' })).toBe(false);
     expect(modeAvailable(app({}), running)).toBe(true);
+  });
+
+  it('does not offer Ask for containers, and says why', () => {
+    const container = app({ kind: 'container' });
+    expect(modeAvailable(container, running, 'ask')).toBe(false);
+    expect(unavailableKey(container, running, 'ask')).toBe('apps-mode-unavailable-container');
+    expect(modeAvailable(container, running, 'block')).toBe(true);
+    expect(modeAvailable(app({ kind: 'cli' }), running, 'ask')).toBe(true);
   });
 
   it('withholds executable-matched apps when the kernel gives no exec tracing', () => {

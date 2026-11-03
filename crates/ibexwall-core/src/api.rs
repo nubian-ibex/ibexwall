@@ -190,6 +190,53 @@ async fn dispatch(
             );
             Ok(Reply::result(json!({})))
         }
+        "SetDefaultMode" => {
+            let mode = str_field(&parameters, "mode")?;
+            let mode = ibexwall_apps::policy::Mode::parse(&mode)
+                .filter(|mode| *mode != ibexwall_apps::policy::Mode::Block)
+                .ok_or_else(|| invalid_argument("mode", "allow, monitor or ask".into()))?;
+            core.state
+                .with_conn(|conn| ibexwall_apps::policy::set_default_mode(conn, mode))
+                .map_err(internal)?;
+            core.monitor.refresh_policy(core).map_err(internal)?;
+            core.audit(
+                "user",
+                "core",
+                None,
+                "",
+                &format!("default app mode={}", mode.name()),
+            );
+            Ok(Reply::result(json!({})))
+        }
+        "ListPrompts" => Ok(Reply::result(json!({
+            "prompts": core.monitor.prompts(ibexwall_sys::RealClock.unix_now()),
+        }))),
+        "AnswerPrompt" => {
+            let id = str_field(&parameters, "id")?;
+            let allow = match str_field(&parameters, "decision")?.as_str() {
+                "allow" => true,
+                "block" => false,
+                _ => return Err(invalid_argument("decision", "allow or block".into())),
+            };
+            let scope = crate::ask::Scope::parse(&str_field(&parameters, "scope")?)
+                .ok_or_else(|| invalid_argument("scope", "once, destination or always".into()))?;
+            let now = ibexwall_sys::RealClock.unix_now();
+            if !core
+                .monitor
+                .answer_prompt(core, &id, allow, scope, now)
+                .map_err(internal)?
+            {
+                return Err(not_found("prompt", &id));
+            }
+            core.audit(
+                "user",
+                "core",
+                None,
+                "",
+                &format!("prompt {id} allow={allow}"),
+            );
+            Ok(Reply::result(json!({})))
+        }
         "GetAppDestinations" => {
             let app = str_field(&parameters, "app")?;
             Ok(Reply::result(json!({
@@ -314,13 +361,13 @@ async fn dispatch(
 
 fn polkit_action(method: &str) -> Option<&'static str> {
     Some(match method {
-        "GetInfo" | "GetPosture" | "GetDnsStatus" | "GetFirewall" | "ListApps"
+        "GetInfo" | "GetPosture" | "GetDnsStatus" | "GetFirewall" | "ListApps" | "ListPrompts"
         | "GetAppDestinations" | "ListPlugins" | "ListFindings" | "GetConfig" | "History"
         | "Subscribe" | "RunChecks" | "GetPlugin" | "AuditVerify" | "RecentEvents" => {
             names::POLKIT_READ
         }
         "SetPluginEnabled" => names::POLKIT_PLUGINS_MANAGE,
-        "SetAppMode" => names::POLKIT_APPS_DECIDE,
+        "SetAppMode" | "SetDefaultMode" | "AnswerPrompt" => names::POLKIT_APPS_DECIDE,
         "PlanChange" => names::POLKIT_PLAN,
         "Apply" | "Confirm" => names::POLKIT_APPLY,
         "Rollback" => names::POLKIT_ROLLBACK,

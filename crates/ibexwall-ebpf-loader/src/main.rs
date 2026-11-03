@@ -5,6 +5,8 @@
 //! standalone binary; the M2 milestones turn this into the monitor service
 //! with rollups. Requires `CAP_BPF`/`CAP_PERFMON` (or root) and cgroup v2.
 
+mod ask;
+
 use std::path::{Path, PathBuf};
 
 use std::os::fd::AsFd as _;
@@ -201,6 +203,12 @@ pub struct Rule {
 pub struct Policy {
     pub rules: Vec<Rule>,
     pub default: String,
+    /// How long an Ask flow waits for the user (default 30).
+    #[serde(default)]
+    pub ask_timeout_secs: Option<u64>,
+    /// What an unanswered Ask flow gets: `allow` (default) or `block`.
+    #[serde(default)]
+    pub ask_fallback: Option<String>,
 }
 
 fn verdict_of(text: &str) -> Option<u8> {
@@ -233,6 +241,8 @@ impl Policy {
         let policy = Self {
             rules: kept,
             default,
+            ask_timeout_secs: None,
+            ask_fallback: None,
         };
         policy.validate()?;
         Ok(policy)
@@ -266,6 +276,12 @@ impl Policy {
             "at most {} exe rules are supported",
             ibexwall_net_common::EXE_RULES_MAX
         );
+        if let Some(fallback) = &self.ask_fallback {
+            anyhow::ensure!(
+                ask::Decision::parse(fallback).is_some(),
+                "unknown ask fallback `{fallback}`"
+            );
+        }
         Ok(())
     }
 }
@@ -375,72 +391,6 @@ impl Enforcer {
         let default = verdict_of(&policy.default).expect("validated");
         self.defaults.set(0, &default, 0)?;
         Ok(())
-    }
-}
-
-/// What the Ask queue does with a held packet.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Decision {
-    Allow,
-    Block,
-}
-
-/// The spike policy: one answer for every held flow after a delay (the
-/// real answer comes from the user through the core).
-#[derive(Debug, Clone, Copy)]
-pub struct AskPolicy {
-    pub decision: Decision,
-    pub delay: std::time::Duration,
-}
-
-/// The queue mark of a flow that was refused: nftables rejects it.
-fn refused_mark(mark: u32) -> u32 {
-    (mark & 0xff00_0000) | ibexwall_net_common::REFUSED_MARK_VALUE | (mark & 0xffff)
-}
-
-/// Listens on the Ask queue: each packet waits `policy.delay` in its own
-/// thread (so many flows wait at once), then is accepted, or accepted with
-/// the refused mark. A packet whose flow id is unknown is accepted at
-/// once: when in doubt, the network stays open.
-pub fn run_ask(
-    flows: aya::maps::HashMap<aya::maps::MapData, u32, [u8; ibexwall_net_common::ASK_FLOW_LEN]>,
-    policy: AskPolicy,
-) -> Result<()> {
-    let queue = std::sync::Arc::new(
-        ibexwall_nfq::Queue::open(ibexwall_net_common::ASK_QUEUE)
-            .context("binding the Ask queue (needs CAP_NET_ADMIN)")?,
-    );
-    eprintln!(
-        "ibexwall-ebpf-loader: Ask queue {} bound",
-        ibexwall_net_common::ASK_QUEUE
-    );
-    loop {
-        for packet in queue.recv(std::time::Duration::from_millis(500))? {
-            let id = packet.mark & 0xffff;
-            let known = flows.get(&id, 0).ok();
-            let destination = packet.destination();
-            let queue = std::sync::Arc::clone(&queue);
-            std::thread::spawn(move || {
-                let Some(flow) = known else {
-                    let _ = queue.verdict(packet.id, ibexwall_nfq::Verdict::Accept, None);
-                    return;
-                };
-                let pid = u32::from_le_bytes(flow[..4].try_into().expect("four bytes"));
-                std::thread::sleep(policy.delay);
-                let mark = (policy.decision == Decision::Block).then(|| refused_mark(packet.mark));
-                let _ = queue.verdict(packet.id, ibexwall_nfq::Verdict::Accept, mark);
-                eprintln!(
-                    "{}",
-                    serde_json::json!({ "ask": {
-                        "pid": pid,
-                        "dst": destination.as_ref().map(|d| d.address.to_string()),
-                        "port": destination.as_ref().map(|d| d.port),
-                        "decision": if policy.decision == Decision::Allow { "allow" } else { "block" },
-                        "held_ms": policy.delay.as_millis() as u64,
-                    }})
-                );
-            });
-        }
     }
 }
 
@@ -584,37 +534,92 @@ fn amain() -> Result<()> {
     if let Some(at) = args.iter().position(|a| a == "--rules") {
         enforcer.set(Policy::load(Path::new(&args[at + 1]))?)?;
     }
-    // The Ask queue: a thread of its own, unless disabled (the queue then
-    // has no listener and the kernel accepts: fail open).
-    if !args.iter().any(|a| a == "--ask-disabled") && args.iter().any(|a| a == "--ask-default") {
-        let value = |flag: &str| {
-            args.iter()
-                .position(|a| a == flag)
-                .and_then(|at| args.get(at + 1))
-                .cloned()
-        };
-        let decision = match value("--ask-default").as_deref() {
-            Some("block") => Decision::Block,
-            _ => Decision::Allow,
-        };
-        let delay = value("--ask-delay-ms")
+    let value_of = |flag: &str| {
+        args.iter()
+            .position(|a| a == flag)
+            .and_then(|at| args.get(at + 1))
+            .cloned()
+    };
+    // The spike's local answer: every Ask flow gets one decision after a
+    // delay, with no core involved (the VM scenario for the queue).
+    let local_answer = value_of("--ask-default").map(|decision| {
+        let delay = value_of("--ask-delay-ms")
             .and_then(|ms| ms.parse().ok())
             .unwrap_or(0);
-        let policy = AskPolicy {
-            decision,
-            delay: std::time::Duration::from_millis(delay),
-        };
+        (
+            ask::Decision::parse(&decision).unwrap_or(ask::Decision::Allow),
+            std::time::Duration::from_millis(delay),
+        )
+    });
+    let disable_ask = args.iter().any(|a| a == "--ask-disabled");
+    let sink = std::sync::Arc::new(std::sync::Mutex::new(Sink::open(args)?));
+    // The handle the answers come back through; set once the queue is up.
+    let ask_handle: std::sync::Arc<std::sync::OnceLock<std::sync::Arc<ask::Ask>>> =
+        std::sync::Arc::default();
+    if !disable_ask {
         let map = ebpf
             .take_map(ASK_FLOWS_MAP)
             .with_context(|| format!("map {ASK_FLOWS_MAP} not found"))?;
         let flows = aya::maps::HashMap::try_from(map)?;
-        std::thread::spawn(move || {
-            if let Err(error) = run_ask(flows, policy) {
-                eprintln!("ibexwall-ebpf-loader: ask queue stopped: {error:#}");
+        let to_core = std::sync::Arc::clone(&sink);
+        let handle = std::sync::Arc::clone(&ask_handle);
+        let describer = std::sync::Mutex::new((
+            Enricher::default(),
+            CgroupIndex::new(PathBuf::from("/sys/fs/cgroup")),
+        ));
+        let started = ask::start(flows, move |id, flow, destination| {
+            if let Some((decision, delay)) = local_answer {
+                let handle = std::sync::Arc::clone(&handle);
+                std::thread::spawn(move || {
+                    std::thread::sleep(delay);
+                    if let Some(ask) = handle.get() {
+                        ask.answer(id, decision);
+                        eprintln!(
+                            "{}",
+                            serde_json::json!({ "ask": {
+                                "flow": id,
+                                "decision": format!("{decision:?}").to_lowercase(),
+                                "held_ms": delay.as_millis() as u64,
+                            }})
+                        );
+                    }
+                });
+                return;
             }
+            let Some(destination) = destination else {
+                return;
+            };
+            let (family, ip4, ip6) = match destination.address {
+                std::net::IpAddr::V4(ip) => (4, ip.octets(), [0; 16]),
+                std::net::IpAddr::V6(ip) => (6, [0; 4], ip.octets()),
+            };
+            let event = ConnectEvent {
+                pid: flow.pid,
+                cgroup_id: flow.cgroup_id,
+                comm: [0; 16],
+                family,
+                port: destination.port,
+                ip4,
+                ip6,
+                exe: [0; ibexwall_net_common::EXE_LEN],
+            };
+            let mut guard = describer.lock().unwrap();
+            let (enricher, cgroups) = &mut *guard;
+            let sighting = resolve(event, cgroups);
+            let mut line = describe(&sighting, enricher);
+            line["ask_id"] = id.into();
+            let message = serde_json::json!({ "ask": line }).to_string();
+            to_core.lock().unwrap().send(&message);
         });
+        match started {
+            Ok(ask) => {
+                let _ = ask_handle.set(ask);
+            }
+            // Without the queue Ask cannot hold anything: the nft rule's
+            // bypass accepts, and the network stays open.
+            Err(error) => eprintln!("ibexwall-ebpf-loader: Ask unavailable: {error:#}"),
+        }
     }
-    let mut sink = Sink::open(args)?;
     // The enforcer runs on its own thread: it applies each policy the core
     // pushes and, every couple of seconds, covers cgroups created since.
     let (policies, incoming) = std::sync::mpsc::channel::<Policy>();
@@ -635,60 +640,101 @@ fn amain() -> Result<()> {
             }
         }
     });
-    if let Some(reader) = sink.reader() {
-        std::thread::spawn(move || read_policies(reader, policies));
+    let reader = sink.lock().unwrap().reader();
+    if let Some(reader) = reader {
+        let handle = std::sync::Arc::clone(&ask_handle);
+        std::thread::spawn(move || read_core(reader, policies, handle));
     }
     if let Some(reason) = degraded {
-        sink.send(&serde_json::json!({ "meta": "degraded", "reason": reason }).to_string());
+        sink.lock()
+            .unwrap()
+            .send(&serde_json::json!({ "meta": "degraded", "reason": reason }).to_string());
     }
     run(ebpf, &mut cgroups, &mut |sighting| {
-        let identity = Enricher::identity(&sighting);
-        let facts = sighting.exe.as_deref().map(|exe| enricher.facts(exe));
-        let Sighting { event, exe, cgroup } = &sighting;
-        let dst = if event.family == 4 {
-            std::net::Ipv4Addr::from(event.ip4).to_string()
-        } else {
-            std::net::Ipv6Addr::from(event.ip6).to_string()
-        };
-        sink.send(
-            &serde_json::json!({
-                "pid": event.pid,
-                "comm": event.comm_str(),
-                "exe": exe,
-                "exe_kernel": event.exe_str(),
-                "kind": identity.kind,
-                "id": identity.id,
-                "exe_hash": facts.as_ref().and_then(|f| f.hash.as_deref()),
-                "package": facts.as_ref().and_then(|f| f.package.as_deref()),
-                "cgroup": cgroup,
-                "dst": dst,
-                "port": event.port,
-                "family": event.family,
-            })
-            .to_string(),
-        );
+        let line = describe(&sighting, &mut enricher).to_string();
+        sink.lock().unwrap().send(&line);
     })
 }
 
-/// Reads `{"policy": {...}}` lines from the core. A line that does not
-/// parse is ignored; the previous policy stays in force.
-fn read_policies(stream: std::os::unix::net::UnixStream, out: std::sync::mpsc::Sender<Policy>) {
+/// The JSON the core reads for a connection (and for an Ask request).
+fn describe(sighting: &Sighting, enricher: &mut Enricher) -> serde_json::Value {
+    let identity = Enricher::identity(sighting);
+    let facts = sighting.exe.as_deref().map(|exe| enricher.facts(exe));
+    let Sighting { event, exe, cgroup } = sighting;
+    let dst = if event.family == 4 {
+        std::net::Ipv4Addr::from(event.ip4).to_string()
+    } else {
+        std::net::Ipv6Addr::from(event.ip6).to_string()
+    };
+    serde_json::json!({
+        "pid": event.pid,
+        "comm": event.comm_str(),
+        "exe": exe,
+        "exe_kernel": event.exe_str(),
+        "kind": identity.kind,
+        "id": identity.id,
+        "exe_hash": facts.as_ref().and_then(|f| f.hash.as_deref()),
+        "package": facts.as_ref().and_then(|f| f.package.as_deref()),
+        "cgroup": cgroup,
+        "dst": dst,
+        "port": event.port,
+        "family": event.family,
+    })
+}
+
+/// Reads what the core pushes: `{"policy": {...}}` and
+/// `{"answer": {"id": N, "decision": "allow"|"block"}}`. A line that does
+/// not parse is ignored; the previous policy stays in force.
+fn read_core(
+    stream: std::os::unix::net::UnixStream,
+    policies: std::sync::mpsc::Sender<Policy>,
+    ask_handle: std::sync::Arc<std::sync::OnceLock<std::sync::Arc<ask::Ask>>>,
+) {
     use std::io::BufRead as _;
     #[derive(serde::Deserialize)]
+    struct Answer {
+        id: u16,
+        decision: String,
+    }
+    #[derive(serde::Deserialize)]
     struct Message {
-        policy: Policy,
+        policy: Option<Policy>,
+        answer: Option<Answer>,
     }
     for line in std::io::BufReader::new(stream).lines() {
-        let Ok(line) = line else { return };
-        match serde_json::from_str::<Message>(&line) {
-            Ok(message) => {
-                if out.send(message.policy).is_err() {
-                    return;
-                }
+        let Ok(line) = line else { break };
+        let message = match serde_json::from_str::<Message>(&line) {
+            Ok(message) => message,
+            Err(error) => {
+                eprintln!("ibexwall-ebpf-loader: unreadable message: {error}");
+                continue;
             }
-            Err(error) => eprintln!("ibexwall-ebpf-loader: unreadable message: {error}"),
+        };
+        if let Some(policy) = message.policy {
+            if let Some(ask) = ask_handle.get() {
+                let fallback = policy
+                    .ask_fallback
+                    .as_deref()
+                    .and_then(ask::Decision::parse)
+                    .unwrap_or(ask::Decision::Allow);
+                let timeout = policy.ask_timeout_secs.unwrap_or(30).clamp(1, 600);
+                ask.configure(std::time::Duration::from_secs(timeout), fallback);
+            }
+            if policies.send(policy).is_err() {
+                break;
+            }
+        }
+        if let (Some(answer), Some(ask)) = (message.answer, ask_handle.get())
+            && let Some(decision) = ask::Decision::parse(&answer.decision)
+        {
+            ask.answer(answer.id, decision);
         }
     }
+    // The core is gone. Exiting detaches the programs and closes the queue,
+    // so the network opens now instead of when the next write fails; systemd
+    // brings the unit back and the core's policy returns with it.
+    eprintln!("ibexwall-ebpf-loader: lost the core: connection closed");
+    std::process::exit(1);
 }
 
 /// Where the JSON lines go: stdout, or the core's monitor socket.

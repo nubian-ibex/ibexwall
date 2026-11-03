@@ -122,6 +122,26 @@ pub struct AppEntry {
     pub mode: String,
 }
 
+/// A connection held in Ask mode, waiting for the user. The strings come
+/// from other programs and the network: show them, never interpret them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Prompt {
+    pub id: String,
+    /// The app key, as in `AppEntry`.
+    pub app: String,
+    pub kind: String,
+    #[serde(default)]
+    pub exe_path: Option<String>,
+    /// A domain when the resolver's answer was correlated, else the address.
+    pub destination: String,
+    pub address: String,
+    pub port: u16,
+    pub created: String,
+    /// When the fallback applies if nobody answers.
+    pub expires: String,
+}
+
 /// One destination of an application. `destination` is a domain when the
 /// resolver's answer was correlated, otherwise the bare address.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

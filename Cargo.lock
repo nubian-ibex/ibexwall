@@ -2138,6 +2138,7 @@ dependencies = [
  "ibexwall-apps",
  "ibexwall-firewall",
  "ibexwall-identity",
+ "ibexwall-net-common",
  "ibexwall-proto",
  "ibexwall-sys",
  "ibexwall-varlink",

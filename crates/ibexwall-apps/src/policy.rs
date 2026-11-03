@@ -125,7 +125,14 @@ pub struct Policy {
     pub rules: Vec<KernelRule>,
     /// What an app nobody decided about gets: `allow` or `ask`.
     pub default: String,
+    /// How long an Ask connection waits for the user.
+    pub ask_timeout_secs: u64,
+    /// What an unanswered Ask connection gets: `allow` or `block`.
+    pub ask_fallback: String,
 }
+
+/// Seconds an Ask connection waits when nothing says otherwise.
+pub const DEFAULT_ASK_TIMEOUT_SECS: u64 = 30;
 
 /// Builds the policy from the apps seen and the modes chosen. `locked`
 /// apps (organization rules) override the user's choice. A mode only needs
@@ -154,6 +161,8 @@ pub fn build(
     Policy {
         rules,
         default: default_verdict.to_string(),
+        ask_timeout_secs: DEFAULT_ASK_TIMEOUT_SECS,
+        ask_fallback: "allow".into(),
     }
 }
 
@@ -199,6 +208,28 @@ pub fn default_mode(conn: &Connection) -> Result<Mode, Error> {
         .as_deref()
         .and_then(Mode::parse)
         .unwrap_or(Mode::Monitor))
+}
+
+/// How long Ask waits and what an unanswered question gets: stored
+/// settings, with the defaults when absent or unreadable.
+pub fn ask_settings(conn: &Connection) -> Result<(u64, String), Error> {
+    let get = |key: &str| -> Option<String> {
+        conn.query_row(
+            "SELECT value FROM net_settings WHERE key = ?1",
+            params![key],
+            |row| row.get(0),
+        )
+        .ok()
+    };
+    let timeout = get("ask_timeout_secs")
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|secs| (1..=600).contains(secs))
+        .unwrap_or(DEFAULT_ASK_TIMEOUT_SECS);
+    let fallback = match get("ask_fallback").as_deref() {
+        Some("block") => "block",
+        _ => "allow",
+    };
+    Ok((timeout, fallback.to_string()))
 }
 
 pub fn set_default_mode(conn: &Connection, mode: Mode) -> Result<(), Error> {

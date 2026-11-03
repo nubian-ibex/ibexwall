@@ -150,6 +150,7 @@ export interface AllContracts {
   PolicyBundle?: PolicyBundle;
   Posture?: Posture;
   Privileges?: Privileges;
+  Prompt?: Prompt;
   Proposal?: Proposal;
   ProposalStatus?: ProposalStatus;
   ProtectionStatus?: ProtectionStatus;
@@ -582,6 +583,30 @@ export interface ProtectionStatus {
   plugin: string;
   state: string;
   summary_key: string;
+}
+/**
+ * A connection held in Ask mode, waiting for the user. The strings come
+ * from other programs and the network: show them, never interpret them.
+ */
+export interface Prompt {
+  address: string;
+  /**
+   * The app key, as in `AppEntry`.
+   */
+  app: string;
+  created: string;
+  /**
+   * A domain when the resolver's answer was correlated, else the address.
+   */
+  destination: string;
+  exe_path?: string | null;
+  /**
+   * When the fallback applies if nobody answers.
+   */
+  expires: string;
+  id: string;
+  kind: string;
+  port: number;
 }
 /**
  * A change proposed through the API (e.g. by the MCP assistant);

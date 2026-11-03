@@ -2134,6 +2134,8 @@ dependencies = [
  "blake2",
  "ed25519-dalek",
  "hex",
+ "ibexwall-apps",
+ "ibexwall-identity",
  "ibexwall-proto",
  "ibexwall-sys",
  "ibexwall-varlink",

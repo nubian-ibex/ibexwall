@@ -168,6 +168,16 @@ async fn dispatch(
         "GetInfo" => Ok(Reply::result(info(core))),
         "GetPosture" => Ok(Reply::result(posture(core))),
         "GetDnsStatus" => Ok(Reply::result(dns_status(core))),
+        "ListApps" => Ok(Reply::result(json!({
+            "monitor": core.monitor.status(),
+            "apps": crate::monitor::list_apps(core).map_err(internal)?,
+        }))),
+        "GetAppDestinations" => {
+            let app = str_field(&parameters, "app")?;
+            Ok(Reply::result(json!({
+                "destinations": crate::monitor::app_destinations(core, &app).map_err(internal)?,
+            })))
+        }
         "ListPlugins" => Ok(Reply::result(json!({ "plugins": list_plugins(core) }))),
         "SetPluginEnabled" => {
             let id = str_field(&parameters, "id")?;
@@ -286,9 +296,9 @@ async fn dispatch(
 
 fn polkit_action(method: &str) -> Option<&'static str> {
     Some(match method {
-        "GetInfo" | "GetPosture" | "GetDnsStatus" | "ListPlugins" | "ListFindings"
-        | "GetConfig" | "History" | "Subscribe" | "RunChecks" | "GetPlugin" | "AuditVerify"
-        | "RecentEvents" => names::POLKIT_READ,
+        "GetInfo" | "GetPosture" | "GetDnsStatus" | "ListApps" | "GetAppDestinations"
+        | "ListPlugins" | "ListFindings" | "GetConfig" | "History" | "Subscribe" | "RunChecks"
+        | "GetPlugin" | "AuditVerify" | "RecentEvents" => names::POLKIT_READ,
         "SetPluginEnabled" => names::POLKIT_PLUGINS_MANAGE,
         "PlanChange" => names::POLKIT_PLAN,
         "Apply" | "Confirm" => names::POLKIT_APPLY,

@@ -20,6 +20,8 @@ pub const BIN_DAEMON: &str = "ibexwalld";
 pub const BIN_CLI: &str = "ibexctl";
 pub const BIN_AGENT: &str = "ibexwall-agent";
 pub const BIN_DNS: &str = "ibexwall-dns";
+/// The eBPF connect monitor the core supervises as a privileged child.
+pub const BIN_EBPF_LOADER: &str = "ibexwall-ebpf-loader";
 pub const BIN_MCP: &str = "ibexwall-mcp";
 pub const BIN_WEB: &str = "ibexwall-web";
 pub const PLUGIN_BIN_PREFIX: &str = "ibexwall-plugin-";

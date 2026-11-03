@@ -747,3 +747,149 @@ async fn subscribe_streams_transaction_events() {
         .unwrap();
     assert!(event["kind"].as_str().unwrap().starts_with("transaction."));
 }
+
+fn connection_line(dst: &str, kind: &str, id: &str, hash: &str) -> String {
+    json!({
+        "pid": 4242, "comm": "curl", "exe": "/usr/bin/curl", "exe_kernel": "/usr/bin/curl",
+        "cgroup": "0::/user.slice/session-6.scope", "dst": dst, "port": 443, "family": 4,
+        "kind": kind, "id": id, "exe_hash": hash, "package": "curl",
+    })
+    .to_string()
+}
+
+#[tokio::test]
+async fn monitor_rolls_up_connections_correlates_domains_and_alerts() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let (core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+    let now = 1_000_000;
+
+    core.monitor
+        .learn("93.184.216.34".parse().unwrap(), "Example.COM.", 60, now);
+    let lines = [
+        connection_line("93.184.216.34", "cli", "", &"aa".repeat(32)),
+        connection_line("93.184.216.34", "cli", "", &"aa".repeat(32)),
+        connection_line("203.0.113.9", "cli", "", &"aa".repeat(32)),
+        // Local plumbing and garbage are skipped, never an error.
+        connection_line("127.0.0.1", "cli", "", &"aa".repeat(32)),
+        connection_line("0.0.0.0", "cli", "", &"aa".repeat(32)),
+        "not json".to_string(),
+        r#"{"dst":"not-an-ip","port":1,"kind":"cli"}"#.to_string(),
+    ];
+    for (offset, line) in lines.iter().enumerate() {
+        core.monitor
+            .ingest_line(&core, line, now + offset as i64)
+            .unwrap();
+    }
+
+    let listed = client
+        .call("com.ibexwall.Core.ListApps", json!({}))
+        .await
+        .unwrap();
+    let apps = listed["apps"].as_array().unwrap();
+    assert_eq!(apps.len(), 1);
+    assert_eq!(apps[0]["key"], "cli:/usr/bin/curl");
+    assert_eq!(apps[0]["kind"], "cli");
+    assert_eq!(apps[0]["package"], "curl");
+    assert_eq!(apps[0]["connections"], 3);
+    assert_eq!(apps[0]["destinations"], 2);
+    assert_eq!(listed["monitor"]["running"], false);
+
+    let destinations = client
+        .call(
+            "com.ibexwall.Core.GetAppDestinations",
+            json!({ "app": "cli:/usr/bin/curl" }),
+        )
+        .await
+        .unwrap();
+    let rows = destinations["destinations"].as_array().unwrap();
+    assert_eq!(rows[0]["destination"], "example.com");
+    assert_eq!(rows[0]["resolved"], true);
+    assert_eq!(rows[0]["count"], 2);
+    assert_eq!(rows[1]["destination"], "203.0.113.9");
+    assert_eq!(rows[1]["resolved"], false);
+
+    // The first connection raised exactly one event.
+    let events = client
+        .call("com.ibexwall.Core.RecentEvents", json!({ "limit": 20 }))
+        .await
+        .unwrap();
+    let first: Vec<_> = events["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["kind"] == "apps.first_connection")
+        .collect();
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0]["app"], "cli:/usr/bin/curl");
+
+    // The same path with different content, no package activity: alert.
+    core.monitor
+        .ingest_line(
+            &core,
+            &connection_line("203.0.113.9", "cli", "", &"bb".repeat(32)),
+            now + 100,
+        )
+        .unwrap();
+    let events = client
+        .call("com.ibexwall.Core.RecentEvents", json!({ "limit": 20 }))
+        .await
+        .unwrap();
+    let changed: Vec<_> = events["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["kind"] == "apps.binary_changed")
+        .collect();
+    assert_eq!(changed.len(), 1);
+    assert_eq!(changed[0]["severity"], "high");
+}
+
+#[tokio::test]
+async fn the_supervisor_feeds_the_monitor_from_a_child_and_reports_when_it_is_gone() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let (core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+
+    // A missing program is reported, not a crash.
+    let missing = sandbox.root.join("nope");
+    let task = tokio::spawn(ibexwall_core::monitor::supervise(
+        Arc::clone(&core),
+        missing.clone(),
+    ));
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    let status = core.monitor.status();
+    assert!(!status.running);
+    assert!(status.reason.unwrap().contains("not installed"));
+    task.abort();
+
+    // A fake loader prints one connection and exits.
+    let script = sandbox.root.join("fake-loader");
+    let line = connection_line("198.51.100.4", "cli", "", &"cc".repeat(32));
+    std::fs::write(&script, format!("#!/bin/sh\necho '{line}'\n")).unwrap();
+    set_mode(&script, 0o755);
+    let task = tokio::spawn(ibexwall_core::monitor::supervise(Arc::clone(&core), script));
+    let mut seen = false;
+    for _ in 0..50 {
+        let listed = client
+            .call("com.ibexwall.Core.ListApps", json!({}))
+            .await
+            .unwrap();
+        if listed["apps"]
+            .as_array()
+            .is_some_and(|apps| !apps.is_empty())
+        {
+            seen = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    task.abort();
+    assert!(seen, "the child's connection never reached the rollups");
+}

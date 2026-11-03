@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One destination of an application. `destination` is a domain when the\nresolver's answer was correlated, otherwise the bare address.",
+  "properties": {
+    "count": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "destination": {
+      "type": "string"
+    },
+    "first_seen": {
+      "type": "string"
+    },
+    "last_seen": {
+      "type": "string"
+    },
+    "port": {
+      "format": "uint16",
+      "maximum": 65535,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "resolved": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "destination",
+    "resolved",
+    "port",
+    "count",
+    "first_seen",
+    "last_seen"
+  ],
+  "title": "AppDestination",
+  "type": "object"
+}

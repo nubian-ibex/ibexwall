@@ -88,6 +88,50 @@ pub struct DnsStatus {
     pub upstream_errors: u64,
 }
 
+/// Whether the connection monitor is feeding the Apps screen, and if not,
+/// why (a plain reason, never a guess about the cause).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MonitorStatus {
+    pub running: bool,
+    /// Why the monitor is off, when it is. Untrusted display text.
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+/// One application seen by the monitor (counts and times only).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AppEntry {
+    /// Stable key, e.g. `flatpak:org.mozilla.firefox` or `cli:/usr/bin/curl`.
+    pub key: String,
+    /// `flatpak`, `snap`, `desktop_app`, `system_service`, `container`,
+    /// `cli` or `unknown`.
+    pub kind: String,
+    pub id: String,
+    #[serde(default)]
+    pub exe_path: Option<String>,
+    #[serde(default)]
+    pub package: Option<String>,
+    pub first_seen: String,
+    pub last_seen: String,
+    pub connections: u64,
+    pub destinations: u64,
+}
+
+/// One destination of an application. `destination` is a domain when the
+/// resolver's answer was correlated, otherwise the bare address.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AppDestination {
+    pub destination: String,
+    pub resolved: bool,
+    pub port: u16,
+    pub count: u64,
+    pub first_seen: String,
+    pub last_seen: String,
+}
+
 /// Reference to a control in an external framework (own wording only;
 /// never copy protected norm texts).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

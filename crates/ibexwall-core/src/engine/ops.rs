@@ -96,11 +96,21 @@ fn validate_one(op: &Op, manifest: &Manifest) -> Result<(), OpError> {
         Op::FirewallAdapter { .. } => Ok(()),
         Op::DnsBackend { .. } => Ok(()),
         Op::FlatpakOverride { app_id, args } => {
-            if app_id.is_empty() || args.is_empty() {
+            // One application id, and exactly the network block; the file
+            // must be under the plugin's declared write paths.
+            let path =
+                ibexwall_sys::flatpak::override_path(app_id).ok_or_else(|| OpError::Invalid {
+                    field: "flatpak.override",
+                    reason: "`app_id` is not an application id".into(),
+                })?;
+            if !ibexwall_sys::flatpak::args_allowed(args) {
                 return Err(OpError::Invalid {
                     field: "flatpak.override",
-                    reason: "app_id and args required".into(),
+                    reason: "only --unshare=network may be applied".into(),
                 });
+            }
+            if !path_under_any(&path, &manifest.privileges.write_paths) {
+                return Err(OpError::PathNotWritable { path });
             }
             Ok(())
         }
@@ -273,7 +283,7 @@ default_enabled = true
 en = "Echo"
 
 [privileges]
-write_paths = ["/etc/sysctl.d", "/etc/ibexwall-tests", "/etc/firefox/policies"]
+write_paths = ["/etc/sysctl.d", "/etc/ibexwall-tests", "/etc/firefox/policies", "/var/lib/flatpak/overrides"]
 units = ["chronyd.service", "ibexwall-test.service"]
 unit_actions = ["start", "stop", "restart"]
 sysctl_keys = ["kernel.ibexwall_test", "net.ibexwall_test"]
@@ -574,7 +584,7 @@ reversible = "immediate"
                 action: serde_json::json!({}),
             },
             Op::FlatpakOverride {
-                app_id: "a.b".into(),
+                app_id: "org.example.App".into(),
                 args: vec!["--unshare=network".into()],
             },
             Op::SnapInterface {
@@ -669,5 +679,42 @@ reversible = "immediate"
             },
         ];
         assert_eq!(risk_flags(&adapters), vec![RiskFlag::Network]);
+    }
+
+    #[test]
+    fn flatpak_override_accepts_only_a_valid_app_and_the_network_block() {
+        let mut manifest = manifest();
+        let op = |app: &str, args: &[&str]| Op::FlatpakOverride {
+            app_id: app.into(),
+            args: args.iter().map(|a| a.to_string()).collect(),
+        };
+        assert!(validate(&[op("org.example.App", &["--unshare=network"])], &manifest).is_ok());
+        for bad in [
+            op("../../etc/passwd", &["--unshare=network"]),
+            op("org.example", &["--unshare=network"]),
+            op("org.example.App", &["--filesystem=host"]),
+            op("org.example.App", &["--unshare=network", "--share=ipc"]),
+            op("org.example.App", &[]),
+        ] {
+            assert!(
+                matches!(
+                    validate(std::slice::from_ref(&bad), &manifest),
+                    Err(OpError::Invalid {
+                        field: "flatpak.override",
+                        ..
+                    })
+                ),
+                "{bad:?}"
+            );
+        }
+        // The plugin must declare the overrides directory it writes to.
+        manifest.privileges.write_paths = vec!["/etc/sysctl.d".into()];
+        assert!(matches!(
+            validate(&[op("org.example.App", &["--unshare=network"])], &manifest),
+            Err(OpError::PathNotWritable { .. })
+        ));
+        // Cutting one app's network cannot lock the machine out, so it
+        // carries no network risk and needs no confirmation window.
+        assert!(risk_flags(&[op("org.example.App", &["--unshare=network"])]).is_empty());
     }
 }

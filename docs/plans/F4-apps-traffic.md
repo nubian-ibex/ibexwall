@@ -35,6 +35,10 @@ Progress:
   in the contract, events for first connection and changed binary. The
   hardened unit passes on the five distros (Debian degrades: no kernel
   exec capture, documented).
+- M4 done (ADR-0033): `flatpak.override` executor, `apps.flatpak-network`
+  plugin, byte-for-byte rollback; the real Flatpak reads the file and
+  the VM scenario proves apply, read-back and rollback on the five
+  distros. Snap via interface is still to do.
 - The `--phase f4` spike scenarios (attribution with asymmetric v4 and
   v6 destinations, overhead) pass 2/2 on the five distros.
 
@@ -78,7 +82,7 @@ M3 Correlation and rollups
   seen; retention by the spec's data policy.
 - First connection for an app and changed-binary alerts as findings.
 
-M4 `apps.flatpak_perms` + `flatpak.override`
+M4 `apps.flatpak-network` + `flatpak.override`
 - Check: Flatpak overrides present per app (list from `flatpak list`).
 - Plan/apply/rollback of `--unshare=network` style overrides via the
   typed op; consent and may-affect in the manifest.

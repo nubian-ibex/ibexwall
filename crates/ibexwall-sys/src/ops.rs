@@ -92,17 +92,22 @@ pub enum OpError {
 pub fn write_directories(ops: &[Op]) -> Vec<String> {
     let mut dirs: std::collections::BTreeSet<String> = Default::default();
     for op in ops {
-        let path = match op {
-            Op::FileWrite { path, .. } | Op::FileRemove { path } => path.as_str(),
+        let path: String = match op {
+            Op::FileWrite { path, .. } | Op::FileRemove { path } => path.clone(),
             // The browser policy executor writes one known file per
             // browser; its directory must be writable in the unit too.
             Op::BrowserPolicy { browser, .. } => match crate::browser::target(browser) {
-                Some(target) => target.path,
+                Some(target) => target.path.to_string(),
+                None => continue,
+            },
+            // Likewise one override file per Flatpak application.
+            Op::FlatpakOverride { app_id, .. } => match crate::flatpak::override_path(app_id) {
+                Some(path) => path,
                 None => continue,
             },
             _ => continue,
         };
-        if let Some(parent) = Path::new(path).parent() {
+        if let Some(parent) = Path::new(&path).parent() {
             let parent = parent.to_string_lossy();
             if !parent.is_empty() {
                 dirs.insert(parent.into_owned());
@@ -188,7 +193,37 @@ pub fn execute(op: &Op, sys: &crate::SysBundle) -> Result<()> {
             Err(not_implemented("firewall.adapter", "adapter lands in F5"))
         }
         Op::DnsBackend { .. } => Err(not_implemented("dns.backend", "adapter lands in F3")),
-        Op::FlatpakOverride { .. } => Err(not_implemented("flatpak.override", "lands in F4")),
+        Op::FlatpakOverride { app_id, args } => {
+            let path = crate::flatpak::override_path(app_id).ok_or_else(|| OpError::Invalid {
+                field: "flatpak.override",
+                reason: format!("`{app_id}` is not an application id"),
+            })?;
+            if !crate::flatpak::args_allowed(args) {
+                return Err(OpError::Invalid {
+                    field: "flatpak.override",
+                    reason: "only --unshare=network is supported".into(),
+                }
+                .into());
+            }
+            let path = Path::new(&path);
+            let existing = sys
+                .fs
+                .read(path)
+                .ok()
+                .map(|bytes| String::from_utf8_lossy(&bytes).into_owned());
+            let content = crate::flatpak::unshare_network(existing.as_deref());
+            // Already blocked: leave the file (and its mtime) alone.
+            if existing.as_deref() == Some(content.as_str()) {
+                return Ok(());
+            }
+            if let Some(parent) = path.parent() {
+                sys.fs.create_dir_all(parent).map_err(anyhow::Error::from)?;
+            }
+            sys.fs
+                .write_atomic(path, content.as_bytes(), 0o644, None)
+                .map_err(anyhow::Error::from)?;
+            Ok(())
+        }
         Op::SnapInterface { .. } => Err(not_implemented("snap.interface", "lands in F4")),
         Op::BrowserPolicy { browser, policy } => {
             let target = crate::browser::target(browser).ok_or_else(|| OpError::Invalid {
@@ -384,6 +419,81 @@ pub fn ops_digest(ops: &[Op]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sandbox(name: &str) -> (std::path::PathBuf, crate::SysBundle) {
+        let root = std::env::temp_dir().join(format!("ibexwall-ops-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let sys = crate::SysBundle::real_under(&root);
+        (root, sys)
+    }
+
+    fn block(app_id: &str) -> Op {
+        Op::FlatpakOverride {
+            app_id: app_id.into(),
+            args: vec!["--unshare=network".into()],
+        }
+    }
+
+    #[test]
+    fn flatpak_override_writes_the_known_file_and_merges_into_an_existing_one() {
+        let (root, sys) = sandbox("flatpak");
+        let dir = root.join("var/lib/flatpak/overrides");
+
+        execute(&block("org.example.Fresh"), &sys).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.join("org.example.Fresh")).unwrap(),
+            "[Context]\nshared=!network;\n"
+        );
+
+        std::fs::write(
+            dir.join("org.example.Mine"),
+            "[Context]\nshared=ipc;\nfilesystems=home;\n",
+        )
+        .unwrap();
+        execute(&block("org.example.Mine"), &sys).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.join("org.example.Mine")).unwrap(),
+            "[Context]\nshared=ipc;!network;\nfilesystems=home;\n"
+        );
+
+        // Doing it again changes nothing, not even the bytes.
+        let before = std::fs::read(dir.join("org.example.Mine")).unwrap();
+        execute(&block("org.example.Mine"), &sys).unwrap();
+        assert_eq!(std::fs::read(dir.join("org.example.Mine")).unwrap(), before);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn flatpak_override_refuses_anything_but_the_one_change() {
+        let (root, sys) = sandbox("flatpak-refuse");
+        for op in [
+            block("../../etc/passwd"),
+            block("firefox"),
+            Op::FlatpakOverride {
+                app_id: "org.example.App".into(),
+                args: vec!["--filesystem=host".into()],
+            },
+            Op::FlatpakOverride {
+                app_id: "org.example.App".into(),
+                args: vec![],
+            },
+        ] {
+            assert!(execute(&op, &sys).is_err(), "{op:?}");
+        }
+        assert!(!root.join("var").exists());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn write_directories_include_the_flatpak_overrides_directory() {
+        assert_eq!(
+            write_directories(&[block("org.example.App"), block("org.other.App")]),
+            vec!["/var/lib/flatpak/overrides".to_string()]
+        );
+        // An invalid id contributes nothing.
+        assert!(write_directories(&[block("nope")]).is_empty());
+    }
 
     #[test]
     fn write_directories_are_parent_dirs_deduped_and_sorted() {

@@ -108,7 +108,7 @@ pub fn run(distro: &str, phase: Option<&str>) -> Result<()> {
         Some("f1") => crate::f1::run(&vm, &workspace, entry.install),
         Some("f2") => crate::f2::run(&vm, &workspace, entry.install),
         Some("f3") => crate::f3::run(&vm, &workspace, entry.install),
-        Some("f4") => crate::f4::run(&vm, &workspace),
+        Some("f4") => crate::f4::run(&vm, &workspace, entry.install),
         Some("fixtures") => crate::fixtures::run(&vm, &workspace, entry.id),
         Some(other) => bail!("unknown phase `{other}` (supported: f0, f1, f2, f3, f4, fixtures)"),
     }
@@ -382,6 +382,9 @@ fn start_vm(cache: &Path, base: &Path) -> Result<Vm> {
             "-b",
             base.to_str().unwrap(),
             overlay.to_str().unwrap(),
+            // Bigger than the cloud images ship with: cloud-init grows the
+            // root filesystem, and some scenarios install packages.
+            "8G",
         ],
         None,
         "creating overlay disk",

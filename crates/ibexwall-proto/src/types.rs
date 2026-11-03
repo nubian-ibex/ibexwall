@@ -142,6 +142,21 @@ pub struct FirewallPort {
     pub proto: String,
 }
 
+/// A network this computer is on and the profile suggested for it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FirewallNetwork {
+    /// The connection's name; untrusted display text.
+    pub name: String,
+    /// `wired`, `wifi_secured`, `wifi_open` or `other`.
+    pub kind: String,
+    /// `home`, `work`, `public` or `travel`.
+    pub recommended: String,
+    /// A Fluent key for the warning that goes with the suggestion.
+    #[serde(default)]
+    pub warning: Option<String>,
+}
+
 /// The inbound firewall as IbexWall can read it (spec 4.7). Names from
 /// configuration files are untrusted display text.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -162,6 +177,8 @@ pub struct FirewallState {
     pub listening: Vec<FirewallPort>,
     /// Rules read but not edited (ranges, rich rules, other targets).
     pub other: Vec<String>,
+    /// The networks this computer is on, with the suggested profile.
+    pub networks: Vec<FirewallNetwork>,
 }
 
 /// Reference to a control in an external framework (own wording only;

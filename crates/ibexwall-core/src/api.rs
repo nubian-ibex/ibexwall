@@ -169,7 +169,7 @@ async fn dispatch(
         "GetPosture" => Ok(Reply::result(posture(core))),
         "GetDnsStatus" => Ok(Reply::result(dns_status(core))),
         "GetFirewall" => Ok(Reply::result(
-            json!({ "firewall": crate::firewall::state(core) }),
+            json!({ "firewall": crate::firewall::state(core).await }),
         )),
         "ListApps" => Ok(Reply::result(json!({
             "monitor": core.monitor.status(),

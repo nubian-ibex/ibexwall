@@ -54,6 +54,7 @@ const CORE_TYPES: &[&str] = &[
     "Transaction",
     "HistoryEntry",
     "Event",
+    "FirewallNetwork",
     "FirewallPort",
     "FirewallState",
     "MonitorStatus",

@@ -377,6 +377,21 @@ sudo firewall-cmd --list-ports | grep -q 9091/tcp || { echo "allow --yes DID NOT
 sudo ibexctl firewall status | grep -q '9091/tcp' || { echo "status DOES NOT SHOW 9091"; exit 1; }
 sudo ibexctl rollback "$TXC" --json >/dev/null
 if sudo firewall-cmd --list-ports | grep -q 9091; then echo "9091 SURVIVED ROLLBACK"; exit 1; fi
+# NetworkManager, where it runs, names the networks and a profile for each.
+if systemctl is-active --quiet NetworkManager; then
+  sudo ibexctl firewall status --json > /tmp/fw.json
+  python3 - <<'EOF'
+import json
+d = json.load(open("/tmp/fw.json"))["firewall"]
+nets = d["networks"]
+assert nets, d
+wired = [n for n in nets if n["kind"] == "wired"]
+assert wired and wired[0]["recommended"] == "public" and wired[0]["warning"] is None, nets
+print("METRIC: networks seen through NetworkManager:", [(n["kind"], n["recommended"]) for n in nets])
+EOF
+else
+  echo "METRIC: NetworkManager not running here; no networks listed"
+fi
 # Profiles map to zones this firewalld ships.
 ZONE_BEFORE=$(sudo firewall-cmd --get-default-zone)
 sudo ibexctl firewall profile | grep -q 'travel' || { echo "profile list WRONG"; exit 1; }

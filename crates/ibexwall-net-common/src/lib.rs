@@ -38,6 +38,72 @@ pub const EXE_LEN: usize = 128;
 /// The ring buffer map name the programs and the loader agree on.
 pub const EVENTS_MAP: &str = "IBEXWALL_CONNECTS";
 
+/// Verdicts as the maps store them (wire values, shared by both sides).
+pub mod verdict {
+    /// Allow (and keep observing).
+    pub const ALLOW: u8 = 0;
+    /// Fail the call with EPERM.
+    pub const BLOCK: u8 = 1;
+    /// Mark the flow for the queue (Ask mode; the S6-a spike).
+    pub const ASK: u8 = 2;
+}
+
+/// One exe rule as the eBPF rules array stores it: a path prefix and the
+/// verdict. Fixed size so both sides agree on the layout.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExeRule {
+    /// `verdict::ALLOW`, `BLOCK` or `ASK`; 0 length means the slot is free.
+    pub verdict: u8,
+    /// Bytes of the prefix actually used.
+    pub len: u8,
+    /// The executable path prefix, NUL padded.
+    pub prefix: [u8; EXE_RULE_PREFIX_LEN],
+}
+
+/// Longest executable path prefix a rule may carry.
+pub const EXE_RULE_PREFIX_LEN: usize = 96;
+/// How many exe rules the array holds (the loop in the hook is bounded).
+pub const EXE_RULES_MAX: usize = 16;
+
+impl ExeRule {
+    /// The wire form: verdict, len, then the prefix.
+    pub fn write_to(&self, out: &mut [u8; EXE_RULE_LEN]) {
+        out[0] = self.verdict;
+        out[1] = self.len;
+        out[2..].copy_from_slice(&self.prefix);
+    }
+
+    pub fn parse(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() != EXE_RULE_LEN {
+            return None;
+        }
+        let len = bytes[1] as usize;
+        if len > EXE_RULE_PREFIX_LEN {
+            return None;
+        }
+        Some(Self {
+            verdict: bytes[0],
+            len: bytes[1],
+            prefix: bytes[2..].try_into().expect("exe rule sized slice"),
+        })
+    }
+
+    /// True when `path` starts with this rule's prefix.
+    pub fn matches(&self, path: &[u8]) -> bool {
+        let len = self.len as usize;
+        path.len() >= len && path[..len] == self.prefix[..len]
+    }
+}
+
+/// The wire length of one exe rule: 1 + 1 + 96.
+pub const EXE_RULE_LEN: usize = 2 + EXE_RULE_PREFIX_LEN;
+
+/// Name of the verdict maps the loader keeps in sync.
+pub const CGROUP_POLICY_MAP: &str = "IBEXWALL_CGROUP_POLICY";
+pub const PID_POLICY_MAP: &str = "IBEXWALL_PID_POLICY";
+pub const DEFAULTS_MAP: &str = "IBEXWALL_DEFAULTS";
+pub const EXE_RULES_MAP: &str = "IBEXWALL_EXE_RULES";
+
 /// Name of the pid-to-exec-path map the connect hook reads.
 pub const EXES_MAP: &str = "IBEXWALL_EXES";
 
@@ -155,5 +221,37 @@ mod tests {
     #[test]
     fn the_wire_length_is_a_multiple_of_four() {
         assert_eq!(EVENT_LEN % 4, 0);
+    }
+
+    fn rule(prefix: &str, verdict: u8) -> ExeRule {
+        let mut bytes = [0u8; EXE_RULE_PREFIX_LEN];
+        bytes[..prefix.len()].copy_from_slice(prefix.as_bytes());
+        ExeRule {
+            verdict,
+            len: prefix.len() as u8,
+            prefix: bytes,
+        }
+    }
+
+    #[test]
+    fn an_exe_rule_round_trips_and_matches_by_prefix() {
+        let r = rule("/usr/bin/curl", verdict::BLOCK);
+        let mut wire = [0u8; EXE_RULE_LEN];
+        r.write_to(&mut wire);
+        assert_eq!(ExeRule::parse(&wire), Some(r));
+        assert!(r.matches(b"/usr/bin/curl"));
+        assert!(r.matches(b"/usr/bin/curl-wrapper"));
+        assert!(!r.matches(b"/usr/bin/cur"));
+        assert!(!r.matches(b"/opt/usr/bin/curl"));
+        // A free slot (length 0) is the caller's to skip; it would match all.
+        assert!(rule("", verdict::ALLOW).matches(b"/anything"));
+    }
+
+    #[test]
+    fn a_corrupt_exe_rule_is_refused() {
+        assert!(ExeRule::parse(&[0u8; 10]).is_none());
+        let mut wire = [0u8; EXE_RULE_LEN];
+        wire[1] = (EXE_RULE_PREFIX_LEN + 1) as u8;
+        assert!(ExeRule::parse(&wire).is_none());
     }
 }

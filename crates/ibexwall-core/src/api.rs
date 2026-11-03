@@ -180,6 +180,14 @@ async fn dispatch(
             let mode = str_field(&parameters, "mode")?;
             let mode = ibexwall_apps::policy::Mode::parse(&mode)
                 .ok_or_else(|| invalid_argument("mode", "allow, monitor, ask or block".into()))?;
+            // A container's packets leave through another network namespace,
+            // where the queue rule does not run: Ask could not hold them.
+            if mode == ibexwall_apps::policy::Mode::Ask && app.starts_with("container:") {
+                return Err(invalid_argument(
+                    "mode",
+                    "ask is not available for containers".into(),
+                ));
+            }
             crate::monitor::set_app_mode(core, &app, mode).map_err(internal)?;
             core.audit(
                 "user",

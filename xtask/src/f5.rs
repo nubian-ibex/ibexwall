@@ -60,6 +60,43 @@ tx_apply() {
   if echo "$OUT" | grep -q pending_confirm; then sudo ibexctl confirm "$TX" >&2; fi
   echo "$TX"
 }
+# Some cloud images run systemd-resolved with no upstream server; QEMU's
+# user network offers one at 10.0.2.3 (the VM only).
+ensure_dns() {
+  if ! getent hosts registry-1.docker.io >/dev/null; then
+    sudo mkdir -p /etc/systemd/resolved.conf.d
+    printf '[Resolve]\nDNS=10.0.2.3\n' | sudo tee /etc/systemd/resolved.conf.d/10-vm-upstream.conf >/dev/null
+    sudo systemctl restart systemd-resolved
+    sleep 2
+  fi
+}
+peer_serve() {
+  sudo sh -c 'nohup ip netns exec peer python3 -m http.server 7000 --bind 192.0.2.2 >/tmp/peer-server.log 2>&1 & echo $! > /tmp/peer-server.pid'
+  for i in $(seq 1 20); do
+    if sudo ip netns exec peer ss -ltn | grep -q ':7000'; then return 0; fi
+    sleep 0.5
+  done
+  { echo "peer server never listened"
+    echo "log: $(sudo cat /tmp/peer-server.log | tail -5 | tr '\n' '|')"
+    echo "pid $(sudo cat /tmp/peer-server.pid): $(ps -o pid,stat,cmd -p $(sudo cat /tmp/peer-server.pid) 2>&1 | tail -1)"
+    echo "ss: $(sudo ip netns exec peer ss -ltnp | tr '\n' '|')"; } >&2
+  return 1
+}
+# With Docker running: a published port still answers the other computer,
+# and the container still reaches out through the host.
+docker_ok() {
+  peer_can 8088 || { echo "DOCKER PUBLISHED PORT NOT REACHABLE"; return 1; }
+  sudo docker exec web wget -q -T 4 -O /dev/null http://192.0.2.2:7000/ || {
+    echo "CONTAINER CANNOT REACH OUT"
+    { echo "-- peer listeners:"; sudo ip netns exec peer ss -ltn
+      echo "-- peer server pid: $(sudo cat /tmp/peer-server.pid 2>/dev/null) log: $(sudo cat /tmp/peer-server.log 2>/dev/null | tail -3)"
+      echo "-- peer addr: $(sudo ip netns exec peer ip -br addr)"
+      echo "-- ip_forward: $(cat /proc/sys/net/ipv4/ip_forward)"
+      echo "-- tables:"; sudo nft list tables
+      echo "-- container route:"; sudo docker exec web ip route; } >&2
+    return 1
+  }
+}
 # nft ruleset without our own table, canonical, for the "nothing else touched" proof
 foreign_rules() {
   sudo nft -j list ruleset | python3 -c "
@@ -67,7 +104,8 @@ import json, sys
 d = json.load(sys.stdin)['nftables']
 keep = [i for i in d if 'metainfo' not in i and i.get('table', {}).get('name') != 'ibexwall' and i.get('chain', {}).get('table') != 'ibexwall' and i.get('rule', {}).get('table') != 'ibexwall']
 def strip(v):
-    if isinstance(v, dict): return {k: strip(x) for k, x in v.items() if k not in ('handle',)}
+    # Counters change with every packet; the rules themselves are what matter.
+    if isinstance(v, dict): return {k: strip(x) for k, x in v.items() if k not in ('handle', 'packets', 'bytes')}
     if isinstance(v, list): return [strip(x) for x in v]
     return v
 print(json.dumps(strip(keep), sort_keys=True))"
@@ -172,6 +210,102 @@ sudo test ! -e /var/lib/ibexwall/nft-active.json || { echo "STALE PERSISTED CHAI
     );
 
     scenario!(
+        "p4 Docker keeps working: published ports, container traffic, foreign tables untouched",
+        &format!(
+            "{}{}",
+            lib(),
+            r#"
+ensure_dns
+if ! command -v docker >/dev/null; then
+  if command -v dnf >/dev/null; then install moby-engine
+  elif command -v apt-get >/dev/null; then install docker.io
+  elif command -v pacman >/dev/null; then install docker
+  fi
+fi
+sudo systemctl enable --now docker
+sleep 3
+command -v nft >/dev/null || install nftables
+peer_up
+peer_serve
+sudo docker rm -f web >/dev/null 2>&1 || true
+sudo docker run -d --name web -p 8088:80 docker.io/library/busybox httpd -f -h / -p 80 >/dev/null
+sleep 2
+docker_ok
+FOREIGN=$(foreign_rules)
+echo "METRIC: docker $(sudo docker --version | cut -c1-40), foreign tables: $(sudo nft list tables | tr '\n' ',' | cut -c1-120)"
+
+# Only when nothing else manages the firewall: IbexWall's own protection
+# in front of a running Docker.
+if [ ! -x /usr/bin/firewall-cmd ] && [ ! -x /usr/sbin/ufw ]; then
+  sudo ibexctl plugins enable net.firewall
+  TX=$(tx_apply enable_basic=true)
+  GW=$(sudo docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')
+  docker_ok
+  [ "$(foreign_rules)" = "$FOREIGN" ] || { echo "DOCKER'S TABLES CHANGED"; exit 1; }
+  # Not "another computer": the bridge is trusted, so a container can reach
+  # a host service the firewall would refuse from outside.
+  sudo sh -c "nohup python3 -m http.server 8080 --bind 0.0.0.0 >/dev/null 2>&1 & echo \$! > /tmp/h8080.pid"; sleep 1
+  sudo docker exec web wget -q -T 4 -O /dev/null http://$GW:8080/ || { echo "CONTAINER CANNOT REACH THE HOST"; exit 1; }
+  if peer_can 8080; then echo "8080 REACHABLE FROM OUTSIDE"; exit 1; fi
+  sudo kill $(cat /tmp/h8080.pid) 2>/dev/null || true
+  sudo ibexctl rollback "$TX" --json >/dev/null
+  docker_ok
+  [ "$(foreign_rules)" = "$FOREIGN" ] || { echo "DOCKER'S TABLES CHANGED AFTER ROLLBACK"; exit 1; }
+else
+  echo "METRIC: nft mode skipped here; the manager scenarios check Docker too"
+fi
+sudo kill $(cat /tmp/peer-server.pid) 2>/dev/null || true
+peer_down
+"#
+        )
+    );
+
+    // Tailscale and NetBird are not installed here (they need an account and
+    // a coordination server); what matters to the firewall is the interface
+    // their traffic arrives on, so a veth named like theirs stands in.
+    scenario!(
+        "p5 VPN-style interfaces stay open, other computers do not, a foreign table stays intact",
+        &format!(
+            "{}{}",
+            lib(),
+            r#"
+if [ -x /usr/bin/firewall-cmd ] || [ -x /usr/sbin/ufw ]; then
+  echo "METRIC: skipped, a firewall manager owns inbound rules on this image"; exit 0
+fi
+command -v nft >/dev/null || install nftables
+sudo ibexctl plugins enable net.firewall
+peer_up
+sudo ip netns del vpn 2>/dev/null || true
+sudo ip link del tailscale0 2>/dev/null || true
+sudo ip netns add vpn
+sudo ip link add tailscale0 type veth peer name ts1
+sudo ip link set ts1 netns vpn
+sudo ip addr add 100.64.0.1/24 dev tailscale0
+sudo ip link set tailscale0 up
+sudo ip netns exec vpn ip addr add 100.64.0.2/24 dev ts1
+sudo ip netns exec vpn ip link set ts1 up
+trap 'unserve; peer_down; sudo ip netns del vpn 2>/dev/null || true; sudo ip link del tailscale0 2>/dev/null || true; sudo nft delete table ip ts_test 2>/dev/null || true' EXIT
+# A table that is not ours, as another program would leave it.
+sudo nft add table ip ts_test
+sudo nft add chain ip ts_test ts-input '{ type filter hook input priority 0; policy accept; }'
+sudo nft add rule ip ts_test ts-input iifname tailscale0 accept
+FOREIGN=$(foreign_rules)
+
+TX=$(tx_apply enable_basic=true)
+serve 9090
+if peer_can 9090; then echo "OTHER COMPUTER REACHED 9090"; exit 1; fi
+sudo ip netns exec vpn python3 -c "
+import socket
+s = socket.socket(); s.settimeout(3)
+s.connect(('100.64.0.1', 9090))" || { echo "VPN INTERFACE TRAFFIC WAS DROPPED"; exit 1; }
+[ "$(foreign_rules)" = "$FOREIGN" ] || { echo "THE FOREIGN TABLE CHANGED"; exit 1; }
+sudo ibexctl rollback "$TX" --json >/dev/null
+[ "$(foreign_rules)" = "$FOREIGN" ] || { echo "THE FOREIGN TABLE CHANGED BY ROLLBACK"; exit 1; }
+"#
+        )
+    );
+
+    scenario!(
         "p1 firewalld: a port opens natively and closes again byte for byte",
         &format!(
             "{}{}",
@@ -185,6 +319,19 @@ sudo ibexctl plugins enable net.firewall
 peer_up
 trap 'unserve; peer_down' EXIT
 serve 8080
+# Docker and firewalld: containers need docker0 in the trusted zone (the
+# documented arrangement). That is the administrator's setup, not ours; it
+# must survive our changes and our reload.
+if sudo docker ps >/dev/null 2>&1; then
+  peer_serve
+  if ! docker_ok >/dev/null 2>&1; then
+    echo "METRIC: firewalld alone breaks container traffic; docker0 goes to the trusted zone, as documented"
+    sudo firewall-cmd --permanent --zone=trusted --add-interface=docker0 >/dev/null
+    sudo firewall-cmd --reload >/dev/null
+    sleep 2
+  fi
+  docker_ok || { echo "DOCKER NOT WORKING EVEN WITH docker0 TRUSTED"; sudo firewall-cmd --list-all-zones >&2; exit 1; }
+fi
 Z=$(sudo firewall-cmd --get-default-zone)
 ZF=/etc/firewalld/zones/$Z.xml
 HASH_BEFORE=$(sudo sha256sum $ZF 2>/dev/null | cut -d' ' -f1 || true)
@@ -194,6 +341,7 @@ TX=$(tx_apply allow=8080/tcp)
 sudo firewall-cmd --list-ports | grep -q '8080/tcp' || { echo "NOT IN RUNTIME"; sudo firewall-cmd --list-all >&2; echo "permanent: $(sudo firewall-cmd --permanent --list-ports)" >&2; sudo journalctl -u ibexwalld -n 25 --no-pager >&2; cat /tmp/apply.err >&2; exit 1; }
 sudo firewall-cmd --permanent --list-ports | grep -q '8080/tcp' || { echo "NOT PERMANENT"; exit 1; }
 peer_can 8080 || { echo "8080 STILL BLOCKED"; exit 1; }
+if sudo docker ps >/dev/null 2>&1; then peer_serve; docker_ok || { sudo nft list tables >&2; exit 1; }; echo "METRIC: docker still fine under firewalld"; fi
 echo "METRIC: firewall-cmd --list-all after apply: $(sudo firewall-cmd --list-all | tr '\n' '|' | cut -c1-300)"
 
 sudo ibexctl rollback "$TX" --json >/dev/null
@@ -202,6 +350,7 @@ if sudo firewall-cmd --permanent --list-ports | grep -q '8080/tcp'; then echo "S
 if peer_can 8080; then echo "8080 REACHABLE AFTER ROLLBACK"; exit 1; fi
 HASH_AFTER=$(sudo sha256sum $ZF 2>/dev/null | cut -d' ' -f1 || true)
 [ "$HASH_BEFORE" = "$HASH_AFTER" ] || { echo "ZONE FILE NOT RESTORED: '$HASH_BEFORE' vs '$HASH_AFTER'"; exit 1; }
+if sudo docker ps >/dev/null 2>&1; then docker_ok || { echo "DOCKER BROKEN BY THE ROLLBACK'S RELOAD"; sudo firewall-cmd --list-all-zones >&2; exit 1; }; fi
 
 # A service, and removing something that is there (a risky change: confirmed).
 TX=$(tx_apply allow_service=http)
@@ -243,6 +392,7 @@ if peer_can 8080; then echo "8080 WAS REACHABLE BEFORE"; exit 1; fi
 TX=$(tx_apply allow=8080/tcp)
 sudo ufw status | grep -q '8080/tcp' || { echo "NOT IN ufw status"; sudo ufw status >&2; exit 1; }
 peer_can 8080 || { echo "8080 STILL BLOCKED"; exit 1; }
+if sudo docker ps >/dev/null 2>&1; then peer_serve; docker_ok || { sudo nft list tables >&2; exit 1; }; echo "METRIC: docker still fine under ufw"; fi
 echo "METRIC: ufw status after apply: $(sudo ufw status | tr '\n' '|' | cut -c1-200)"
 
 sudo ibexctl rollback "$TX" --json >/dev/null

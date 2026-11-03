@@ -92,7 +92,11 @@ async fn run() -> Result<()> {
 
     let resolver = build_resolver(&settings.servers)?;
     let store = Arc::new(Store::new(lists::default_dir()));
-    let handler = Handler::new(build_policy(&settings, &store), resolver);
+    let mut handler = Handler::new(build_policy(&settings, &store), resolver);
+    // Optional: without a listening core the sink just drops its datagrams.
+    if let Ok(sink) = ibexwall_dns::answers::AnswerSink::new(names::dns_answers_socket()) {
+        handler = handler.with_answer_sink(sink);
+    }
 
     let udp = UdpSocket::bind(settings.listen)
         .await

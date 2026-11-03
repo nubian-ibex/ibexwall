@@ -30,7 +30,10 @@ pub fn elf_candidates() -> Vec<PathBuf> {
 
 /// Loads and attaches both programs to the cgroup v2 root; returns the
 /// loaded `Ebpf` with the programs pinned by link.
-pub fn load_and_attach(elf: &Path, cgroup_root: &Path) -> Result<aya::Ebpf> {
+/// Returns the loaded programs and, when the exec tracepoint could not be
+/// attached, why: the monitor still works, only without the kernel's copy
+/// of the exec path (short-lived processes then rely on `/proc`).
+pub fn load_and_attach(elf: &Path, cgroup_root: &Path) -> Result<(aya::Ebpf, Option<String>)> {
     let mut ebpf = EbpfLoader::new()
         .load_file(elf)
         .with_context(|| format!("loading {}", elf.display()))?;
@@ -44,8 +47,14 @@ pub fn load_and_attach(elf: &Path, cgroup_root: &Path) -> Result<aya::Ebpf> {
         .try_into()
         .context("ibexwall_exec has the wrong type")?;
     exec.load().context("loading ibexwall_exec")?;
-    exec.attach("sched", "sched_process_exec")
-        .context("attaching ibexwall_exec")?;
+    // Some kernels (Debian's perf_event_paranoid=3) only allow
+    // perf_event_open with CAP_SYS_ADMIN, which the unit deliberately
+    // does not hold. Degrade instead of failing: connections are still
+    // seen and attributed, only exits-before-/proc lose their path.
+    let degraded = exec
+        .attach("sched", "sched_process_exec")
+        .err()
+        .map(|error| format!("kernel-side exec capture is off ({error})"));
     for program in ["ibexwall_connect4", "ibexwall_connect6"] {
         let attached: &mut CgroupSockAddr = ebpf
             .program_mut(program)
@@ -59,7 +68,7 @@ pub fn load_and_attach(elf: &Path, cgroup_root: &Path) -> Result<aya::Ebpf> {
             .attach(&cgroup_dir, aya::programs::CgroupAttachMode::Single)
             .with_context(|| format!("attaching {program} to {}", cgroup_root.display()))?;
     }
-    Ok(ebpf)
+    Ok((ebpf, degraded))
 }
 
 /// One resolved event: what the kernel saw plus who was responsible.
@@ -87,6 +96,66 @@ pub fn resolve(event: ConnectEvent) -> Sighting {
         .ok()
         .map(|text| text.trim().to_string());
     Sighting { event, exe, cgroup }
+}
+
+/// Maps a cgroup id (the inode of its directory in cgroupfs) back to its
+/// path, for processes that exited before `/proc/<pid>/cgroup` was read.
+/// Rebuilt by walking the tree on a miss, at most once per `MIN_RESCAN`.
+pub struct CgroupIndex {
+    root: PathBuf,
+    paths: std::collections::HashMap<u64, String>,
+    scanned: Option<std::time::Instant>,
+}
+
+/// A miss rescans, but never more often than this.
+const MIN_RESCAN: std::time::Duration = std::time::Duration::from_secs(1);
+/// Bounds the walk on machines with an unusual number of cgroups.
+const MAX_CGROUPS: usize = 100_000;
+
+impl CgroupIndex {
+    pub fn new(root: PathBuf) -> Self {
+        Self {
+            root,
+            paths: std::collections::HashMap::new(),
+            scanned: None,
+        }
+    }
+
+    /// `0::/path`, the form `/proc/<pid>/cgroup` uses for cgroup v2.
+    pub fn lookup(&mut self, id: u64) -> Option<String> {
+        if !self.paths.contains_key(&id) {
+            let due = self.scanned.is_none_or(|at| at.elapsed() >= MIN_RESCAN);
+            if due {
+                self.rescan();
+            }
+        }
+        self.paths.get(&id).map(|path| format!("0::{path}"))
+    }
+
+    fn rescan(&mut self) {
+        use std::os::unix::fs::MetadataExt as _;
+        self.scanned = Some(std::time::Instant::now());
+        self.paths.clear();
+        let mut stack = vec![(self.root.clone(), String::new())];
+        while let Some((dir, relative)) = stack.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let Ok(meta) = entry.metadata() else { continue };
+                if !meta.is_dir() || self.paths.len() >= MAX_CGROUPS {
+                    continue;
+                }
+                let child = format!("{relative}/{}", entry.file_name().to_string_lossy());
+                self.paths.insert(meta.ino(), child.clone());
+                stack.push((entry.path(), child));
+            }
+        }
+        // The root itself is the cgroup whose path is "/".
+        if let Ok(meta) = std::fs::metadata(&self.root) {
+            self.paths.insert(meta.ino(), "/".into());
+        }
+    }
 }
 
 /// Who and what is behind an exe: hash and owning package, cached per path
@@ -208,13 +277,26 @@ fn amain() -> Result<()> {
     if !Path::new("/sys/fs/cgroup/cgroup.controllers").exists() {
         bail!("cgroup v2 is required (no controllers file at /sys/fs/cgroup)");
     }
-    let ebpf = load_and_attach(elf, Path::new("/sys/fs/cgroup"))?;
+    let (ebpf, degraded) = load_and_attach(elf, Path::new("/sys/fs/cgroup"))?;
+    if let Some(reason) = &degraded {
+        eprintln!("ibexwall-ebpf-loader: degraded: {reason}");
+    }
     eprintln!(
         "ibexwall-ebpf-loader: monitoring connect() (elf: {})",
         elf.display()
     );
     let mut enricher = Enricher::default();
-    run(ebpf, &mut |sighting| {
+    let mut cgroups = CgroupIndex::new(PathBuf::from("/sys/fs/cgroup"));
+    // With --socket the lines go to the core; without it, to stdout (the
+    // VM spike and manual runs).
+    let mut sink = Sink::open(std::env::args().skip(1).collect())?;
+    if let Some(reason) = degraded {
+        sink.send(&serde_json::json!({ "meta": "degraded", "reason": reason }).to_string());
+    }
+    run(ebpf, &mut |mut sighting| {
+        if sighting.cgroup.is_none() {
+            sighting.cgroup = cgroups.lookup(sighting.event.cgroup_id);
+        }
         let identity = Enricher::identity(&sighting);
         let facts = sighting.exe.as_deref().map(|exe| enricher.facts(exe));
         let Sighting { event, exe, cgroup } = &sighting;
@@ -223,9 +305,8 @@ fn amain() -> Result<()> {
         } else {
             std::net::Ipv6Addr::from(event.ip6).to_string()
         };
-        println!(
-            "{}",
-            serde_json::json!({
+        sink.send(
+            &serde_json::json!({
                 "pid": event.pid,
                 "comm": event.comm_str(),
                 "exe": exe,
@@ -239,8 +320,60 @@ fn amain() -> Result<()> {
                 "port": event.port,
                 "family": event.family,
             })
+            .to_string(),
         );
     })
+}
+
+/// Where the JSON lines go: stdout, or the core's monitor socket.
+enum Sink {
+    Stdout,
+    Socket(std::os::unix::net::UnixStream),
+}
+
+impl Sink {
+    fn open(args: Vec<String>) -> Result<Self> {
+        match args.as_slice() {
+            [] => Ok(Self::Stdout),
+            [flag, path] if flag == "--socket" => {
+                // The core may still be starting: wait for it, a while.
+                let mut last = None;
+                for _ in 0..60 {
+                    match std::os::unix::net::UnixStream::connect(path) {
+                        Ok(stream) => {
+                            // A core that stops reading must not wedge us:
+                            // the write fails, we exit, systemd restarts us.
+                            stream.set_write_timeout(Some(std::time::Duration::from_secs(5)))?;
+                            return Ok(Self::Socket(stream));
+                        }
+                        Err(error) => last = Some(error),
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                }
+                bail!(
+                    "cannot reach the core at {path}: {}",
+                    last.map(|e| e.to_string()).unwrap_or_default()
+                )
+            }
+            _ => bail!("usage: ibexwall-ebpf-loader [--socket PATH]"),
+        }
+    }
+
+    fn send(&mut self, line: &str) {
+        match self {
+            Self::Stdout => println!("{line}"),
+            Self::Socket(stream) => {
+                use std::io::Write as _;
+                let mut bytes = Vec::with_capacity(line.len() + 1);
+                bytes.extend_from_slice(line.as_bytes());
+                bytes.push(b'\n');
+                if let Err(error) = stream.write_all(&bytes) {
+                    eprintln!("ibexwall-ebpf-loader: lost the core: {error}");
+                    std::process::exit(1);
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -260,6 +393,26 @@ mod tests {
             ip6: [0; 16],
             exe: [0; ibexwall_net_common::EXE_LEN],
         }
+    }
+
+    #[test]
+    fn the_cgroup_index_finds_a_path_by_directory_inode() {
+        use std::os::unix::fs::MetadataExt as _;
+        let root = std::env::temp_dir().join(format!("ibexwall-cg-{}", std::process::id()));
+        let leaf = root.join("user.slice/session-6.scope");
+        std::fs::create_dir_all(&leaf).unwrap();
+        let id = std::fs::metadata(&leaf).unwrap().ino();
+
+        let mut index = CgroupIndex::new(root.clone());
+        assert_eq!(
+            index.lookup(id).as_deref(),
+            Some("0::/user.slice/session-6.scope")
+        );
+        // Unknown ids stay unknown.
+        assert_eq!(index.lookup(u64::MAX), None);
+        let root_id = std::fs::metadata(&root).unwrap().ino();
+        assert_eq!(index.lookup(root_id).as_deref(), Some("0::/"));
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]

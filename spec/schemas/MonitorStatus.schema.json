@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "Whether the connection monitor is feeding the Apps screen, and if not,\nwhy (a plain reason, never a guess about the cause).",
+  "description": "Whether the connection monitor is feeding the Apps screen, and if not\n(or if it works with a limitation), why: a plain reason, never a guess\nabout the cause.",
   "properties": {
     "reason": {
       "default": null,
-      "description": "Why the monitor is off, when it is. Untrusted display text.",
+      "description": "Why the monitor is off or limited, when it is. Untrusted display text.",
       "type": [
         "string",
         "null"

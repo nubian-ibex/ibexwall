@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+[Unit]
+Description=IbexWall connection monitor (eBPF, observe only)
+Documentation=https://docs.ibexwall.com
+After=ibexwalld.service
+Wants=ibexwalld.service
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/ibexwall-ebpf-loader --socket /run/ibexwall/monitor.sock
+Restart=on-failure
+RestartSec=2
+
+# ADR-0032: this is the only unit that loads eBPF, so it is the only one
+# holding these capabilities. BPF and PERFMON load the programs, NET_ADMIN
+# attaches the cgroup hook, SYS_PTRACE and DAC_READ_SEARCH let it name
+# other users' processes and hash their executables.
+CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_NET_ADMIN CAP_SYS_PTRACE CAP_DAC_READ_SEARCH
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=no
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service bpf perf_event_open
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

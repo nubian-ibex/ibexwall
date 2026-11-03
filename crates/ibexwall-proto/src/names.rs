@@ -20,8 +20,10 @@ pub const BIN_DAEMON: &str = "ibexwalld";
 pub const BIN_CLI: &str = "ibexctl";
 pub const BIN_AGENT: &str = "ibexwall-agent";
 pub const BIN_DNS: &str = "ibexwall-dns";
-/// The eBPF connect monitor the core supervises as a privileged child.
+/// The eBPF connect monitor; it feeds the core over `monitor_socket()`.
 pub const BIN_EBPF_LOADER: &str = "ibexwall-ebpf-loader";
+/// systemd unit that runs the loader with only the capabilities it needs.
+pub const UNIT_MONITOR: &str = "ibexwall-monitor.service";
 pub const BIN_MCP: &str = "ibexwall-mcp";
 pub const BIN_WEB: &str = "ibexwall-web";
 pub const PLUGIN_BIN_PREFIX: &str = "ibexwall-plugin-";
@@ -85,6 +87,18 @@ pub fn local_plugin_dir() -> PathBuf {
 /// Where the resolver publishes its counters (refreshed while running).
 pub fn dns_status_file() -> PathBuf {
     runtime_dir().join("dns").join("status.json")
+}
+
+/// Datagram socket the core binds for the resolver's answers (name, ip,
+/// ttl), so the monitor can name a connection's destination. Lives in the
+/// resolver's own runtime directory: only that user and root reach it.
+pub fn dns_answers_socket() -> PathBuf {
+    runtime_dir().join("dns").join("answers.sock")
+}
+
+/// Stream socket the core binds for the connection monitor (root only).
+pub fn monitor_socket() -> PathBuf {
+    runtime_dir().join("monitor.sock")
 }
 
 pub fn core_socket() -> PathBuf {

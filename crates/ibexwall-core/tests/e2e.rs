@@ -849,47 +849,157 @@ async fn monitor_rolls_up_connections_correlates_domains_and_alerts() {
 }
 
 #[tokio::test]
-async fn the_supervisor_feeds_the_monitor_from_a_child_and_reports_when_it_is_gone() {
+async fn the_monitor_socket_feeds_rollups_and_reports_when_it_disconnects() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
+        return;
+    }
+    use std::io::Write as _;
+    let sandbox = prepare_sandbox();
+    let (core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+    let path = sandbox.root.join("run/ibexwall/monitor.sock");
+    let task = tokio::spawn(ibexwall_core::monitor::serve_monitor(
+        Arc::clone(&core),
+        path.clone(),
+    ));
+    for _ in 0..50 {
+        if path.exists() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    assert!(
+        core.monitor
+            .status()
+            .reason
+            .unwrap()
+            .contains("waiting for")
+    );
+
+    {
+        let mut stream = std::os::unix::net::UnixStream::connect(&path).unwrap();
+        let line = connection_line("198.51.100.4", "cli", "", &"cc".repeat(32));
+        writeln!(stream, "{line}").unwrap();
+        let mut seen = false;
+        for _ in 0..50 {
+            let listed = client
+                .call("com.ibexwall.Core.ListApps", json!({}))
+                .await
+                .unwrap();
+            if listed["apps"]
+                .as_array()
+                .is_some_and(|apps| !apps.is_empty())
+            {
+                assert_eq!(listed["monitor"]["running"], true);
+                seen = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        assert!(seen, "the connection never reached the rollups");
+    }
+    // The stream is closed: the status says the monitor is gone.
+    let mut disconnected = false;
+    for _ in 0..50 {
+        let status = core.monitor.status();
+        if !status.running && status.reason.is_some_and(|r| r.contains("disconnected")) {
+            disconnected = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    task.abort();
+    assert!(disconnected);
+}
+
+#[tokio::test]
+async fn resolver_answers_over_the_socket_name_later_connections() {
     if plugin_binary().is_none() {
         eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
         return;
     }
     let sandbox = prepare_sandbox();
     let (core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
-
-    // A missing program is reported, not a crash.
-    let missing = sandbox.root.join("nope");
-    let task = tokio::spawn(ibexwall_core::monitor::supervise(
+    let path = sandbox.root.join("run/ibexwall/dns/answers.sock");
+    let task = tokio::spawn(ibexwall_core::monitor::listen_answers(
         Arc::clone(&core),
-        missing.clone(),
+        path.clone(),
     ));
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-    let status = core.monitor.status();
-    assert!(!status.running);
-    assert!(status.reason.unwrap().contains("not installed"));
-    task.abort();
-
-    // A fake loader prints one connection and exits.
-    let script = sandbox.root.join("fake-loader");
-    let line = connection_line("198.51.100.4", "cli", "", &"cc".repeat(32));
-    std::fs::write(&script, format!("#!/bin/sh\necho '{line}'\n")).unwrap();
-    set_mode(&script, 0o755);
-    let task = tokio::spawn(ibexwall_core::monitor::supervise(Arc::clone(&core), script));
-    let mut seen = false;
     for _ in 0..50 {
-        let listed = client
-            .call("com.ibexwall.Core.ListApps", json!({}))
-            .await
-            .unwrap();
-        if listed["apps"]
-            .as_array()
-            .is_some_and(|apps| !apps.is_empty())
-        {
-            seen = true;
+        if path.exists() {
             break;
         }
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
+    let sender = std::os::unix::net::UnixDatagram::unbound().unwrap();
+    // Garbage first: it must be ignored, not break the channel.
+    sender.send_to(b"\xff\xfe not json", &path).unwrap();
+    sender
+        .send_to(
+            br#"{"domain":"Cdn.Example.NET.","ip":"198.51.100.77","ttl":300}"#,
+            &path,
+        )
+        .unwrap();
+
+    let now = ibexwall_sys::Clock::unix_now(&ibexwall_sys::RealClock);
+    let mut named = false;
+    for _ in 0..50 {
+        core.monitor
+            .ingest_line(
+                &core,
+                &connection_line("198.51.100.77", "cli", "", &"dd".repeat(32)),
+                now,
+            )
+            .unwrap();
+        let rows = client
+            .call(
+                "com.ibexwall.Core.GetAppDestinations",
+                json!({ "app": "cli:/usr/bin/curl" }),
+            )
+            .await
+            .unwrap();
+        if rows["destinations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["destination"] == "cdn.example.net" && row["resolved"] == true)
+        {
+            named = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
     task.abort();
-    assert!(seen, "the child's connection never reached the rollups");
+    assert!(named, "the resolver's answer never named the destination");
+}
+
+#[tokio::test]
+async fn a_degraded_notice_from_the_loader_shows_in_the_status() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let (core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+    core.monitor
+        .ingest_line(
+            &core,
+            r#"{"meta":"degraded","reason":"kernel-side exec capture is off (denied)"}"#,
+            1,
+        )
+        .unwrap();
+    let listed = client
+        .call("com.ibexwall.Core.ListApps", json!({}))
+        .await
+        .unwrap();
+    assert_eq!(listed["monitor"]["running"], true);
+    assert!(
+        listed["monitor"]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("exec capture is off")
+    );
+    // A meta line is never an app.
+    assert!(listed["apps"].as_array().unwrap().is_empty());
 }

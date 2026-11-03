@@ -105,16 +105,24 @@ fn notify_ready() {
     }
 }
 
-/// Starts the connection monitor on the real system root only: a sandbox
-/// root must never load eBPF on the development host.
+/// Opens the two local channels the monitor uses: the resolver's answers
+/// and the monitor unit's connection lines. Both are sockets the core
+/// owns; the loader itself runs in `ibexwall-monitor.service` (ADR-0032),
+/// which a sandbox root never starts.
 fn start_monitor(core: Arc<Core>) {
-    if names::root() != std::path::Path::new("/") {
-        core.monitor
-            .set_status(false, Some("not available in a sandbox root"));
-        return;
-    }
-    let program = std::path::Path::new("/usr/bin").join(names::BIN_EBPF_LOADER);
-    tokio::spawn(monitor::supervise(core, program));
+    let answers = names::dns_answers_socket();
+    let answers_core = Arc::clone(&core);
+    tokio::spawn(async move {
+        if let Err(error) = monitor::listen_answers(answers_core, answers).await {
+            tracing::warn!(%error, "resolver answers channel unavailable");
+        }
+    });
+    let socket = names::monitor_socket();
+    tokio::spawn(async move {
+        if let Err(error) = monitor::serve_monitor(core, socket).await {
+            tracing::warn!(%error, "monitor channel unavailable");
+        }
+    });
 }
 
 fn service_info() -> ServiceInfo {

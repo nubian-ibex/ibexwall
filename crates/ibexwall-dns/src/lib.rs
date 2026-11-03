@@ -4,6 +4,7 @@
 //! `ibexwall-dns`: the local forwarding resolver. It answers blocked names
 //! itself and forwards everything else over an encrypted upstream.
 
+pub mod answers;
 pub mod blocklist;
 pub mod config;
 pub mod daemon;

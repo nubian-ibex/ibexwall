@@ -2268,6 +2268,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ibexwall-plugin-firewall"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-firewall",
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "ibexwall-sys",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "ibexwall-plugin-flatpak-network"
 version = "0.1.0"
 dependencies = [

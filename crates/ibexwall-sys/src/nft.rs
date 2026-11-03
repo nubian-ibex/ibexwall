@@ -242,6 +242,8 @@ pub trait Nft: Send + Sync {
     fn capture(&self, chain: &str) -> Result<Option<Value>>;
     /// Puts a chain back as captured: removes it when `prior` is `None`.
     fn restore(&self, chain: &str, prior: Option<&Value>) -> Result<()>;
+    /// The names of every chain in our table (empty when there is none).
+    fn chains(&self) -> Result<Vec<String>>;
 }
 
 /// Runs `nft -j` with a command batch on stdin. `check` only validates.
@@ -347,6 +349,27 @@ impl Nft for RealNft {
         Ok(Some(value))
     }
 
+    fn chains(&self) -> Result<Vec<String>> {
+        let output = Command::new("nft")
+            .args(["-j", "list", "table", "inet", NFT_TABLE])
+            .output()
+            .context("spawning nft")?;
+        if !output.status.success() {
+            return Ok(vec![]);
+        }
+        let listing: Value =
+            serde_json::from_slice(&output.stdout).context("parsing nft output")?;
+        Ok(listing["nftables"]
+            .as_array()
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item["chain"]["name"].as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default())
+    }
+
     fn restore(&self, chain: &str, prior: Option<&Value>) -> Result<()> {
         let mut commands = removal_commands(chain);
         if let Some(prior) = prior {
@@ -426,6 +449,10 @@ impl Nft for FakeNft {
 
     fn capture(&self, chain: &str) -> Result<Option<Value>> {
         Ok(self.chains.lock().unwrap().get(chain).cloned())
+    }
+
+    fn chains(&self) -> Result<Vec<String>> {
+        Ok(self.chains.lock().unwrap().keys().cloned().collect())
     }
 
     fn restore(&self, chain: &str, prior: Option<&Value>) -> Result<()> {

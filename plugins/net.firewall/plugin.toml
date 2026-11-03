@@ -1,0 +1,39 @@
+id = "net.firewall"
+version = "0.1.0"
+api = 1
+category = "network"
+kinds = ["check", "control"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-firewall"
+default_enabled = false
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "Firewall"
+pt-BR = "Firewall"
+
+[description]
+en = "Controls which connections can reach this computer, through the firewall your system already uses."
+pt-BR = "Controla quais conexões podem chegar a este computador, pelo firewall que o seu sistema já usa."
+
+[privileges]
+write_paths = ["/etc/ibexwall/firewall"]
+firewall_backends = ["firewalld", "ufw"]
+nft_prefix = "net_firewall"
+
+[sandbox]
+user = "dynamic"
+capabilities = []
+read_paths = ["/etc/firewalld", "/usr/lib/firewalld", "/etc/ufw", "/etc/ibexwall/firewall", "/run/systemd/units", "/proc/net"]
+network = false
+
+[risk]
+affects = ["network"]
+reversible = "immediate"
+confirm_timeout = true
+may_affect = ["remote access, such as SSH, if it is not allowed", "services other computers use on this one, such as file sharing", "container and virtual machine networking on some setups"]
+
+[ui]
+icon = "brick-wall"
+order = 25

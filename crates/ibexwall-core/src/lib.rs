@@ -168,7 +168,16 @@ impl Core {
             events,
             monitor: monitor::Monitor::new(root.clone()),
         };
+        // nftables keeps nothing across a reboot: put our chains back
+        // first, so that recovering an interrupted transaction (which
+        // restores chains to what they were) acts on the real state.
+        match core.engine.restore_nft(&core.nft_file()) {
+            Ok(0) => {}
+            Ok(count) => tracing::info!(count, "restored nftables chains after a restart"),
+            Err(error) => tracing::error!(%error, "restoring nftables chains failed"),
+        }
         core.recover_pending_transactions()?;
+        core.persist_nft();
         Ok(core)
     }
 
@@ -248,8 +257,26 @@ impl Core {
             })
     }
 
+    /// Where the active nftables chains are kept across restarts.
+    fn nft_file(&self) -> PathBuf {
+        self.state
+            .snapshots_dir()
+            .parent()
+            .map(|dir| dir.join("nft-active.json"))
+            .unwrap_or_else(|| PathBuf::from("nft-active.json"))
+    }
+
+    /// Records the chains as they are now; called whenever a transaction
+    /// changes state, so applying, confirming and rolling back all stick.
+    pub fn persist_nft(&self) {
+        if let Err(error) = self.engine.persist_nft(&self.nft_file()) {
+            tracing::error!(%error, "persisting nftables chains failed");
+        }
+    }
+
     /// Publishes + persists a transaction lifecycle event.
     pub fn publish_transaction_event(&self, transaction: &Transaction) {
+        self.persist_nft();
         let event = Event {
             ts: now(),
             source: "core".into(),

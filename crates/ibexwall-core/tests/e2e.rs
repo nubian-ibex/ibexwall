@@ -1126,6 +1126,22 @@ async fn choosing_a_mode_pushes_the_policy_to_the_monitor_unit() {
         .unwrap();
     assert_eq!(listed["apps"][0]["mode"], "block");
 
+    // Ask cannot hold a container's packets: refused for them only.
+    let refused = client
+        .call(
+            "com.ibexwall.Core.SetAppMode",
+            json!({ "app": "container:container:0123456789ab", "mode": "ask" }),
+        )
+        .await;
+    assert!(refused.is_err());
+    client
+        .call(
+            "com.ibexwall.Core.SetAppMode",
+            json!({ "app": "container:container:0123456789ab", "mode": "block" }),
+        )
+        .await
+        .unwrap();
+
     // An unknown mode is refused and nothing changes.
     let refused = client
         .call(

@@ -629,6 +629,32 @@ mod tests {
     }
 
     #[test]
+    fn a_default_zone_change_is_undone_with_the_conf_file_and_a_reload() {
+        let rig = rig("fwdz", true);
+        let conf = "/etc/firewalld/firewalld.conf";
+        let before = b"DefaultZone=public\nLockdown=no\n";
+        rig.fs.seed(Path::new(conf), before);
+        let ops = vec![fw(
+            "firewalld",
+            serde_json::json!({"action": "set_default_zone", "name": "home"}),
+        )];
+        rig.engine.snapshot(&rig.state, "txdz", &ops).unwrap();
+        rig.engine.execute(None, &ops).unwrap();
+        assert_eq!(
+            rig.runner.calls(),
+            vec![vec!["/usr/bin/firewall-cmd", "--set-default-zone=home"]]
+        );
+        rig.fs
+            .seed(Path::new(conf), b"DefaultZone=home\nLockdown=no\n");
+        rig.engine.rollback(&rig.state, "txdz").unwrap();
+        assert_eq!(rig.fs.read(Path::new(conf)).unwrap(), before);
+        assert_eq!(
+            rig.runner.calls().last().unwrap(),
+            &vec!["/usr/bin/firewall-cmd", "--reload"]
+        );
+    }
+
+    #[test]
     fn a_zone_file_that_did_not_exist_is_removed_by_rollback() {
         let rig = rig("fwn", true);
         let zone = "/etc/firewalld/zones/public.xml";

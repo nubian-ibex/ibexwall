@@ -107,6 +107,14 @@ enum FirewallCmd {
         #[arg(long)]
         yes: bool,
     },
+    /// Network profiles (home, work, public, travel): with no name, list
+    /// them; with a name, switch to it (firewalld only).
+    Profile {
+        name: Option<String>,
+        /// Apply it now (otherwise only the plan is shown).
+        #[arg(long)]
+        yes: bool,
+    },
     /// Stop letting a port or a service in.
     Deny {
         target: String,
@@ -456,13 +464,43 @@ async fn firewall(
             }
             return Ok(Finish::Done);
         }
+        FirewallCmd::Profile { name: None, .. } => {
+            if json {
+                emit(
+                    serde_json::json!({ "profiles": ibexwall_firewall::profile::Profile::ALL
+                        .map(|p| serde_json::json!({ "profile": p.name(), "zone": p.zone() })) }),
+                    json,
+                );
+            } else {
+                for profile in ibexwall_firewall::profile::Profile::ALL {
+                    println!("{:<7} firewalld zone: {}", profile.name(), profile.zone());
+                }
+            }
+            return Ok(Finish::Done);
+        }
+        FirewallCmd::Profile {
+            name: Some(name),
+            yes,
+        } => {
+            return plan_firewall(client, serde_json::json!({ "profile": name }), *yes, json).await;
+        }
         FirewallCmd::Allow { target, yes } => (target, true, *yes),
         FirewallCmd::Deny { target, yes } => (target, false, *yes),
     };
+    plan_firewall(client, firewall_patch(target, allow), yes, json).await
+}
+
+/// Plans a change with the firewall plugin; applies it only with `yes`.
+async fn plan_firewall(
+    client: &mut ibexwall_varlink::Client,
+    patch: serde_json::Value,
+    yes: bool,
+    json: bool,
+) -> Result<Finish, CliError> {
     let plan = client
         .call(
             "com.ibexwall.Core.PlanChange",
-            serde_json::json!({ "plugin": "net.firewall", "patch": firewall_patch(target, allow) }),
+            serde_json::json!({ "plugin": "net.firewall", "patch": patch }),
         )
         .await?;
     let plan_id = plan["plan"]["id"].as_str().unwrap_or_default().to_string();

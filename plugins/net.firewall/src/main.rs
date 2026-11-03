@@ -18,6 +18,7 @@
 use std::collections::BTreeSet;
 
 use ibexwall_firewall::detect::{self, Reader};
+use ibexwall_firewall::profile::Profile;
 use ibexwall_firewall::{Backend, FirewallAction, PortRule, Proto};
 use ibexwall_proto::{CheckReport, Op, names};
 use ibexwall_sdk::{Plugin, PluginError, Sandbox};
@@ -72,6 +73,9 @@ struct Config {
     allow_listening: bool,
     /// Allow multicast DNS (service discovery on the local network).
     mdns: bool,
+    /// `home`, `work`, `public` or `travel`: the zone firewalld applies to
+    /// networks without one (firewalld only).
+    profile: Option<String>,
 }
 
 impl Default for Config {
@@ -84,6 +88,7 @@ impl Default for Config {
             enable_basic: false,
             allow_listening: true,
             mdns: false,
+            profile: None,
         }
     }
 }
@@ -177,14 +182,45 @@ fn plan(sandbox: &Sandbox, config: Config) -> Result<Vec<Op>, PluginError> {
                     ),
                 ));
             }
-            plan_manager(backend, &config)
+            plan_manager(backend, &reader, &config)
         }
         Backend::Nftables => plan_basic(sandbox, &reader, config),
     }
 }
 
-fn plan_manager(backend: Backend, config: &Config) -> Result<Vec<Op>, PluginError> {
+fn plan_manager(
+    backend: Backend,
+    reader: &Files<'_>,
+    config: &Config,
+) -> Result<Vec<Op>, PluginError> {
     let mut ops = Vec::new();
+    if let Some(name) = &config.profile {
+        let profile = Profile::parse(name).ok_or_else(|| {
+            PluginError::invalid(
+                "profile",
+                format!("`{name}` is not a profile: home, work, public or travel"),
+            )
+        })?;
+        if backend != Backend::Firewalld {
+            return Err(PluginError::invalid(
+                "profile",
+                "profiles map to firewalld zones; they are not available with ufw".to_string(),
+            ));
+        }
+        let zone = profile.zone();
+        let exists = reader.exists(&format!("/etc/firewalld/zones/{zone}.xml"))
+            || reader.exists(&format!("/usr/lib/firewalld/zones/{zone}.xml"));
+        if !exists {
+            return Err(PluginError::invalid(
+                "profile",
+                format!("this firewalld has no `{zone}` zone for the {name} profile"),
+            ));
+        }
+        ops.push(adapter_op(
+            backend,
+            &FirewallAction::SetDefaultZone { name: zone.into() },
+        )?);
+    }
     for text in &config.allow {
         let PortRule { port, proto } = parse_port(text)?;
         ops.push(adapter_op(
@@ -255,6 +291,12 @@ fn plan_basic(
     reader: &Files<'_>,
     config: Config,
 ) -> Result<Vec<Op>, PluginError> {
+    if config.profile.is_some() {
+        return Err(PluginError::invalid(
+            "profile",
+            "profiles map to firewalld zones; they are not available here".to_string(),
+        ));
+    }
     if !config.allow_service.is_empty() || !config.remove_service.is_empty() {
         return Err(PluginError::invalid(
             "allow_service",
@@ -396,6 +438,9 @@ fn verify(sandbox: &Sandbox, ops: &[Op]) -> bool {
             }
             Ok(FirewallAction::AllowService { name, .. }) => state.services.contains(&name),
             Ok(FirewallAction::RemoveService { name, .. }) => !state.services.contains(&name),
+            Ok(FirewallAction::SetDefaultZone { name }) => {
+                state.zone.as_deref() == Some(name.as_str())
+            }
             Err(_) => false,
         }
     })
@@ -666,6 +711,52 @@ mod tests {
                 serde_json::json!({"action": "allow_port", "port": 9, "proto": "tcp"})
             )]
         ));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_profile_becomes_the_firewalld_default_zone_when_the_zone_exists() {
+        let (root, sandbox) = tree(&[
+            FIREWALLD,
+            ("/usr/bin/firewall-cmd", ""),
+            ("/usr/lib/firewalld/zones/home.xml", "<zone/>"),
+            ("/usr/lib/firewalld/zones/drop.xml", "<zone/>"),
+        ]);
+        let ops = plan(&sandbox, config(serde_json::json!({"profile": "home"}))).unwrap();
+        let Op::FirewallAdapter { action, .. } = &ops[0] else {
+            panic!()
+        };
+        assert_eq!(action["action"], "set_default_zone");
+        assert_eq!(action["name"], "home");
+        // travel is the drop zone.
+        let ops = plan(&sandbox, config(serde_json::json!({"profile": "travel"}))).unwrap();
+        let Op::FirewallAdapter { action, .. } = &ops[0] else {
+            panic!()
+        };
+        assert_eq!(action["name"], "drop");
+        // A zone this firewalld does not ship is refused, not guessed.
+        let error = plan(&sandbox, config(serde_json::json!({"profile": "work"}))).unwrap_err();
+        assert!(error.to_string().contains("no `work` zone"), "{error}");
+        assert!(plan(&sandbox, config(serde_json::json!({"profile": "cafe"}))).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn profiles_are_only_for_firewalld() {
+        let (root, sandbox) = tree(&[
+            ("/usr/sbin/ufw", ""),
+            ("/etc/ufw/ufw.conf", "ENABLED=yes\n"),
+        ]);
+        assert!(plan(&sandbox, config(serde_json::json!({"profile": "home"}))).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+        let (root, sandbox) = tree(&[]);
+        assert!(
+            plan(
+                &sandbox,
+                config(serde_json::json!({"enable_basic": true, "profile": "home"}))
+            )
+            .is_err()
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 }

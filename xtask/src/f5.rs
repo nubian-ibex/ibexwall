@@ -377,6 +377,17 @@ sudo firewall-cmd --list-ports | grep -q 9091/tcp || { echo "allow --yes DID NOT
 sudo ibexctl firewall status | grep -q '9091/tcp' || { echo "status DOES NOT SHOW 9091"; exit 1; }
 sudo ibexctl rollback "$TXC" --json >/dev/null
 if sudo firewall-cmd --list-ports | grep -q 9091; then echo "9091 SURVIVED ROLLBACK"; exit 1; fi
+# Profiles map to zones this firewalld ships.
+ZONE_BEFORE=$(sudo firewall-cmd --get-default-zone)
+sudo ibexctl firewall profile | grep -q 'travel' || { echo "profile list WRONG"; exit 1; }
+DONE=$(sudo ibexctl firewall profile home --yes 2>&1 || true)
+TXP=$(echo "$DONE" | grep -o 'tx-[a-z0-9-]*' | head -1)
+test -n "$TXP" || { echo "NO PROFILE TRANSACTION: $DONE"; exit 1; }
+if echo "$DONE" | grep -q "awaiting confirmation"; then sudo ibexctl confirm "$TXP" >/dev/null; fi
+[ "$(sudo firewall-cmd --get-default-zone)" = home ] || { echo "DEFAULT ZONE NOT home"; exit 1; }
+sudo ibexctl firewall status | grep -q 'zone home' || { echo "status DOES NOT SHOW THE ZONE"; sudo ibexctl firewall status >&2; exit 1; }
+sudo ibexctl rollback "$TXP" --json >/dev/null
+[ "$(sudo firewall-cmd --get-default-zone)" = "$ZONE_BEFORE" ] || { echo "DEFAULT ZONE NOT RESTORED"; exit 1; }
 sudo systemctl disable --now firewalld
 "#
         )

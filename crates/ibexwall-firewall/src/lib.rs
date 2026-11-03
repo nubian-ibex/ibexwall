@@ -10,6 +10,7 @@ pub mod action;
 pub mod detect;
 pub mod model;
 pub mod parse;
+pub mod profile;
 
 pub use action::{ActionError, FirewallAction, argv, reload_argv, snapshot_paths, validate};
 pub use model::{Backend, PortRule, Proto, State};

@@ -247,12 +247,13 @@ pub fn risk_flags(ops: &[Op]) -> Vec<RiskFlag> {
             Op::NftFragment { .. } | Op::DnsBackend { .. } => {
                 push(RiskFlag::Network);
             }
-            // Allowing a port cannot lock anyone out; removing one can.
+            // Allowing a port cannot lock anyone out; removing one can, and so
+            // can moving to a stricter zone.
             Op::FirewallAdapter { action, .. } => {
                 if action
                     .get("action")
                     .and_then(|a| a.as_str())
-                    .is_some_and(|a| a.starts_with("remove_"))
+                    .is_some_and(|a| a.starts_with("remove_") || a == "set_default_zone")
                 {
                     push(RiskFlag::Network);
                 }

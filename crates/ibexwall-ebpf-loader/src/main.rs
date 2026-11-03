@@ -12,7 +12,7 @@ use std::os::fd::AsFd as _;
 use anyhow::{Context, Result, bail};
 use aya::EbpfLoader;
 use aya::maps::RingBuf;
-use aya::programs::CgroupSockAddr;
+use aya::programs::{CgroupSockAddr, TracePoint};
 use ibexwall_net_common::{ConnectEvent, EVENTS_MAP};
 
 /// Where the built program lives, in order (env override, install dir,
@@ -37,6 +37,14 @@ pub fn load_and_attach(elf: &Path, cgroup_root: &Path) -> Result<aya::Ebpf> {
     // process's connect() passes through it.
     let cgroup_dir = std::fs::File::open(cgroup_root)
         .with_context(|| format!("opening {}", cgroup_root.display()))?;
+    let exec: &mut TracePoint = ebpf
+        .program_mut("ibexwall_exec")
+        .context("ibexwall_exec not found in the ELF")?
+        .try_into()
+        .context("ibexwall_exec has the wrong type")?;
+    exec.load().context("loading ibexwall_exec")?;
+    exec.attach("sched", "sched_process_exec")
+        .context("attaching ibexwall_exec")?;
     for program in ["ibexwall_connect4", "ibexwall_connect6"] {
         let attached: &mut CgroupSockAddr = ebpf
             .program_mut(program)
@@ -67,9 +75,13 @@ pub struct Sighting {
 /// monitor observes, it never keeps processes alive.
 pub fn resolve(event: ConnectEvent) -> Sighting {
     let base = Path::new("/proc").join(event.pid.to_string());
+    // /proc is authoritative while the process lives (it resolves symlinks
+    // and relative exec paths); the kernel's copy covers the ones that
+    // exited before we looked.
     let exe = std::fs::read_link(base.join("exe"))
         .ok()
-        .map(|path| path.to_string_lossy().into_owned());
+        .map(|path| path.to_string_lossy().into_owned())
+        .or_else(|| event.exe_str().map(str::to_owned));
     let cgroup = std::fs::read_to_string(base.join("cgroup"))
         .ok()
         .map(|text| text.trim().to_string());
@@ -154,6 +166,7 @@ fn amain() -> Result<()> {
                 "pid": event.pid,
                 "comm": event.comm_str(),
                 "exe": exe,
+                "exe_kernel": event.exe_str(),
                 "cgroup": cgroup,
                 "dst": dst,
                 "port": event.port,
@@ -178,6 +191,7 @@ mod tests {
             port: 443,
             ip4: [9, 9, 9, 9],
             ip6: [0; 16],
+            exe: [0; ibexwall_net_common::EXE_LEN],
         }
     }
 

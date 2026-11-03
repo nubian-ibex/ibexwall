@@ -26,14 +26,28 @@ pub struct ConnectEvent {
     pub ip4: [u8; 4],
     /// Destination IPv6 in network order (family 6).
     pub ip6: [u8; 16],
+    /// The path the process was executed with (`sched_process_exec`),
+    /// NUL padded; empty when the kernel never saw its exec (a fork that
+    /// did not exec, or an entry evicted from the pid map).
+    pub exe: [u8; EXE_LEN],
 }
+
+/// Bytes kept of the exec path; longer paths are truncated.
+pub const EXE_LEN: usize = 128;
 
 /// The ring buffer map name the programs and the loader agree on.
 pub const EVENTS_MAP: &str = "IBEXWALL_CONNECTS";
 
-/// The event wire length. `pid 4 + cgroup 8 + comm 16 + family 1 +
-/// port 2 + ip4 4 + ip6 16 = 51`; padded to a multiple of 4.
-pub const EVENT_LEN: usize = 52;
+/// Name of the pid-to-exec-path map the connect hook reads.
+pub const EXES_MAP: &str = "IBEXWALL_EXES";
+
+/// Where the exe path starts in the wire format.
+const EXE_AT: usize = 52;
+
+/// The event wire length: the 52-byte fixed header (`pid 4 + cgroup 8 +
+/// comm 16 + family 1 + pad 1 + port 2 + ip4 4 + ip6 16`, padded to a
+/// multiple of 4) followed by the exe path.
+pub const EVENT_LEN: usize = EXE_AT + EXE_LEN;
 
 impl ConnectEvent {
     /// Serializes to the wire format (little-endian scalars).
@@ -45,6 +59,7 @@ impl ConnectEvent {
         out[30..32].copy_from_slice(&self.port.to_le_bytes());
         out[32..36].copy_from_slice(&self.ip4);
         out[36..52].copy_from_slice(&self.ip6);
+        out[EXE_AT..].copy_from_slice(&self.exe);
     }
 
     /// Parses one event; `None` when the record is not exactly
@@ -63,7 +78,18 @@ impl ConnectEvent {
             port: le16(&bytes[30..32]),
             ip4: bytes[32..36].try_into().expect("four byte slice"),
             ip6: bytes[36..52].try_into().expect("sixteen byte slice"),
+            exe: bytes[EXE_AT..].try_into().expect("exe sized slice"),
         })
+    }
+
+    /// The exec path the kernel recorded, NUL trimmed; `None` when absent
+    /// or not valid UTF-8 (paths are untrusted data, never interpolated).
+    pub fn exe_str(&self) -> Option<&str> {
+        let end = self.exe.iter().position(|b| *b == 0).unwrap_or(EXE_LEN);
+        match core::str::from_utf8(&self.exe[..end]) {
+            Ok(text) if !text.is_empty() => Some(text),
+            _ => None,
+        }
     }
 
     /// The readable process name (comm, NUL trimmed).
@@ -80,6 +106,8 @@ mod tests {
     fn sample() -> ConnectEvent {
         let mut comm = [0u8; 16];
         comm[..5].copy_from_slice(b"curl\0");
+        let mut exe = [0u8; EXE_LEN];
+        exe[..13].copy_from_slice(b"/usr/bin/curl");
         ConnectEvent {
             pid: 4242,
             cgroup_id: 0x0102_0304_0506_0708,
@@ -88,6 +116,7 @@ mod tests {
             port: 443,
             ip4: [9, 9, 9, 9],
             ip6: [0x26, 0x20, 0xfe, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xfe],
+            exe,
         }
     }
 
@@ -98,12 +127,25 @@ mod tests {
         event.write_to(&mut bytes);
         assert_eq!(ConnectEvent::parse(&bytes), Some(event));
         assert_eq!(event.comm_str(), "curl");
+        assert_eq!(event.exe_str(), Some("/usr/bin/curl"));
+    }
+
+    #[test]
+    fn an_empty_or_invalid_exe_reads_as_absent() {
+        let mut event = sample();
+        event.exe = [0; EXE_LEN];
+        assert_eq!(event.exe_str(), None);
+        event.exe[0] = 0xff;
+        assert_eq!(event.exe_str(), None);
+        // A path that fills the field has no NUL and still parses.
+        event.exe = [b'a'; EXE_LEN];
+        assert_eq!(event.exe_str().map(str::len), Some(EXE_LEN));
     }
 
     #[test]
     fn refuses_records_we_never_write() {
         assert!(ConnectEvent::parse(&[0u8; 8]).is_none());
-        assert!(ConnectEvent::parse(&[0u8; 64]).is_none());
+        assert!(ConnectEvent::parse(&[0u8; 52]).is_none());
         // A corrupt family is preserved as-is: the reader labels it.
         let mut bytes = [0u8; EVENT_LEN];
         bytes[28] = 5;

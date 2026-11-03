@@ -18,8 +18,9 @@ untouched). Manual runs on Omarchy and EndeavourOS are deferred by the
 maintainer. F4 is under way: spike S4-a is done (ADR-0031), the connect
 monitor loads, attaches and attributes on all five distros with bounded
 overhead (`--phase f4`), and `cargo xtask ebpf` builds the eBPF ELF.
-Next: kernel-side identity for short-lived processes (M1), rollups and
-the IP-to-domain correlation (M3).
+Kernel-side exec identity (M1 capture) is done on all five distros. Next:
+identity mapping (Flatpak, snap, units, package owner), rollups and the
+IP-to-domain correlation (M3).
 
 ## What exists
 

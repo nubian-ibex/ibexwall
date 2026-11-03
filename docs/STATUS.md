@@ -3,7 +3,7 @@
 
 # STATUS
 
-Last updated: 2026-11-03 (F5 delivered, report ready for acceptance)
+Last updated: 2026-11-03 (F6 delivered, report ready for acceptance)
 
 ## Current phase
 
@@ -21,6 +21,16 @@ five distros (firewalld, ufw and the pure-nftables adapter; Docker
 coexistence; byte-exact rollback; foreign tables untouched). Plan:
 `docs/plans/F5-inbound-firewall.md`; ADRs 0031 to 0034. Open: profiles per
 connection (NetworkManager zones), rich-rule editing, ufw app profiles.
+
+**F6: per-app enforcement and Ask mode, delivered** (report:
+`docs/reports/F6-report.md`, awaiting acceptance; plan:
+`docs/plans/F6-app-enforcement.md`; ADRs 0035 to 0037). `--phase f6` green
+on five distros (8 scenarios): block over TCP, UDP, QUIC and IPv6 for the
+target only, Ask held until answered with scopes and a 30 s fallback, fail
+open when the unit or the daemon stops, Docker and Podman coexistence, 5000
+connections a second all recorded. Decisions waiting for you: ADR-0036 (Ask
+chains are derived state, not a plugin proposal), ADR-0037 (no nft fallback
+without eBPF), and the plugin-id naming inconsistency in the spec.
 
 ## What exists
 

@@ -6,6 +6,7 @@
 //! caller owns, so it is testable without a kernel.
 
 pub mod correlate;
+pub mod policy;
 pub mod store;
 
 pub use correlate::{Correlator, normalize_domain};

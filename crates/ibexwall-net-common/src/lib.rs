@@ -48,11 +48,16 @@ pub mod verdict {
     pub const ASK: u8 = 2;
 }
 
+/// Set in an exe rule's verdict byte when the whole path must match, not
+/// only its beginning.
+pub const EXE_RULE_EXACT: u8 = 0x80;
+
 /// One exe rule as the eBPF rules array stores it: a path prefix and the
 /// verdict. Fixed size so both sides agree on the layout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExeRule {
-    /// `verdict::ALLOW`, `BLOCK` or `ASK`; 0 length means the slot is free.
+    /// `verdict::ALLOW`, `BLOCK` or `ASK`, with `EXE_RULE_EXACT` possibly
+    /// set; a length of 0 means the slot is free.
     pub verdict: u8,
     /// Bytes of the prefix actually used.
     pub len: u8,
@@ -63,7 +68,7 @@ pub struct ExeRule {
 /// Longest executable path prefix a rule may carry.
 pub const EXE_RULE_PREFIX_LEN: usize = 96;
 /// How many exe rules the array holds (the loop in the hook is bounded).
-pub const EXE_RULES_MAX: usize = 16;
+pub const EXE_RULES_MAX: usize = 32;
 
 impl ExeRule {
     /// The wire form: verdict, len, then the prefix.
@@ -88,10 +93,19 @@ impl ExeRule {
         })
     }
 
-    /// True when `path` starts with this rule's prefix.
+    /// The verdict without the match-kind flag.
+    pub fn verdict(&self) -> u8 {
+        self.verdict & !EXE_RULE_EXACT
+    }
+
+    /// True when `path` (NUL padded or exact) matches: it starts with this
+    /// rule's text and, for an exact rule, ends right after it.
     pub fn matches(&self, path: &[u8]) -> bool {
         let len = self.len as usize;
-        path.len() >= len && path[..len] == self.prefix[..len]
+        if path.len() < len || path[..len] != self.prefix[..len] {
+            return false;
+        }
+        self.verdict & EXE_RULE_EXACT == 0 || path.get(len).is_none_or(|next| *next == 0)
     }
 }
 
@@ -267,5 +281,23 @@ mod tests {
         let mut wire = [0u8; EXE_RULE_LEN];
         wire[1] = (EXE_RULE_PREFIX_LEN + 1) as u8;
         assert!(ExeRule::parse(&wire).is_none());
+    }
+
+    #[test]
+    fn an_exact_rule_must_match_the_whole_path() {
+        let mut exact = rule("/usr/bin/curl", verdict::BLOCK);
+        exact.verdict |= EXE_RULE_EXACT;
+        assert_eq!(exact.verdict(), verdict::BLOCK);
+        // The path as the exec tracepoint stores it: NUL padded.
+        let mut padded = [0u8; EXE_LEN];
+        padded[..13].copy_from_slice(b"/usr/bin/curl");
+        assert!(exact.matches(&padded));
+        let mut longer = [0u8; EXE_LEN];
+        longer[..17].copy_from_slice(b"/usr/bin/curl-foo");
+        assert!(!exact.matches(&longer));
+        assert!(exact.matches(b"/usr/bin/curl"));
+        // The same text as a plain prefix rule matches both.
+        let prefix = rule("/usr/bin/curl", verdict::BLOCK);
+        assert!(prefix.matches(&longer));
     }
 }

@@ -67,7 +67,7 @@ fn verdict_for(pid: u32, cgroup_id: u64) -> u8 {
                 && rule.len != 0
                 && rule.matches(path.as_slice())
             {
-                return rule.verdict;
+                return rule.verdict();
             }
         }
     }

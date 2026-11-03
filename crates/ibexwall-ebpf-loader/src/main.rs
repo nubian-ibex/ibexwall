@@ -177,19 +177,30 @@ impl CgroupIndex {
     }
 }
 
-/// One rule: what to match and what to do. The cgroup path prefix covers
-/// Flatpak scopes, containers and services (stable identity); the exe
-/// prefix covers programs, matched by the hook itself against the exec
-/// path. A rule with neither sets the default.
+/// One rule: what to match and what to do. A cgroup rule covers Flatpak
+/// scopes, containers and services (by prefix, or by a text the path
+/// contains); an exe rule covers programs and is matched by the hook
+/// itself against the exec path. A rule with no matcher sets the default.
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct Rule {
     /// Matches the `0::`-stripped cgroup path of the connecting process.
     pub cgroup_prefix: Option<String>,
-    /// Matches the executable path of the connecting process.
+    /// Matches any cgroup whose path contains this text.
+    pub cgroup_contains: Option<String>,
+    /// The executable path, whole.
+    pub exe_exact: Option<String>,
+    /// A prefix of the executable path.
     pub exe_prefix: Option<String>,
-    /// `allow`, `block` or `ask` (ask behaves like allow until the queue).
+    /// `allow`, `block` or `ask`.
     pub verdict: String,
+}
+
+/// What the core pushes: the rules, then the default for everyone else.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct Policy {
+    pub rules: Vec<Rule>,
+    pub default: String,
 }
 
 fn verdict_of(text: &str) -> Option<u8> {
@@ -201,99 +212,168 @@ fn verdict_of(text: &str) -> Option<u8> {
     }
 }
 
-/// Rules from a JSON file, put where the hooks look for them.
-pub struct Rules {
-    rules: Vec<Rule>,
-    index: CgroupIndex,
-}
+impl Policy {
+    /// A rules file (the spike's form): a list, a rule without a matcher
+    /// being the default.
+    pub fn load(path: &Path) -> Result<Self> {
+        let rules: Vec<Rule> = serde_json::from_str(&std::fs::read_to_string(path)?)?;
+        let mut default = "allow".to_string();
+        let mut kept = Vec::new();
+        for rule in rules {
+            if rule.cgroup_prefix.is_none()
+                && rule.cgroup_contains.is_none()
+                && rule.exe_exact.is_none()
+                && rule.exe_prefix.is_none()
+            {
+                default = rule.verdict;
+            } else {
+                kept.push(rule);
+            }
+        }
+        let policy = Self {
+            rules: kept,
+            default,
+        };
+        policy.validate()?;
+        Ok(policy)
+    }
 
-impl Rules {
-    pub fn load(path: &std::path::Path) -> anyhow::Result<Self> {
-        let text = std::fs::read_to_string(path)?;
-        let rules: Vec<Rule> = serde_json::from_str(&text)?;
-        for rule in &rules {
+    /// Nothing reaches the kernel unless this passes.
+    pub fn validate(&self) -> Result<()> {
+        anyhow::ensure!(
+            verdict_of(&self.default).is_some(),
+            "unknown default `{}`",
+            self.default
+        );
+        let mut exe = 0;
+        for rule in &self.rules {
             anyhow::ensure!(
                 verdict_of(&rule.verdict).is_some(),
                 "unknown verdict `{}` (allow, block or ask)",
                 rule.verdict
             );
-        }
-        Ok(Self {
-            rules,
-            index: CgroupIndex::new(PathBuf::from("/sys/fs/cgroup")),
-        })
-    }
-
-    /// Applies the rules to the maps: cgroup rules by id, exe rules as
-    /// prefix entries the hook itself matches against the exec path
-    /// (deterministic from a process's first connect), and the default.
-    pub fn apply(&mut self, ebpf: &mut aya::Ebpf) -> anyhow::Result<()> {
-        let ids = self.index.cgroup_ids();
-        let mut cgroup_updates: Vec<(u64, u8)> = Vec::new();
-        let mut exe_rules: Vec<ibexwall_net_common::ExeRule> = Vec::new();
-        let mut default = ibexwall_net_common::verdict::ALLOW;
-        for rule in &self.rules {
-            let verdict = verdict_of(&rule.verdict).expect("checked at load");
-            if let Some(prefix) = &rule.cgroup_prefix {
-                for (id, path) in &ids {
-                    if path.starts_with(prefix) {
-                        cgroup_updates.push((*id, verdict));
-                    }
-                }
-            } else if let Some(prefix) = &rule.exe_prefix {
+            if let Some(text) = rule.exe_exact.as_ref().or(rule.exe_prefix.as_ref()) {
+                exe += 1;
                 anyhow::ensure!(
-                    prefix.len() <= ibexwall_net_common::EXE_RULE_PREFIX_LEN,
-                    "exe rule prefix `{prefix}` is longer than {} bytes",
+                    text.len() <= ibexwall_net_common::EXE_RULE_PREFIX_LEN,
+                    "exe rule `{text}` is longer than {} bytes",
                     ibexwall_net_common::EXE_RULE_PREFIX_LEN
                 );
-                let mut bytes = [0u8; ibexwall_net_common::EXE_RULE_PREFIX_LEN];
-                bytes[..prefix.len()].copy_from_slice(prefix.as_bytes());
-                exe_rules.push(ibexwall_net_common::ExeRule {
-                    verdict,
-                    len: prefix.len() as u8,
-                    prefix: bytes,
-                });
-            } else {
-                default = verdict;
             }
         }
         anyhow::ensure!(
-            exe_rules.len() <= ibexwall_net_common::EXE_RULES_MAX,
+            exe <= ibexwall_net_common::EXE_RULES_MAX,
             "at most {} exe rules are supported",
             ibexwall_net_common::EXE_RULES_MAX
         );
+        Ok(())
+    }
+}
 
-        // One map borrowed at a time: each typed map borrows the Ebpf.
-        {
-            let map = ebpf
-                .map_mut(CGROUP_POLICY_MAP)
-                .ok_or_else(|| anyhow::anyhow!("map {CGROUP_POLICY_MAP} not found"))?;
-            let mut cgroups: aya::maps::HashMap<_, u64, u8> =
-                map.try_into().map_err(|e| anyhow::anyhow!("{e}"))?;
-            for (id, verdict) in &cgroup_updates {
-                cgroups.insert(id, verdict, 0)?;
+type Slots = aya::maps::Array<aya::maps::MapData, [u8; ibexwall_net_common::EXE_RULE_LEN]>;
+
+/// Owns the verdict maps and keeps them equal to the current policy. The
+/// cgroup half is by id, so it is reapplied as cgroups appear; a scope
+/// created after the policy has at most one rescan interval of grace
+/// (documented in the F6 plan).
+pub struct Enforcer {
+    cgroups: aya::maps::HashMap<aya::maps::MapData, u64, u8>,
+    exe: Slots,
+    defaults: aya::maps::Array<aya::maps::MapData, u8>,
+    index: CgroupIndex,
+    inserted: std::collections::HashMap<u64, u8>,
+    policy: Option<Policy>,
+}
+
+impl Enforcer {
+    pub fn take(ebpf: &mut aya::Ebpf) -> Result<Self> {
+        let mut take = |name: &str| {
+            ebpf.take_map(name)
+                .with_context(|| format!("map {name} not found"))
+        };
+        Ok(Self {
+            cgroups: aya::maps::HashMap::try_from(take(CGROUP_POLICY_MAP)?)?,
+            exe: aya::maps::Array::try_from(take(EXE_RULES_MAP)?)?,
+            defaults: aya::maps::Array::try_from(take(DEFAULTS_MAP)?)?,
+            index: CgroupIndex::new(PathBuf::from("/sys/fs/cgroup")),
+            inserted: std::collections::HashMap::new(),
+            policy: None,
+        })
+    }
+
+    /// Replaces the policy. An invalid one is refused and the previous
+    /// stays in force.
+    pub fn set(&mut self, policy: Policy) -> Result<()> {
+        policy.validate()?;
+        self.policy = Some(policy);
+        self.sync()
+    }
+
+    /// Brings the maps in line with the policy and the cgroups that exist.
+    pub fn sync(&mut self) -> Result<()> {
+        let Some(policy) = self.policy.clone() else {
+            return Ok(());
+        };
+        let ids = self.index.cgroup_ids();
+        let mut wanted: std::collections::HashMap<u64, u8> = std::collections::HashMap::new();
+        let mut exe_rules: Vec<ibexwall_net_common::ExeRule> = Vec::new();
+        for rule in &policy.rules {
+            let verdict = verdict_of(&rule.verdict).expect("validated");
+            if rule.cgroup_prefix.is_some() || rule.cgroup_contains.is_some() {
+                for (id, path) in &ids {
+                    let hit = rule
+                        .cgroup_prefix
+                        .as_ref()
+                        .is_some_and(|p| path.starts_with(p.as_str()))
+                        || rule
+                            .cgroup_contains
+                            .as_ref()
+                            .is_some_and(|c| path.contains(c.as_str()));
+                    if hit {
+                        wanted.entry(*id).or_insert(verdict);
+                    }
+                }
+            } else if let Some(text) = rule.exe_exact.as_ref().or(rule.exe_prefix.as_ref()) {
+                let mut bytes = [0u8; ibexwall_net_common::EXE_RULE_PREFIX_LEN];
+                bytes[..text.len()].copy_from_slice(text.as_bytes());
+                let flag = if rule.exe_exact.is_some() {
+                    ibexwall_net_common::EXE_RULE_EXACT
+                } else {
+                    0
+                };
+                exe_rules.push(ibexwall_net_common::ExeRule {
+                    verdict: verdict | flag,
+                    len: text.len() as u8,
+                    prefix: bytes,
+                });
             }
         }
-        {
-            let map = ebpf
-                .map_mut(EXE_RULES_MAP)
-                .ok_or_else(|| anyhow::anyhow!("map {EXE_RULES_MAP} not found"))?;
-            let mut rules: aya::maps::Array<_, [u8; ibexwall_net_common::EXE_RULE_LEN]> =
-                map.try_into().map_err(|e| anyhow::anyhow!("{e}"))?;
-            for (slot, rule) in exe_rules.iter().enumerate() {
-                let mut bytes = [0u8; ibexwall_net_common::EXE_RULE_LEN];
+        for (id, verdict) in &wanted {
+            if self.inserted.get(id) != Some(verdict) {
+                self.cgroups.insert(id, verdict, 0)?;
+            }
+        }
+        let stale: Vec<u64> = self
+            .inserted
+            .keys()
+            .filter(|id| !wanted.contains_key(id))
+            .copied()
+            .collect();
+        for id in stale {
+            let _ = self.cgroups.remove(&id);
+        }
+        self.inserted = wanted;
+        // Every slot is written: a rule removed from the policy must not
+        // linger, so unused slots are zeroed (length 0 means free).
+        for slot in 0..ibexwall_net_common::EXE_RULES_MAX {
+            let mut bytes = [0u8; ibexwall_net_common::EXE_RULE_LEN];
+            if let Some(rule) = exe_rules.get(slot) {
                 rule.write_to(&mut bytes);
-                rules.set(slot as u32, &bytes, 0)?;
             }
+            self.exe.set(slot as u32, &bytes, 0)?;
         }
-        {
-            let map = ebpf
-                .map_mut(DEFAULTS_MAP)
-                .ok_or_else(|| anyhow::anyhow!("map {DEFAULTS_MAP} not found"))?;
-            let mut defaults: aya::maps::Array<_, u8> =
-                map.try_into().map_err(|e| anyhow::anyhow!("{e}"))?;
-            defaults.set(0, &default, 0)?;
-        }
+        let default = verdict_of(&policy.default).expect("validated");
+        self.defaults.set(0, &default, 0)?;
         Ok(())
     }
 }
@@ -500,12 +580,9 @@ fn amain() -> Result<()> {
     // With --socket the lines go to the core; without it, to stdout (the
     // VM spike and manual runs).
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let mut rules = match args.iter().position(|a| a == "--rules") {
-        Some(at) => Some(Rules::load(std::path::Path::new(&args[at + 1]))?),
-        None => None,
-    };
-    if let Some(rules) = &mut rules {
-        rules.apply(&mut ebpf)?;
+    let mut enforcer = Enforcer::take(&mut ebpf)?;
+    if let Some(at) = args.iter().position(|a| a == "--rules") {
+        enforcer.set(Policy::load(Path::new(&args[at + 1]))?)?;
     }
     // The Ask queue: a thread of its own, unless disabled (the queue then
     // has no listener and the kernel accepts: fail open).
@@ -538,6 +615,29 @@ fn amain() -> Result<()> {
         });
     }
     let mut sink = Sink::open(args)?;
+    // The enforcer runs on its own thread: it applies each policy the core
+    // pushes and, every couple of seconds, covers cgroups created since.
+    let (policies, incoming) = std::sync::mpsc::channel::<Policy>();
+    std::thread::spawn(move || {
+        loop {
+            match incoming.recv_timeout(std::time::Duration::from_secs(2)) {
+                Ok(policy) => {
+                    if let Err(error) = enforcer.set(policy) {
+                        eprintln!("ibexwall-ebpf-loader: policy refused: {error:#}");
+                    }
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    if let Err(error) = enforcer.sync() {
+                        eprintln!("ibexwall-ebpf-loader: policy sync failed: {error:#}");
+                    }
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+            }
+        }
+    });
+    if let Some(reader) = sink.reader() {
+        std::thread::spawn(move || read_policies(reader, policies));
+    }
     if let Some(reason) = degraded {
         sink.send(&serde_json::json!({ "meta": "degraded", "reason": reason }).to_string());
     }
@@ -568,6 +668,27 @@ fn amain() -> Result<()> {
             .to_string(),
         );
     })
+}
+
+/// Reads `{"policy": {...}}` lines from the core. A line that does not
+/// parse is ignored; the previous policy stays in force.
+fn read_policies(stream: std::os::unix::net::UnixStream, out: std::sync::mpsc::Sender<Policy>) {
+    use std::io::BufRead as _;
+    #[derive(serde::Deserialize)]
+    struct Message {
+        policy: Policy,
+    }
+    for line in std::io::BufReader::new(stream).lines() {
+        let Ok(line) = line else { return };
+        match serde_json::from_str::<Message>(&line) {
+            Ok(message) => {
+                if out.send(message.policy).is_err() {
+                    return;
+                }
+            }
+            Err(error) => eprintln!("ibexwall-ebpf-loader: unreadable message: {error}"),
+        }
+    }
 }
 
 /// Where the JSON lines go: stdout, or the core's monitor socket.
@@ -616,6 +737,14 @@ impl Sink {
             "cannot reach the core at {path}: {}",
             last.map(|e| e.to_string()).unwrap_or_default()
         )
+    }
+
+    /// A second handle on the core's socket, to read what it pushes.
+    fn reader(&self) -> Option<std::os::unix::net::UnixStream> {
+        match self {
+            Self::Stdout => None,
+            Self::Socket(stream) => stream.try_clone().ok(),
+        }
     }
 
     fn send(&mut self, line: &str) {

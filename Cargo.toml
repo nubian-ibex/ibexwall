@@ -20,6 +20,7 @@ ibexwall-tui = { path = "crates/ibexwall-tui", version = "0.1.0" }
 ibexwall-sys = { path = "crates/ibexwall-sys", version = "0.1.0" }
 ibexwall-dns = { path = "crates/ibexwall-dns", version = "0.1.0" }
 ibexwall-apps = { path = "crates/ibexwall-apps", version = "0.1.0" }
+ibexwall-firewall = { path = "crates/ibexwall-firewall", version = "0.1.0" }
 ibexwall-identity = { path = "crates/ibexwall-identity", version = "0.1.0" }
 ibexwall-net-common = { path = "crates/ibexwall-net-common", version = "0.1.0" }
 serde = { version = "1", features = ["derive"] }

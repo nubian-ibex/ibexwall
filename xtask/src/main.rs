@@ -9,6 +9,7 @@ mod f1;
 mod f2;
 mod f3;
 mod f4;
+mod f5;
 mod fixtures;
 mod idl;
 mod schemas;
@@ -22,7 +23,7 @@ Usage: cargo xtask <COMMAND>
 Commands:
   schemas [--check]  Export JSON Schemas and varlink IDL to spec/
                      (--check fails if committed files differ)
-  vm-test [--distro <distro>] [--phase f0|f1|f2|f3|f4|fixtures]
+  vm-test [--distro <distro>] [--phase f0|f1|f2|f3|f4|f5|fixtures]
                      Boot a QEMU/KVM VM; phase f0 runs the smoke test,
                      f1 provisions the daemon and runs acceptance tests
   ebpf               Build the eBPF programs into target/bpf/ (nightly,
@@ -64,7 +65,7 @@ fn main() {
             }
             let result = match phase.as_deref() {
                 None | Some("f0") | Some("f1") | Some("f2") | Some("f3") | Some("f4")
-                | Some("fixtures") => vm::run(&distro, phase.as_deref()),
+                | Some("f5") | Some("fixtures") => vm::run(&distro, phase.as_deref()),
                 Some(other) => {
                     eprintln!("error: unknown phase `{other}`");
                     std::process::exit(2);

@@ -88,13 +88,14 @@ pub struct DnsStatus {
     pub upstream_errors: u64,
 }
 
-/// Whether the connection monitor is feeding the Apps screen, and if not,
-/// why (a plain reason, never a guess about the cause).
+/// Whether the connection monitor is feeding the Apps screen, and if not
+/// (or if it works with a limitation), why: a plain reason, never a guess
+/// about the cause.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MonitorStatus {
     pub running: bool,
-    /// Why the monitor is off, when it is. Untrusted display text.
+    /// Why the monitor is off or limited, when it is. Untrusted display text.
     #[serde(default)]
     pub reason: Option<String>,
 }

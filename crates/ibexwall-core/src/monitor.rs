@@ -13,7 +13,6 @@
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use anyhow::Result;
 use serde::Deserialize;
@@ -40,6 +39,14 @@ struct Line {
     kind: AppKind,
     #[serde(default)]
     id: String,
+}
+
+/// A status line from the loader instead of a connection.
+#[derive(Debug, Deserialize)]
+struct Meta {
+    meta: String,
+    #[serde(default)]
+    reason: String,
 }
 
 /// How often the package-manager database mtime is re-read.
@@ -97,6 +104,13 @@ impl Monitor {
     /// cares about (loopback, unspecified) or not valid are skipped; a
     /// storage failure is returned.
     pub fn ingest_line(&self, core: &Core, line: &str, now: i64) -> Result<()> {
+        if let Ok(meta) = serde_json::from_str::<Meta>(line) {
+            // The loader runs, with a limitation worth showing.
+            if meta.meta == "degraded" {
+                self.set_status(true, Some(&meta.reason));
+            }
+            return Ok(());
+        }
         let Ok(parsed) = serde_json::from_str::<Line>(line) else {
             return Ok(());
         };
@@ -227,58 +241,89 @@ pub fn app_destinations(core: &Core, app: &str) -> Result<Vec<AppDestination>> {
         .collect())
 }
 
-/// Runs the loader as a child, feeding the monitor, until the task is
-/// dropped. A loader that exits is restarted with a growing delay; the
-/// status says why it is off while it is.
-pub async fn supervise(core: Arc<Core>, program: PathBuf) {
-    let mut delay = Duration::from_secs(2);
-    loop {
-        if !program.exists() {
-            core.monitor.set_status(
-                false,
-                Some(&format!("{} is not installed", program.display())),
-            );
-            tokio::time::sleep(Duration::from_secs(60)).await;
-            continue;
-        }
-        let started = std::time::Instant::now();
-        let reason = run_child(&core, &program).await;
-        core.monitor.set_status(false, Some(&reason));
-        tracing::warn!(%reason, "connection monitor stopped");
-        // A child that ran for a while was healthy: start the backoff over.
-        delay = if started.elapsed() > Duration::from_secs(60) {
-            Duration::from_secs(2)
-        } else {
-            (delay * 2).min(Duration::from_secs(60))
+/// One answer from the resolver. Untrusted like everything else.
+#[derive(Debug, Deserialize)]
+struct Answer {
+    domain: String,
+    ip: String,
+    ttl: u32,
+}
+
+impl Monitor {
+    /// Handles one resolver datagram; anything malformed is ignored.
+    pub fn ingest_answer(&self, datagram: &[u8], now: i64) {
+        let Ok(answer) = serde_json::from_slice::<Answer>(datagram) else {
+            return;
         };
-        tokio::time::sleep(delay).await;
+        if let Ok(ip) = answer.ip.parse::<IpAddr>() {
+            self.learn(ip, &answer.domain, answer.ttl, now);
+        }
     }
 }
 
-async fn run_child(core: &Arc<Core>, program: &Path) -> String {
-    let mut child = match tokio::process::Command::new(program)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::inherit())
-        .kill_on_drop(true)
-        .spawn()
-    {
-        Ok(child) => child,
-        Err(error) => return format!("cannot start: {error}"),
-    };
-    let Some(stdout) = child.stdout.take() else {
-        return "no output pipe".into();
-    };
-    core.monitor.set_status(true, None);
-    let mut lines = BufReader::new(stdout).lines();
-    while let Ok(Some(line)) = lines.next_line().await {
-        let now = ibexwall_sys::RealClock.unix_now();
-        if let Err(error) = core.monitor.ingest_line(core, &line, now) {
-            tracing::error!(%error, "monitor ingest failed");
-        }
+/// Binds the datagram socket the resolver reports answers to and feeds
+/// the correlator until the task is dropped. The directory belongs to the
+/// resolver's user (0750), so the world-writable socket inside is only
+/// reachable by it and root.
+pub async fn listen_answers(core: Arc<Core>, path: PathBuf) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
     }
-    match child.wait().await {
-        Ok(status) => format!("exited with {status}"),
-        Err(error) => format!("wait failed: {error}"),
+    let _ = std::fs::remove_file(&path);
+    let socket = tokio::net::UnixDatagram::bind(&path)?;
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o666))?;
+    // One DNS answer is far below this; a longer datagram is not ours.
+    let mut buffer = [0u8; 1024];
+    loop {
+        let received = socket.recv(&mut buffer).await?;
+        let now = ibexwall_sys::RealClock.unix_now();
+        core.monitor.ingest_answer(&buffer[..received], now);
+    }
+}
+
+/// Serves the socket the monitor unit connects to. Only root (or the
+/// core's own uid, for the sandbox and tests) may feed it: the lines are
+/// data about other users' processes. The loader runs under its own
+/// hardened unit (ADR-0032), so systemd, not the core, restarts it.
+pub async fn serve_monitor(core: Arc<Core>, path: PathBuf) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let _ = std::fs::remove_file(&path);
+    let listener = tokio::net::UnixListener::bind(&path)?;
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    core.monitor
+        .set_status(false, Some("waiting for ibexwall-monitor"));
+    let own_uid = ibexwall_sys::current_uid();
+    let active = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    loop {
+        let (stream, _) = listener.accept().await?;
+        let allowed = stream
+            .peer_cred()
+            .map(|cred| cred.uid() == 0 || cred.uid() == own_uid)
+            .unwrap_or(false);
+        if !allowed {
+            tracing::warn!("monitor socket: refused a connection from another user");
+            continue;
+        }
+        let core = Arc::clone(&core);
+        let active = Arc::clone(&active);
+        tokio::spawn(async move {
+            active.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            core.monitor.set_status(true, None);
+            let mut lines = BufReader::new(stream).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let now = ibexwall_sys::RealClock.unix_now();
+                if let Err(error) = core.monitor.ingest_line(&core, &line, now) {
+                    tracing::error!(%error, "monitor ingest failed");
+                }
+            }
+            if active.fetch_sub(1, std::sync::atomic::Ordering::SeqCst) == 1 {
+                core.monitor
+                    .set_status(false, Some("ibexwall-monitor disconnected"));
+            }
+        });
     }
 }

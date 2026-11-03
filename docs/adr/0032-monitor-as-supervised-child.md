@@ -1,43 +1,61 @@
 <!-- SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors -->
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 
-# ADR-0032: the core supervises the eBPF loader as a child process
+# ADR-0032: the connection monitor is its own hardened unit
 
-Status: accepted (2026-11-03). Phase: F4.
+Status: accepted (2026-11-03). Phase: F4. The first draft had the core
+spawn the loader as a child; testing the unit's hardening showed why that
+cannot work (see Context).
 
 ## Context
 
-The connection monitor needs `CAP_BPF`/`CAP_PERFMON` and aya, and its
-events must reach the rollups and the event bus. Options: (a) load eBPF
-inside `ibexwalld`; (b) a separate service talking to the core over
-varlink; (c) the core spawns the loader and reads its stdout.
+The monitor needs `CAP_BPF`, `CAP_PERFMON` and `CAP_NET_ADMIN`, and its
+events must reach the rollups and the event bus. `ibexwalld.service` has
+`CapabilityBoundingSet=CAP_NET_ADMIN CAP_CHOWN CAP_FOWNER
+CAP_DAC_READ_SEARCH` and a syscall filter, and a child inherits both: it
+could never hold the BPF capabilities. Giving the daemon those
+capabilities would hand them to every plugin supervisor path as well.
 
 ## Decision
 
-(c). `ibexwalld` spawns `ibexwall-ebpf-loader`, which prints one JSON
-object per connection; the core parses, correlates with the resolver's
-answers, rolls up and raises events. A loader that exits is restarted
-with exponential backoff (2 s up to 60 s, reset after a healthy minute);
-`ListApps` reports `monitor.running` and the reason when it is off.
+`ibexwall-monitor.service` runs `ibexwall-ebpf-loader --socket
+/run/ibexwall/monitor.sock` with only the capabilities it needs
+(`CAP_BPF CAP_PERFMON CAP_NET_ADMIN CAP_SYS_PTRACE CAP_DAC_READ_SEARCH`),
+`ProtectSystem=strict`, a syscall allowlist plus `bpf perf_event_open`,
+`RestrictAddressFamilies=AF_UNIX` and the rest of the usual set. The core
+owns the stream socket (mode 0600) and accepts only uid 0 (or its own
+uid, for the sandbox and tests) through `SO_PEERCRED`; each line is one
+JSON object, parsed as untrusted data. systemd restarts the unit; the
+core only reports `monitor.running` and the reason in `ListApps`.
 
-## Why
+The resolver reports answers (queried name, address, TTL) on a datagram
+socket in its own runtime directory (`/run/ibexwall/dns/answers.sock`,
+0750 for `ibexwall-dns`); the core joins them with connections. Names
+stay in the core's memory for the TTL plus two minutes, bounded to 16k
+addresses, and are never written by that channel.
 
-- aya and the BPF capabilities stay in a small, separately hardenable
-  binary; a parser bug in the core never runs with BPF in the same
-  address space.
-- No new socket, no new polkit action: the child's stdout is the only
-  channel and it is not reachable by other users.
-- The core stays testable: tests use a fake child that prints JSON lines.
-- Every field of a line is untrusted data (process names and paths):
-  parsed into typed fields, stored with bound parameters, never run.
+## Findings (all five distros, 2026-11-03, `--phase f4` e2)
+
+- The hardened unit loads, attaches and feeds the socket on Fedora,
+  Ubuntu 24.04, Ubuntu 26.04 and Arch with `CAP_PERFMON` alone.
+- Debian 13 sets `kernel.perf_event_paranoid=3`, which only lets
+  `CAP_SYS_ADMIN` call `perf_event_open`, so the exec tracepoint cannot
+  attach there. `CAP_SYS_ADMIN` is too much to hold for this: the loader
+  degrades instead. Connections are still seen and attributed; only
+  processes that exit before `/proc` is read lose their exec path. The
+  loader reports it (`{"meta":"degraded"}`) and `ListApps` shows it.
+  An administrator may add `CAP_SYS_ADMIN` through a drop-in.
+- Processes that connect and exit at once beat `/proc`; the cgroup id in
+  the event (the directory inode in cgroupfs) is mapped back to a path by
+  a rate-limited walk of `/sys/fs/cgroup`, so even then the identity is
+  right (verified with 20 immediate-exit connects per distro).
 
 ## Consequences
 
-- The sandbox root never starts the loader (no eBPF on the dev host).
+- Alerts are events (`apps.first_connection`, `apps.binary_changed`).
+  Turning the binary-changed alert into a finding with remediation
+  comes with the Apps screen.
 - Loopback and unspecified destinations are not recorded: they are local
   plumbing, not network traffic.
-- Alerts are events (`apps.first_connection`, `apps.binary_changed`);
-  turning the binary-changed alert into a finding with remediation
-  comes with the Apps screen.
-- A resolver-to-core channel for IP-to-domain answers is still to be
-  built; until then destinations show as addresses (`resolved=false`).
+- The sandbox root still opens both sockets but no unit connects, so the
+  Apps screen reports "waiting for ibexwall-monitor" there.

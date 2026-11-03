@@ -4,7 +4,7 @@
 //! The request handler: block locally, forward the rest. It keeps
 //! counters per category and never logs query names.
 
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
@@ -73,6 +73,7 @@ pub struct Handler {
     policy: Arc<RwLock<Arc<Policy>>>,
     resolver: Resolver<TokioRuntimeProvider>,
     pub counters: Arc<Counters>,
+    sink: Option<Arc<crate::answers::AnswerSink>>,
 }
 
 impl Handler {
@@ -81,7 +82,14 @@ impl Handler {
             policy: Arc::new(RwLock::new(Arc::new(policy))),
             resolver,
             counters: Arc::new(Counters::default()),
+            sink: None,
         }
+    }
+
+    /// Reports forwarded answers to the core for traffic correlation.
+    pub fn with_answer_sink(mut self, sink: crate::answers::AnswerSink) -> Self {
+        self.sink = Some(Arc::new(sink));
+        self
     }
 
     /// Swaps the whole policy atomically (list updates).
@@ -145,13 +153,28 @@ impl RequestHandler for Handler {
             }
             Verdict::Forward => match tokio::time::timeout(
                 UPSTREAM_DEADLINE,
-                self.resolver.lookup(name, query_type),
+                self.resolver.lookup(name.clone(), query_type),
             )
             .await
             .unwrap_or_else(|_| Err(NetError::Timeout))
             {
                 Ok(lookup) => {
                     self.counters.forwarded.fetch_add(1, Ordering::Relaxed);
+                    if let Some(sink) = &self.sink {
+                        // The queried name, not a CNAME target: that is
+                        // what the user recognizes.
+                        sink.report(
+                            &name,
+                            lookup
+                                .answers()
+                                .iter()
+                                .filter_map(|record| match &record.data {
+                                    RData::A(a) => Some((IpAddr::V4(a.0), record.ttl)),
+                                    RData::AAAA(a) => Some((IpAddr::V6(a.0), record.ttl)),
+                                    _ => None,
+                                }),
+                        );
+                    }
                     let metadata = Metadata::response_from_request(&request.metadata);
                     let response = builder.build(metadata, lookup.answers().iter(), [], [], []);
                     response_handle.send_response(response).await

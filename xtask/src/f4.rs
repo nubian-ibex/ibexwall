@@ -135,6 +135,78 @@ EOF
 "#
     );
 
+    // The real packaging: the unit's hardening must still allow what the
+    // monitor does (load, attach, read other users' processes, hash).
+    pipe_file(
+        vm,
+        Path::new(&format!(
+            "{}/packaging/systemd/ibexwall-monitor.service",
+            workspace.display()
+        )),
+        "sudo tee /etc/systemd/system/ibexwall-monitor.service >/dev/null",
+    )?;
+    scenario!(
+        "e2 the hardened unit loads, attaches and feeds a socket",
+        r#"
+set -e
+sudo mkdir -p /run/ibexwall /etc/systemd/system/ibexwall-monitor.service.d
+# Test-only: keep the unit's stderr where a failure can show it.
+printf '[Service]\nStandardError=file:/run/ibexwall-monitor.err\n' | sudo tee /etc/systemd/system/ibexwall-monitor.service.d/test.conf >/dev/null
+sudo systemctl daemon-reload
+# A stand-in for the core: a root-owned stream socket that keeps every line.
+cat > /tmp/core.py <<'EOF'
+import os, socket
+path = "/run/ibexwall/monitor.sock"
+if os.path.exists(path): os.unlink(path)
+server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+server.bind(path); os.chmod(path, 0o600); server.listen(1)
+conn, _ = server.accept()
+with open("/tmp/core.json", "wb") as out:
+    while True:
+        data = conn.recv(65536)
+        if not data: break
+        out.write(data); out.flush()
+EOF
+sudo sh -c 'nohup python3 /tmp/core.py >/dev/null 2>&1 & echo $! >/tmp/core.pid'
+for i in $(seq 1 20); do [ -S /run/ibexwall/monitor.sock ] && break; sleep 0.25; done
+sudo systemctl start ibexwall-monitor.service
+sleep 3
+systemctl is-active --quiet ibexwall-monitor.service || { sudo systemctl status ibexwall-monitor --no-pager >&2 || true; sudo cat /run/ibexwall-monitor.err >&2 || true
+  exit 1; }
+curl -s -o /dev/null --max-time 6 http://203.0.113.1/ || true
+# Processes that connect and exit at once: the loader usually loses the race
+# against /proc, so identity must come from the kernel's own record.
+for i in $(seq 1 20); do
+  python3 -c 'import socket; s = socket.socket(); s.setblocking(False); s.connect_ex(("198.51.100.9", 80))'
+done
+sleep 3
+sudo systemctl stop ibexwall-monitor.service
+sudo kill $(cat /tmp/core.pid) 2>/dev/null || true
+python3 - <<'EOF'
+import json
+events = [json.loads(line) for line in open("/tmp/core.json") if line.strip()]
+curl = [e for e in events if e.get("comm") == "curl" and e.get("dst") == "203.0.113.1"]
+assert curl, [e["comm"] for e in events]
+assert curl[0]["kind"] == "cli", curl[0]
+assert curl[0]["exe"].endswith("/curl"), curl[0]
+assert curl[0]["package"] == "curl", curl[0]
+assert curl[0]["exe_hash"] and len(curl[0]["exe_hash"]) == 64, curl[0]
+quick = [e for e in events if e.get("dst") == "198.51.100.9"]
+assert len(quick) >= 15, len(quick)
+assert all(e["kind"] == "cli" for e in quick), [e for e in quick if e["kind"] != "cli"][:2]
+# Without the kernel's exec record (degraded) a lost race leaves no path.
+if not any(e.get("meta") == "degraded" for e in events):
+    assert all((e["exe_kernel"] or "").startswith("/usr/bin/python3") for e in quick), quick[:2]
+degraded = [e for e in events if e.get("meta") == "degraded"]
+# Measured 2026-11-03: Debian's perf_event_paranoid=3 wants CAP_SYS_ADMIN for
+# the exec tracepoint; the other four attach with CAP_PERFMON alone.
+distro = dict(l.strip().split("=", 1) for l in open("/etc/os-release") if "=" in l)["ID"].strip('"')
+assert bool(degraded) == (distro == "debian"), (distro, degraded)
+print(f"hardened unit ok: {len(events)} lines, curl attributed to {curl[0]['package']}; degraded: {degraded[0]['reason'] if degraded else 'no'}")
+EOF
+"#
+    );
+
     if failures == 0 {
         println!("PASS: f4 spike (all scenarios)");
         Ok(())

@@ -8,6 +8,12 @@ firewall the distribution already uses. Spec phase F5 and section 4.7.
 
 Status: in progress (autonomous mode).
 
+Progress: M1 to M6 done (ADR-0034). `--phase f5` passes on the five
+distros; see `docs/reports/F5-report.md`. Spike S5-b (input chain and
+Docker) answered by the p4 scenario: no interference, `docker0` trusted
+is the administrator's part. Open: profiles per connection through
+NetworkManager's connection.zone, rich rules, ufw application profiles.
+
 ## Scope decisions
 
 - **Integrate, never replace.** firewalld and ufw are driven through their

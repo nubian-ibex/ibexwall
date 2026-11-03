@@ -223,7 +223,10 @@ impl Core {
     /// decide the final state).
     pub fn rollback_transaction(&self, tx: &str, ops: &[Op]) -> Result<()> {
         let _ = ops; // inverses come from the snapshot manifest
-        self.engine.rollback(&self.state, tx)
+        let result = self.engine.rollback(&self.state, tx);
+        // Whatever the inverses restored is what must survive a restart.
+        self.persist_nft();
+        result
     }
 
     pub fn manifest(&self, plugin: &str) -> Result<ibexwall_proto::Manifest> {

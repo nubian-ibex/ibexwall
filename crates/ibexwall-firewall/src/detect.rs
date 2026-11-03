@@ -5,12 +5,15 @@
 //! abstract file reader so the plugin (sandbox), the core (sandbox root)
 //! and tests (fixture trees) all share one implementation.
 
+use crate::action::{FIREWALL_CMD, UFW};
 use crate::model::{Backend, PortRule, Proto, State};
 use crate::parse;
 
 pub trait Reader {
     /// Contents, or `None` when missing or unreadable ("cannot tell").
     fn read(&self, path: &str) -> Option<String>;
+    /// Whether the path is there, including a symlink whose target is not
+    /// (systemd's `invocation:<unit>` markers are exactly that).
     fn exists(&self, path: &str) -> bool;
 }
 
@@ -25,17 +28,21 @@ pub fn detect(reader: &dyn Reader) -> (Backend, Option<bool>) {
     if reader.exists(FIREWALLD_ACTIVE) {
         return (Backend::Firewalld, Some(true));
     }
-    if reader
-        .read(UFW_CONF)
-        .and_then(|conf| parse::ufw_enabled(&conf))
-        == Some(true)
+    // "Installed" means the tool IbexWall would run is there: leftover
+    // directories and config files do not make a manager.
+    let ufw_installed = reader.exists(UFW);
+    if ufw_installed
+        && reader
+            .read(UFW_CONF)
+            .and_then(|conf| parse::ufw_enabled(&conf))
+            == Some(true)
     {
         return (Backend::Ufw, Some(true));
     }
-    if reader.exists(FIREWALLD_CONF) || reader.exists("/usr/lib/firewalld") {
+    if reader.exists(FIREWALL_CMD) {
         return (Backend::Firewalld, Some(false));
     }
-    if reader.exists(UFW_CONF) {
+    if ufw_installed {
         return (Backend::Ufw, Some(false));
     }
     (Backend::Nftables, None)
@@ -149,6 +156,7 @@ mod tests {
         let t = tree(&[
             (FIREWALLD_ACTIVE, ""),
             ("/etc/firewalld/zones/public.xml", ZONE),
+            (UFW, ""),
             (UFW_CONF, "ENABLED=yes\n"),
         ]);
         assert_eq!(detect(&t), (Backend::Firewalld, Some(true)));
@@ -179,6 +187,7 @@ mod tests {
     #[test]
     fn ufw_enabled_is_detected_and_read() {
         let t = tree(&[
+            (UFW, ""),
             (UFW_CONF, "ENABLED=yes\n"),
             (
                 "/etc/ufw/user.rules",
@@ -198,13 +207,30 @@ mod tests {
     #[test]
     fn an_installed_but_inactive_manager_is_reported_as_such() {
         assert_eq!(
-            detect(&tree(&[(FIREWALLD_CONF, "")])),
+            detect(&tree(&[(FIREWALL_CMD, "")])),
             (Backend::Firewalld, Some(false))
         );
         assert_eq!(
-            detect(&tree(&[(UFW_CONF, "ENABLED=no\n")])),
+            detect(&tree(&[(UFW, ""), (UFW_CONF, "ENABLED=no\n")])),
             (Backend::Ufw, Some(false))
         );
+    }
+
+    #[test]
+    fn leftover_files_do_not_make_a_manager() {
+        // Config and directories without the tool (Fedora keeps
+        // /usr/lib/firewalld around): no manager.
+        for files in [
+            vec![(FIREWALLD_CONF, "")],
+            vec![("/usr/lib/firewalld/zones/public.xml", "")],
+            vec![(UFW_CONF, "ENABLED=yes\n")],
+        ] {
+            assert_eq!(
+                detect(&tree(&files)),
+                (Backend::Nftables, None),
+                "{files:?}"
+            );
+        }
     }
 
     #[test]

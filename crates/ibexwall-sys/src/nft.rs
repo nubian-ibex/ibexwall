@@ -350,10 +350,15 @@ impl Nft for RealNft {
     }
 
     fn chains(&self) -> Result<Vec<String>> {
-        let output = Command::new("nft")
+        let output = match Command::new("nft")
             .args(["-j", "list", "table", "inet", NFT_TABLE])
             .output()
-            .context("spawning nft")?;
+        {
+            Ok(output) => output,
+            // No nft installed: there are no chains of ours to list.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+            Err(error) => return Err(error).context("spawning nft"),
+        };
         if !output.status.success() {
             return Ok(vec![]);
         }

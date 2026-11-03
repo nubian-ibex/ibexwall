@@ -103,8 +103,10 @@ impl Reader for Files<'_> {
     fn read(&self, path: &str) -> Option<String> {
         self.0.read(path)
     }
+    // systemd's `invocation:<unit>` markers are symlinks whose target does
+    // not exist: they count as present.
     fn exists(&self, path: &str) -> bool {
-        self.0.exists(path)
+        self.0.exists(path) || self.0.read_link(path).is_some()
     }
 }
 
@@ -485,7 +487,10 @@ mod tests {
 
     #[test]
     fn ufw_takes_ports_but_not_services() {
-        let (root, sandbox) = tree(&[("/etc/ufw/ufw.conf", "ENABLED=yes\n")]);
+        let (root, sandbox) = tree(&[
+            ("/usr/sbin/ufw", ""),
+            ("/etc/ufw/ufw.conf", "ENABLED=yes\n"),
+        ]);
         let ops = plan(&sandbox, config(serde_json::json!({"allow": "22"}))).unwrap();
         assert!(matches!(&ops[0], Op::FirewallAdapter { backend, .. } if backend == "ufw"));
         assert!(
@@ -500,7 +505,7 @@ mod tests {
 
     #[test]
     fn a_manager_that_is_not_running_is_reported_not_bypassed() {
-        let (root, sandbox) = tree(&[("/etc/firewalld/firewalld.conf", "")]);
+        let (root, sandbox) = tree(&[("/usr/bin/firewall-cmd", "")]);
         let error = plan(&sandbox, config(serde_json::json!({"allow": "22"}))).unwrap_err();
         assert!(error.to_string().contains("not running"), "{error}");
         std::fs::remove_dir_all(root).unwrap();

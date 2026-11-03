@@ -117,7 +117,7 @@ mod tests {
     fn tabs_cycle_through_apps_in_both_directions() {
         let mut tab = Tab::Overview;
         let mut seen = vec![tab];
-        for _ in 0..4 {
+        for _ in 0..5 {
             tab = tab.next();
             seen.push(tab);
         }
@@ -126,6 +126,7 @@ mod tests {
             [
                 Tab::Overview,
                 Tab::Apps,
+                Tab::Firewall,
                 Tab::Plugins,
                 Tab::History,
                 Tab::Overview

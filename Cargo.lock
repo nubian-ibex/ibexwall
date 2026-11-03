@@ -2200,6 +2200,7 @@ dependencies = [
  "aya",
  "ibexwall-identity",
  "ibexwall-net-common",
+ "ibexwall-nfq",
  "rustix",
  "serde",
  "serde_json",
@@ -2245,6 +2246,13 @@ version = "0.1.0"
 [[package]]
 name = "ibexwall-net-common"
 version = "0.1.0"
+
+[[package]]
+name = "ibexwall-nfq"
+version = "0.1.0"
+dependencies = [
+ "rustix",
+]
 
 [[package]]
 name = "ibexwall-plugin-dns"

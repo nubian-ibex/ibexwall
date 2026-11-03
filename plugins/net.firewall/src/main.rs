@@ -354,6 +354,8 @@ fn accept(configure: impl FnOnce(&mut Rule)) -> Rule {
         iif_loopback: false,
         iif_prefix: None,
         ct_established: false,
+        ct_new: false,
+        mark: None,
         icmp: false,
         oif_loopback: false,
         uid_not: None,

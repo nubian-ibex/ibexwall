@@ -19,6 +19,7 @@ path = "src/main.rs"
 aya = { version = "0.16", default-features = false }
 ibexwall-net-common.workspace = true
 anyhow.workspace = true
+ibexwall-nfq.workspace = true
 rustix.workspace = true
 ibexwall-identity.workspace = true
 serde.workspace = true

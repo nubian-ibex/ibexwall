@@ -14,7 +14,7 @@ use aya::EbpfLoader;
 use aya::maps::RingBuf;
 use aya::programs::{CgroupSockAddr, TracePoint};
 use ibexwall_identity::{Identity, PackageManager, classify_cgroup, hash_file, package_owner};
-use ibexwall_net_common::{CGROUP_POLICY_MAP, DEFAULTS_MAP, EXE_RULES_MAP};
+use ibexwall_net_common::{ASK_FLOWS_MAP, CGROUP_POLICY_MAP, DEFAULTS_MAP, EXE_RULES_MAP};
 use ibexwall_net_common::{ConnectEvent, EVENTS_MAP};
 
 /// Where the built program lives, in order (env override, install dir,
@@ -298,6 +298,72 @@ impl Rules {
     }
 }
 
+/// What the Ask queue does with a held packet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Decision {
+    Allow,
+    Block,
+}
+
+/// The spike policy: one answer for every held flow after a delay (the
+/// real answer comes from the user through the core).
+#[derive(Debug, Clone, Copy)]
+pub struct AskPolicy {
+    pub decision: Decision,
+    pub delay: std::time::Duration,
+}
+
+/// The queue mark of a flow that was refused: nftables rejects it.
+fn refused_mark(mark: u32) -> u32 {
+    (mark & 0xff00_0000) | ibexwall_net_common::REFUSED_MARK_VALUE | (mark & 0xffff)
+}
+
+/// Listens on the Ask queue: each packet waits `policy.delay` in its own
+/// thread (so many flows wait at once), then is accepted, or accepted with
+/// the refused mark. A packet whose flow id is unknown is accepted at
+/// once: when in doubt, the network stays open.
+pub fn run_ask(
+    flows: aya::maps::HashMap<aya::maps::MapData, u32, [u8; ibexwall_net_common::ASK_FLOW_LEN]>,
+    policy: AskPolicy,
+) -> Result<()> {
+    let queue = std::sync::Arc::new(
+        ibexwall_nfq::Queue::open(ibexwall_net_common::ASK_QUEUE)
+            .context("binding the Ask queue (needs CAP_NET_ADMIN)")?,
+    );
+    eprintln!(
+        "ibexwall-ebpf-loader: Ask queue {} bound",
+        ibexwall_net_common::ASK_QUEUE
+    );
+    loop {
+        for packet in queue.recv(std::time::Duration::from_millis(500))? {
+            let id = packet.mark & 0xffff;
+            let known = flows.get(&id, 0).ok();
+            let destination = packet.destination();
+            let queue = std::sync::Arc::clone(&queue);
+            std::thread::spawn(move || {
+                let Some(flow) = known else {
+                    let _ = queue.verdict(packet.id, ibexwall_nfq::Verdict::Accept, None);
+                    return;
+                };
+                let pid = u32::from_le_bytes(flow[..4].try_into().expect("four bytes"));
+                std::thread::sleep(policy.delay);
+                let mark = (policy.decision == Decision::Block).then(|| refused_mark(packet.mark));
+                let _ = queue.verdict(packet.id, ibexwall_nfq::Verdict::Accept, mark);
+                eprintln!(
+                    "{}",
+                    serde_json::json!({ "ask": {
+                        "pid": pid,
+                        "dst": destination.as_ref().map(|d| d.address.to_string()),
+                        "port": destination.as_ref().map(|d| d.port),
+                        "decision": if policy.decision == Decision::Allow { "allow" } else { "block" },
+                        "held_ms": policy.delay.as_millis() as u64,
+                    }})
+                );
+            });
+        }
+    }
+}
+
 /// Who and what is behind an exe: hash and owning package, cached per path
 /// because package-manager queries are slow and a program connects often.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -441,6 +507,36 @@ fn amain() -> Result<()> {
     if let Some(rules) = &mut rules {
         rules.apply(&mut ebpf)?;
     }
+    // The Ask queue: a thread of its own, unless disabled (the queue then
+    // has no listener and the kernel accepts: fail open).
+    if !args.iter().any(|a| a == "--ask-disabled") && args.iter().any(|a| a == "--ask-default") {
+        let value = |flag: &str| {
+            args.iter()
+                .position(|a| a == flag)
+                .and_then(|at| args.get(at + 1))
+                .cloned()
+        };
+        let decision = match value("--ask-default").as_deref() {
+            Some("block") => Decision::Block,
+            _ => Decision::Allow,
+        };
+        let delay = value("--ask-delay-ms")
+            .and_then(|ms| ms.parse().ok())
+            .unwrap_or(0);
+        let policy = AskPolicy {
+            decision,
+            delay: std::time::Duration::from_millis(delay),
+        };
+        let map = ebpf
+            .take_map(ASK_FLOWS_MAP)
+            .with_context(|| format!("map {ASK_FLOWS_MAP} not found"))?;
+        let flows = aya::maps::HashMap::try_from(map)?;
+        std::thread::spawn(move || {
+            if let Err(error) = run_ask(flows, policy) {
+                eprintln!("ibexwall-ebpf-loader: ask queue stopped: {error:#}");
+            }
+        });
+    }
     let mut sink = Sink::open(args)?;
     if let Some(reason) = degraded {
         sink.send(&serde_json::json!({ "meta": "degraded", "reason": reason }).to_string());
@@ -492,7 +588,8 @@ impl Sink {
                     socket = args.get(index + 1);
                     index += 2;
                 }
-                "--rules" => index += 2,
+                "--rules" | "--ask-default" | "--ask-delay-ms" => index += 2,
+                "--ask-disabled" => index += 1,
                 other => {
                     bail!("unknown argument `{other}` (usage: --socket PATH, --rules FILE)")
                 }

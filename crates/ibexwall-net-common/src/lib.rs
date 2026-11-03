@@ -98,6 +98,20 @@ impl ExeRule {
 /// The wire length of one exe rule: 1 + 1 + 96.
 pub const EXE_RULE_LEN: usize = 2 + EXE_RULE_PREFIX_LEN;
 
+/// The packet mark an Ask flow carries: `ASK_MARK_VALUE` under
+/// `ASK_MARK_MASK`, with a 16-bit flow id in the low half. The loader's
+/// answer for a refused flow sets `REFUSED_MARK_VALUE`, which nftables
+/// rejects. Bits above the mask are left as the application had them.
+pub const ASK_MARK_MASK: u32 = 0x00ff_0000;
+pub const ASK_MARK_VALUE: u32 = 0x0001_0000;
+pub const REFUSED_MARK_VALUE: u32 = 0x0002_0000;
+/// The NFQUEUE number of the Ask chain.
+pub const ASK_QUEUE: u16 = 4242;
+/// The map from a flow id to who made it: pid (4 bytes LE) then cgroup id
+/// (8 bytes LE).
+pub const ASK_FLOWS_MAP: &str = "IBEXWALL_ASK_FLOWS";
+pub const ASK_FLOW_LEN: usize = 12;
+
 /// Name of the verdict maps the loader keeps in sync.
 pub const CGROUP_POLICY_MAP: &str = "IBEXWALL_CGROUP_POLICY";
 pub const PID_POLICY_MAP: &str = "IBEXWALL_PID_POLICY";

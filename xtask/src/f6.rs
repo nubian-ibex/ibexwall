@@ -159,6 +159,77 @@ getent hosts fedoraproject.org >/dev/null || { echo "DNS BROKEN AFTER STOP"; exi
 "#
     );
 
+    scenario!(
+        "a0 Ask: the first packet waits for the answer, then goes or is refused; no listener means open",
+        r#"
+set -e
+command -v nft >/dev/null || { if command -v dnf >/dev/null; then sudo dnf install -y -q nftables; elif command -v apt-get >/dev/null; then sudo apt-get update -qq; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nftables; elif command -v pacman >/dev/null; then sudo pacman -Sy --noconfirm --needed nftables; fi; }
+HOST_IP=$(ip -4 -o addr show scope global | awk 'NR==1{split($4,a,"/"); print a[1]}')
+test -n "$HOST_IP" || { echo "no global IPv4"; exit 1; }
+sudo nft delete table inet ibexwall_spike 2>/dev/null || true
+sudo nft add table inet ibexwall_spike
+sudo nft add chain inet ibexwall_spike ask '{ type filter hook output priority 5; policy accept; }'
+sudo nft add rule inet ibexwall_spike ask ct state new meta mark and 0xff0000 == 0x10000 counter queue num 4242 bypass
+# A queue verdict resumes at the next hook entry, not the next rule: the
+# refusal lives in a chain that runs after the queue chain.
+sudo nft add chain inet ibexwall_spike refuse '{ type filter hook output priority 6; policy accept; }'
+sudo nft add rule inet ibexwall_spike refuse meta mark and 0xff0000 == 0x20000 counter reject
+trap 'sudo nft delete table inet ibexwall_spike 2>/dev/null || true; sudo kill $(cat /tmp/ask.pid) 2>/dev/null || true; sudo pkill -x python3 2>/dev/null || true' EXIT
+
+sudo mkdir -p /tmp/asked
+PY=$(readlink -f $(command -v python3))
+sudo cp "$PY" /tmp/asked/python3 && sudo chmod 755 /tmp/asked/python3
+sudo tee /tmp/ask-rules.json >/dev/null <<'EOF'
+[{"exe_prefix": "/tmp/asked/", "verdict": "ask"}]
+EOF
+sudo sh -c "nohup python3 -m http.server 8080 --bind 0.0.0.0 >/dev/null 2>&1 &"
+sleep 2
+cat > /tmp/timed.py <<EOF
+import socket, sys, time
+t = time.monotonic()
+s = socket.socket(); s.settimeout(8)
+try:
+    s.connect(("$HOST_IP", 8080)); out = "connected"
+except ConnectionRefusedError:
+    out = "refused"
+except Exception as e:
+    out = type(e).__name__
+print(out, int((time.monotonic() - t) * 1000))
+EOF
+start_loader() {
+  sudo kill $(cat /tmp/ask.pid) 2>/dev/null || true; sleep 1
+  sudo sh -c "nohup /usr/bin/ibexwall-ebpf-loader --rules /tmp/ask-rules.json $* >/tmp/ask.out 2>/tmp/ask.err & echo \$! >/tmp/ask.pid"
+  sleep 3
+  sudo kill -0 $(cat /tmp/ask.pid) || { echo "LOADER DIED"; cat /tmp/ask.err; exit 1; }
+}
+ms() { echo "$1" | awk '{print $2}'; }
+
+# Allowed after a 2 s wait: held, then the connection completes.
+start_loader --ask-default allow --ask-delay-ms 2000
+R=$(/tmp/asked/python3 /tmp/timed.py)
+echo "METRIC: ask allow: $R"
+echo "$R" | grep -q '^connected' || { echo "NOT CONNECTED AFTER ALLOW: $R"; cat /tmp/ask.err; exit 1; }
+[ "$(ms "$R")" -ge 1800 ] && [ "$(ms "$R")" -lt 6000 ] || { echo "NOT HELD ABOUT 2 s: $R"; echo "-- loader:"; cat /tmp/ask.err; echo "-- chain:"; sudo nft list chain inet ibexwall_spike ask; exit 1; }
+# Everything else is not asked and not slowed.
+R=$(python3 /tmp/timed.py)
+[ "$(ms "$R")" -lt 500 ] && echo "$R" | grep -q '^connected' || { echo "OTHER PROGRAM WAS SLOWED: $R"; exit 1; }
+
+# Refused after a 1 s wait: reset, not a silent hang.
+start_loader --ask-default block --ask-delay-ms 1000
+R=$(/tmp/asked/python3 /tmp/timed.py)
+echo "METRIC: ask block: $R"
+echo "$R" | grep -q '^refused' || { echo "NOT REFUSED AFTER BLOCK: $R"; cat /tmp/ask.err; exit 1; }
+[ "$(ms "$R")" -ge 900 ] && [ "$(ms "$R")" -lt 4000 ] || { echo "REFUSAL TIMING WRONG: $R"; exit 1; }
+grep -q '"decision":"block"' /tmp/ask.err || { echo "NO ASK EVENT LOGGED"; cat /tmp/ask.err; exit 1; }
+
+# Nobody listening on the queue: the kernel accepts (bypass), at once.
+start_loader --ask-disabled
+R=$(/tmp/asked/python3 /tmp/timed.py)
+echo "METRIC: ask without a listener: $R"
+echo "$R" | grep -q '^connected' && [ "$(ms "$R")" -lt 500 ] || { echo "FAIL-OPEN BROKEN: $R"; exit 1; }
+"#
+    );
+
     if failures == 0 {
         println!("PASS: f6 (all scenarios)");
         Ok(())

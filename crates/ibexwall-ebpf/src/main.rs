@@ -141,6 +141,55 @@ pub fn ibexwall_sendmsg6(_ctx: SockAddrContext) -> i32 {
     decide_only()
 }
 
+/// Flow id to the process that made it, for the Ask queue: the packet
+/// carries only the mark, and the mark carries the id.
+#[map(name = "IBEXWALL_ASK_FLOWS")]
+static mut ASK_FLOWS: LruHashMap<u32, [u8; ibexwall_net_common::ASK_FLOW_LEN]> =
+    LruHashMap::with_max_entries(4096, 0);
+
+const SOL_SOCKET: i32 = 1;
+const SO_MARK: i32 = 36;
+
+/// Marks the socket so nftables queues its first packet, and records who
+/// it is. Best effort: a failure leaves the connection unmarked, which
+/// means allowed (fail open).
+fn mark_for_ask(ctx: &SockAddrContext, pid: u32, cgroup_id: u64) {
+    use ibexwall_net_common::{ASK_MARK_VALUE};
+    let sock = ctx.sock_addr as *mut core::ffi::c_void;
+    let mut current: u32 = 0;
+    // SAFETY: helper calls with a stack buffer of the stated length.
+    unsafe {
+        aya_ebpf::helpers::generated::bpf_getsockopt(
+            sock,
+            SOL_SOCKET,
+            SO_MARK,
+            &mut current as *mut u32 as *mut core::ffi::c_void,
+            4,
+        );
+    }
+    // SAFETY: plain helper call.
+    let id = unsafe { aya_ebpf::helpers::generated::bpf_get_prandom_u32() } & 0xffff;
+    let mut flow = [0u8; ibexwall_net_common::ASK_FLOW_LEN];
+    flow[..4].copy_from_slice(&pid.to_le_bytes());
+    flow[4..].copy_from_slice(&cgroup_id.to_le_bytes());
+    // SAFETY: static map access with owned key and value.
+    let flows = unsafe { &*core::ptr::addr_of!(ASK_FLOWS) };
+    if flows.insert(&id, &flow, 0).is_err() {
+        return;
+    }
+    let mut marked: u32 = (current & 0xff00_0000) | ASK_MARK_VALUE | id;
+    // SAFETY: helper call with a stack buffer of the stated length.
+    unsafe {
+        aya_ebpf::helpers::generated::bpf_setsockopt(
+            sock,
+            SOL_SOCKET,
+            SO_MARK,
+            &mut marked as *mut u32 as *mut core::ffi::c_void,
+            4,
+        );
+    }
+}
+
 fn decide_only() -> i32 {
     let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
     let cgroup_id = unsafe { bpf_get_current_cgroup_id() };
@@ -158,8 +207,10 @@ fn decide(ctx: &SockAddrContext, family: u8) -> i32 {
     let _ = record(ctx, family);
     let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
     let cgroup_id = unsafe { bpf_get_current_cgroup_id() };
-    if verdict_for(pid, cgroup_id) == verdict::BLOCK {
-        return 0;
+    match verdict_for(pid, cgroup_id) {
+        verdict::BLOCK => return 0,
+        verdict::ASK => mark_for_ask(ctx, pid, cgroup_id),
+        _ => {}
     }
     ALLOW
 }

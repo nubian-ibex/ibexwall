@@ -71,6 +71,12 @@ pub struct Rule {
     /// Only packets of connections already established or related.
     #[serde(default)]
     pub ct_established: bool,
+    /// Only the first packet of a new connection.
+    #[serde(default)]
+    pub ct_new: bool,
+    /// Only packets whose mark, under `mask`, equals `value`.
+    #[serde(default)]
+    pub mark: Option<MarkMatch>,
     /// Only ICMP and ICMPv6.
     #[serde(default)]
     pub icmp: bool,
@@ -92,11 +98,24 @@ pub enum Proto {
     Udp,
 }
 
+/// `mark & mask == value`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MarkMatch {
+    pub mask: u32,
+    pub value: u32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Verdict {
     Accept,
     Drop,
+    /// Hands the packet to a userspace queue, with `bypass`: nothing
+    /// listening means the packet is accepted (fail open, spec 4.7).
+    Queue {
+        num: u16,
+    },
     /// Refuses at once (ICMP port unreachable or TCP reset): applications
     /// fall back faster than they would after a silent drop.
     Reject,
@@ -184,6 +203,16 @@ impl Rule {
                 "left": { "ct": { "key": "state" } },
                 "right": ["established", "related"] } }));
         }
+        if self.ct_new {
+            base.push(json!({ "match": { "op": "in",
+                "left": { "ct": { "key": "state" } },
+                "right": "new" } }));
+        }
+        if let Some(mark) = self.mark {
+            base.push(json!({ "match": { "op": "==",
+                "left": { "&": [{ "meta": { "key": "mark" } }, mark.mask] },
+                "right": mark.value } }));
+        }
         if self.iif_loopback {
             base.push(json!({ "match": { "op": "==",
                 "left": { "meta": { "key": "iifname" } }, "right": "lo" } }));
@@ -210,6 +239,7 @@ impl Rule {
             Verdict::Accept => json!({ "accept": null }),
             Verdict::Drop => json!({ "drop": null }),
             Verdict::Reject => json!({ "reject": null }),
+            Verdict::Queue { num } => json!({ "queue": { "num": num, "flags": "bypass" } }),
         };
         if self.protocols.is_empty() {
             let mut expr = base;
@@ -670,5 +700,33 @@ mod tests {
     fn existing_fragments_still_hook_output() {
         let commands = guard().compile();
         assert_eq!(commands[1]["add"]["chain"]["hook"], "output");
+    }
+
+    #[test]
+    fn the_ask_chain_queues_new_marked_flows_with_bypass_and_rejects_refused_ones() {
+        let fragment: Fragment = serde_json::from_value(json!({ "chains": [{
+            "name": "net_apps_ask", "priority": 5,
+            "rules": [
+                { "ct_new": true, "mark": { "mask": 0xff0000, "value": 0x10000 },
+                  "verdict": { "queue": { "num": 4242 } } },
+                { "mark": { "mask": 0xff0000, "value": 0x20000 }, "verdict": "reject" },
+            ],
+        }] }))
+        .unwrap();
+        fragment.validate().unwrap();
+        let commands = fragment.compile();
+        let queue = &commands[3]["add"]["rule"]["expr"];
+        assert_eq!(queue[0]["match"]["right"], "new");
+        let mark = &queue[1]["match"];
+        assert_eq!(mark["left"]["&"][1], 0xff0000);
+        assert_eq!(mark["right"], 0x10000);
+        assert_eq!(
+            queue[2],
+            json!({ "queue": { "num": 4242, "flags": "bypass" } })
+        );
+        assert_eq!(
+            commands[4]["add"]["rule"]["expr"][1],
+            json!({ "reject": null })
+        );
     }
 }

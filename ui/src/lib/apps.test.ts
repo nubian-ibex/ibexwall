@@ -23,6 +23,7 @@ const app = (over: Partial<AppEntry>): AppEntry => ({
   last_seen: '2026-11-03T11:58:00Z',
   connections: 3,
   destinations: 2,
+  mode: 'monitor',
   ...over,
 });
 

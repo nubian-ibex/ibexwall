@@ -90,6 +90,7 @@ method RecentEvents(limit: ?int) -> (events: []Event)
 
 # Added in v1 (additive): per-app traffic from the connection monitor.
 method ListApps() -> (monitor: MonitorStatus, apps: []AppEntry)
+method SetAppMode(app: string, mode: string) -> ()
 method GetAppDestinations(app: string) -> (destinations: []AppDestination)
 
 # Added in v1 (additive): the inbound firewall, as read from the manager.

@@ -130,6 +130,13 @@ enum AppsAction {
     List,
     /// One application and where it connects (key from `apps list`).
     Info { app: String },
+    /// Choose what an application may do on the network.
+    Set {
+        /// Key from `apps list`.
+        app: String,
+        #[arg(value_parser = ["allow", "monitor", "ask", "block"])]
+        mode: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -612,6 +619,19 @@ async fn apps(
                 print!("{}", render_apps(&value));
             }
         }
+        AppsAction::Set { app, mode } => {
+            let value = client
+                .call(
+                    "com.ibexwall.Core.SetAppMode",
+                    serde_json::json!({ "app": app, "mode": mode }),
+                )
+                .await?;
+            if json {
+                emit(value, json);
+            } else {
+                println!("{}: {}", clean(app), mode);
+            }
+        }
         AppsAction::Info { app } => {
             let listed = client
                 .call("com.ibexwall.Core.ListApps", serde_json::json!({}))
@@ -678,14 +698,15 @@ fn render_apps(value: &serde_json::Value) -> String {
         .unwrap_or(3)
         .max(3);
     out.push_str(&format!(
-        "{:<key_width$}  {:<14}  {:>6}  {:>5}  {}\n",
-        "APP", "KIND", "CONNS", "DESTS", "LAST SEEN"
+        "{:<key_width$}  {:<14}  {:<7}  {:>6}  {:>5}  {}\n",
+        "APP", "KIND", "MODE", "CONNS", "DESTS", "LAST SEEN"
     ));
     for app in &apps {
         out.push_str(&format!(
-            "{:<key_width$}  {:<14}  {:>6}  {:>5}  {}\n",
+            "{:<key_width$}  {:<14}  {:<7}  {:>6}  {:>5}  {}\n",
             text(&app["key"]),
             text(&app["kind"]),
+            text(&app["mode"]),
             app["connections"].as_u64().unwrap_or(0),
             app["destinations"].as_u64().unwrap_or(0),
             text(&app["last_seen"]),
@@ -696,9 +717,10 @@ fn render_apps(value: &serde_json::Value) -> String {
 
 fn render_app_info(app: &serde_json::Value, destinations: &serde_json::Value) -> String {
     let mut out = format!(
-        "{}\n  kind:        {}\n  executable:  {}\n  package:     {}\n  first seen:  {}\n  last seen:   {}\n  connections: {}\n",
+        "{}\n  kind:        {}\n  mode:        {}\n  executable:  {}\n  package:     {}\n  first seen:  {}\n  last seen:   {}\n  connections: {}\n",
         text(&app["key"]),
         text(&app["kind"]),
+        text(&app["mode"]),
         text(&app["exe_path"]),
         text(&app["package"]),
         text(&app["first_seen"]),

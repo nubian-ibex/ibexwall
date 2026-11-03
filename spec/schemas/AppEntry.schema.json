@@ -37,6 +37,10 @@
     "last_seen": {
       "type": "string"
     },
+    "mode": {
+      "description": "`allow`, `monitor`, `ask` or `block`.",
+      "type": "string"
+    },
     "package": {
       "default": null,
       "type": [
@@ -52,7 +56,8 @@
     "first_seen",
     "last_seen",
     "connections",
-    "destinations"
+    "destinations",
+    "mode"
   ],
   "title": "AppEntry",
   "type": "object"

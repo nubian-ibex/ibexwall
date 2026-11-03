@@ -204,6 +204,10 @@ export interface AppEntry {
    */
   kind: string;
   last_seen: string;
+  /**
+   * `allow`, `monitor`, `ask` or `block`.
+   */
+  mode: string;
   package?: string | null;
 }
 export interface BlockedConnectionsSummary {

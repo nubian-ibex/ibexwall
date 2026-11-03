@@ -93,6 +93,26 @@ impl ExeRule {
         })
     }
 
+    /// Matches `path` against a rule in its wire form without building the
+    /// struct (the eBPF stack is 512 bytes and a copy of the rule is 98).
+    /// `None` for a free slot, a corrupt one, or a path that does not match.
+    pub fn verdict_if_wire_matches(bytes: &[u8], path: &[u8]) -> Option<u8> {
+        if bytes.len() != EXE_RULE_LEN {
+            return None;
+        }
+        let len = bytes[1] as usize;
+        if len == 0 || len > EXE_RULE_PREFIX_LEN || path.len() < len {
+            return None;
+        }
+        if bytes[2..2 + len] != path[..len] {
+            return None;
+        }
+        if bytes[0] & EXE_RULE_EXACT != 0 && path.get(len).is_some_and(|next| *next != 0) {
+            return None;
+        }
+        Some(bytes[0] & !EXE_RULE_EXACT)
+    }
+
     /// The verdict without the match-kind flag.
     pub fn verdict(&self) -> u8 {
         self.verdict & !EXE_RULE_EXACT
@@ -299,5 +319,35 @@ mod tests {
         // The same text as a plain prefix rule matches both.
         let prefix = rule("/usr/bin/curl", verdict::BLOCK);
         assert!(prefix.matches(&longer));
+    }
+
+    #[test]
+    fn matching_the_wire_form_agrees_with_the_struct() {
+        let mut exact = rule("/usr/bin/curl", verdict::BLOCK);
+        exact.verdict |= EXE_RULE_EXACT;
+        let prefix = rule("/opt/", verdict::ASK);
+        let free = rule("", verdict::ALLOW);
+        let mut padded = [0u8; EXE_LEN];
+        for path in [
+            "/usr/bin/curl",
+            "/usr/bin/curl-x",
+            "/opt/app/x",
+            "/bin/ls",
+            "",
+        ] {
+            padded.fill(0);
+            padded[..path.len()].copy_from_slice(path.as_bytes());
+            for r in [exact, prefix, free] {
+                let mut wire = [0u8; EXE_RULE_LEN];
+                r.write_to(&mut wire);
+                let expected = (r.len != 0 && r.matches(&padded)).then(|| r.verdict());
+                assert_eq!(
+                    ExeRule::verdict_if_wire_matches(&wire, &padded),
+                    expected,
+                    "{path}"
+                );
+            }
+        }
+        assert_eq!(ExeRule::verdict_if_wire_matches(&[0u8; 5], b"/x"), None);
     }
 }

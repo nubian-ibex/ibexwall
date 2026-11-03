@@ -110,7 +110,7 @@ pub fn run(distro: &str, phase: Option<&str>) -> Result<()> {
         Some("f3") => crate::f3::run(&vm, &workspace, entry.install),
         Some("f4") => crate::f4::run(&vm, &workspace, entry.install),
         Some("f5") => crate::f5::run(&vm, &workspace, entry.install),
-        Some("f6") => crate::f6::run(&vm, &workspace),
+        Some("f6") => crate::f6::run(&vm, &workspace, entry.install),
         Some("fixtures") => crate::fixtures::run(&vm, &workspace, entry.id),
         Some(other) => {
             bail!("unknown phase `{other}` (supported: f0, f1, f2, f3, f4, f5, f6, fixtures)")

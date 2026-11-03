@@ -153,6 +153,7 @@ const app = (key: string, kind: string, id: string, over: Partial<AppEntry> = {}
   last_seen: ago(2),
   connections: 40,
   destinations: 3,
+  mode: 'monitor',
   ...over,
 });
 

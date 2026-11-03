@@ -175,6 +175,21 @@ async fn dispatch(
             "monitor": core.monitor.status(),
             "apps": crate::monitor::list_apps(core).map_err(internal)?,
         }))),
+        "SetAppMode" => {
+            let app = str_field(&parameters, "app")?;
+            let mode = str_field(&parameters, "mode")?;
+            let mode = ibexwall_apps::policy::Mode::parse(&mode)
+                .ok_or_else(|| invalid_argument("mode", "allow, monitor, ask or block".into()))?;
+            crate::monitor::set_app_mode(core, &app, mode).map_err(internal)?;
+            core.audit(
+                "user",
+                "core",
+                None,
+                "",
+                &format!("app {app} mode={}", mode.name()),
+            );
+            Ok(Reply::result(json!({})))
+        }
         "GetAppDestinations" => {
             let app = str_field(&parameters, "app")?;
             Ok(Reply::result(json!({
@@ -305,6 +320,7 @@ fn polkit_action(method: &str) -> Option<&'static str> {
             names::POLKIT_READ
         }
         "SetPluginEnabled" => names::POLKIT_PLUGINS_MANAGE,
+        "SetAppMode" => names::POLKIT_APPS_DECIDE,
         "PlanChange" => names::POLKIT_PLAN,
         "Apply" | "Confirm" => names::POLKIT_APPLY,
         "Rollback" => names::POLKIT_ROLLBACK,

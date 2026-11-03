@@ -82,8 +82,21 @@ enum Command {
         #[arg(long)]
         follow: bool,
     },
+    /// Applications seen by the connection monitor.
+    Apps {
+        #[command(subcommand)]
+        action: AppsAction,
+    },
     /// Interactive terminal UI.
     Tui,
+}
+
+#[derive(Subcommand)]
+enum AppsAction {
+    /// Every application seen, most recently active first.
+    List,
+    /// One application and where it connects (key from `apps list`).
+    Info { app: String },
 }
 
 #[derive(Subcommand)]
@@ -188,6 +201,7 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
             Ok(Finish::Done)
         }
         Command::Plugins { action } => plugins(client, action, json).await,
+        Command::Apps { action } => apps(client, action, json).await,
         Command::Check { plugin } => {
             let params = serde_json::json!({ "plugin": plugin });
             let value = client.call("com.ibexwall.Core.RunChecks", params).await?;
@@ -382,6 +396,137 @@ async fn plugins(
     }
 }
 
+async fn apps(
+    client: &mut ibexwall_varlink::Client,
+    action: &AppsAction,
+    json: bool,
+) -> Result<Finish, CliError> {
+    match action {
+        AppsAction::List => {
+            let value = client
+                .call("com.ibexwall.Core.ListApps", serde_json::json!({}))
+                .await?;
+            if json {
+                emit(value, json);
+            } else {
+                print!("{}", render_apps(&value));
+            }
+        }
+        AppsAction::Info { app } => {
+            let listed = client
+                .call("com.ibexwall.Core.ListApps", serde_json::json!({}))
+                .await?;
+            let destinations = client
+                .call(
+                    "com.ibexwall.Core.GetAppDestinations",
+                    serde_json::json!({ "app": app }),
+                )
+                .await?;
+            let entry = listed["apps"]
+                .as_array()
+                .and_then(|apps| apps.iter().find(|a| a["key"] == app.as_str()))
+                .cloned()
+                .ok_or_else(|| CliError::Other(anyhow::anyhow!("no such app: {}", clean(app))))?;
+            if json {
+                emit(
+                    serde_json::json!({ "app": entry, "destinations": destinations["destinations"] }),
+                    json,
+                );
+            } else {
+                print!("{}", render_app_info(&entry, &destinations["destinations"]));
+            }
+        }
+    }
+    Ok(Finish::Done)
+}
+
+/// Process names, paths and domains come from other programs: a terminal
+/// must never see their control characters (escape sequences).
+fn clean(text: &str) -> String {
+    text.chars()
+        .map(|c| if c.is_control() { '?' } else { c })
+        .collect()
+}
+
+fn text(value: &serde_json::Value) -> String {
+    clean(value.as_str().unwrap_or("-"))
+}
+
+fn render_apps(value: &serde_json::Value) -> String {
+    let monitor = &value["monitor"];
+    let mut out = String::new();
+    if monitor["running"].as_bool().unwrap_or(false) {
+        match monitor["reason"].as_str() {
+            Some(reason) => out.push_str(&format!("monitor: running ({})\n", clean(reason))),
+            None => out.push_str("monitor: running\n"),
+        }
+    } else {
+        out.push_str(&format!(
+            "monitor: off ({})\n",
+            clean(monitor["reason"].as_str().unwrap_or("unknown"))
+        ));
+    }
+    let apps = value["apps"].as_array().cloned().unwrap_or_default();
+    if apps.is_empty() {
+        out.push_str("no applications seen yet\n");
+        return out;
+    }
+    let key_width = apps
+        .iter()
+        .map(|app| text(&app["key"]).chars().count())
+        .max()
+        .unwrap_or(3)
+        .max(3);
+    out.push_str(&format!(
+        "{:<key_width$}  {:<14}  {:>6}  {:>5}  {}\n",
+        "APP", "KIND", "CONNS", "DESTS", "LAST SEEN"
+    ));
+    for app in &apps {
+        out.push_str(&format!(
+            "{:<key_width$}  {:<14}  {:>6}  {:>5}  {}\n",
+            text(&app["key"]),
+            text(&app["kind"]),
+            app["connections"].as_u64().unwrap_or(0),
+            app["destinations"].as_u64().unwrap_or(0),
+            text(&app["last_seen"]),
+        ));
+    }
+    out
+}
+
+fn render_app_info(app: &serde_json::Value, destinations: &serde_json::Value) -> String {
+    let mut out = format!(
+        "{}\n  kind:        {}\n  executable:  {}\n  package:     {}\n  first seen:  {}\n  last seen:   {}\n  connections: {}\n",
+        text(&app["key"]),
+        text(&app["kind"]),
+        text(&app["exe_path"]),
+        text(&app["package"]),
+        text(&app["first_seen"]),
+        text(&app["last_seen"]),
+        app["connections"].as_u64().unwrap_or(0),
+    );
+    let rows = destinations.as_array().cloned().unwrap_or_default();
+    out.push_str("  destinations:\n");
+    if rows.is_empty() {
+        out.push_str("    none\n");
+    }
+    for row in rows {
+        let label = if row["resolved"].as_bool().unwrap_or(false) {
+            ""
+        } else {
+            "  (no domain)"
+        };
+        out.push_str(&format!(
+            "    {}:{}  x{}  last {}{label}\n",
+            text(&row["destination"]),
+            row["port"].as_u64().unwrap_or(0),
+            row["count"].as_u64().unwrap_or(0),
+            text(&row["last_seen"]),
+        ));
+    }
+    out
+}
+
 fn emit(value: serde_json::Value, json: bool) {
     if json {
         println!(
@@ -418,4 +563,54 @@ fn report_varlink(err: &VarlinkError, json: bool) {
 #[allow(dead_code)]
 fn default_socket() -> PathBuf {
     names::core_socket()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn control_characters_never_reach_the_terminal() {
+        assert_eq!(clean("evil\u{1b}[31m\nname"), "evil?[31m?name");
+        let out = render_apps(&json!({
+            "monitor": {"running": true, "reason": null},
+            "apps": [{
+                "key": "cli:/tmp/\u{1b}]0;pwned\u{7}",
+                "kind": "cli", "connections": 3, "destinations": 1,
+                "last_seen": "2026-11-03T10:00:00Z"
+            }]
+        }));
+        assert!(!out.contains('\u{1b}') && !out.contains('\u{7}'), "{out:?}");
+        assert!(out.contains("cli:/tmp/?]0;pwned?"));
+    }
+
+    #[test]
+    fn the_list_says_whether_the_monitor_is_off_and_why() {
+        let off = render_apps(&json!({
+            "monitor": {"running": false, "reason": "waiting for ibexwall-monitor"},
+            "apps": []
+        }));
+        assert!(off.starts_with("monitor: off (waiting for ibexwall-monitor)"));
+        assert!(off.contains("no applications seen yet"));
+        let degraded = render_apps(&json!({
+            "monitor": {"running": true, "reason": "kernel-side exec capture is off"},
+            "apps": []
+        }));
+        assert!(degraded.starts_with("monitor: running (kernel-side exec capture is off)"));
+    }
+
+    #[test]
+    fn info_marks_destinations_without_a_domain() {
+        let out = render_app_info(
+            &json!({"key": "cli:/usr/bin/curl", "kind": "cli", "exe_path": "/usr/bin/curl",
+                    "package": "curl", "first_seen": "a", "last_seen": "b", "connections": 2}),
+            &json!([
+                {"destination": "example.com", "resolved": true, "port": 443, "count": 2, "last_seen": "b"},
+                {"destination": "203.0.113.7", "resolved": false, "port": 80, "count": 1, "last_seen": "b"}
+            ]),
+        );
+        assert!(out.contains("example.com:443  x2"));
+        assert!(out.contains("203.0.113.7:80  x1  last b  (no domain)"));
+    }
 }

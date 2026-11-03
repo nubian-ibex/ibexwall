@@ -1,0 +1,18 @@
+[package]
+name = "ibexwall-apps"
+description = "Per-app traffic rollups, IP-to-domain correlation and app alerts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+ibexwall-identity.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

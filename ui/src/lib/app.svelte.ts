@@ -1,4 +1,4 @@
-import type { Finding, PluginInfo, Posture } from '../gen/contracts';
+import type { Finding, PluginInfo, Posture, Prompt } from '../gen/contracts';
 import { FixtureTransport, type Scenario } from './fixtures';
 import { insideTauri, TauriTransport } from './tauri-transport';
 import { TransportError, type Transport } from './transport';
@@ -14,12 +14,14 @@ class AppState {
   // design work) uses the fixture core.
   transport: Transport = insideTauri()
     ? new TauriTransport()
-    : new FixtureTransport(initialScenario());
+    : new FixtureTransport(initialScenario(), 0, wantsPrompt());
   route = $state<Route>('overview');
   posture = $state<Load<Posture>>({ status: 'loading' });
   findings = $state<Load<Finding[]>>({ status: 'loading' });
   plugins = $state<Load<PluginInfo[]>>({ status: 'loading' });
   checking = $state(false);
+  /** Connections held in Ask mode, waiting for an answer. */
+  prompts = $state<Prompt[]>([]);
 
   useTransport(transport: Transport) {
     this.transport = transport;
@@ -43,6 +45,16 @@ class AppState {
         (v) => (this.plugins = v),
       ),
     ]);
+  }
+
+  /** Polls the open questions; failures leave the list as it was. */
+  async refreshPrompts() {
+    try {
+      this.prompts = await this.transport.listPrompts();
+    } catch {
+      // The core may be starting or the user may lack permission; the
+      // other screens already say so.
+    }
   }
 
   /** "Check now": run the checks, then reload what depends on them. */
@@ -76,6 +88,11 @@ function initialScenario(): Scenario {
   const wanted = new URLSearchParams(globalThis.location?.search ?? '').get('scenario');
   const known: Scenario[] = ['attention', 'protected', 'empty', 'error', 'denied'];
   return known.find((s) => s === wanted) ?? 'attention';
+}
+
+/** `?prompts=1` seeds the fixture core with one held connection. */
+function wantsPrompt(): boolean {
+  return new URLSearchParams(globalThis.location?.search ?? '').get('prompts') === '1';
 }
 
 export const app = new AppState();

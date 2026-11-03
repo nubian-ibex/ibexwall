@@ -9,6 +9,7 @@ import {
   isActive,
   isNew,
   kindKey,
+  modeAvailable,
 } from './apps';
 
 const NOW = new Date('2026-11-03T12:00:00Z');
@@ -25,6 +26,25 @@ const app = (over: Partial<AppEntry>): AppEntry => ({
   destinations: 2,
   mode: 'monitor',
   ...over,
+});
+
+describe('modeAvailable', () => {
+  const running = { running: true, reason: null };
+
+  it('needs the monitor running', () => {
+    expect(modeAvailable(app({}), null)).toBe(false);
+    expect(modeAvailable(app({}), { running: false, reason: 'off' })).toBe(false);
+    expect(modeAvailable(app({}), running)).toBe(true);
+  });
+
+  it('withholds executable-matched apps when the kernel gives no exec tracing', () => {
+    const limited = { running: true, reason: 'kernel-side exec capture is off (x)' };
+    expect(modeAvailable(app({ kind: 'cli' }), limited)).toBe(false);
+    // Services, Flatpaks, snaps and containers are matched by cgroup.
+    for (const kind of ['flatpak', 'snap', 'system_service', 'container']) {
+      expect(modeAvailable(app({ kind }), limited)).toBe(true);
+    }
+  });
 });
 
 describe('displayName', () => {

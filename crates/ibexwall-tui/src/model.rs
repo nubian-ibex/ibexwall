@@ -57,9 +57,19 @@ pub fn sanitize(text: &str) -> String {
 pub struct AppRow {
     pub key: String,
     pub kind: String,
+    pub mode: String,
     pub connections: u64,
     pub destinations: u64,
     pub last_seen: String,
+}
+
+/// A connection held in Ask mode.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PromptRow {
+    pub id: String,
+    pub app: String,
+    pub destination: String,
+    pub port: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,12 +98,31 @@ pub struct AppModel {
     /// `None` until the daemon answered; then whether the monitor runs and why not.
     pub monitor: Option<(bool, String)>,
     pub apps: Vec<AppRow>,
+    /// Row the cursor is on in the Apps tab.
+    pub selected: usize,
+    pub prompts: Vec<PromptRow>,
+    /// The result of the last action, shown under the list.
+    pub notice: Option<String>,
     pub firewall: Vec<String>,
     pub plugins: Vec<PluginRow>,
     pub history: Vec<HistoryRow>,
 }
 
 impl AppModel {
+    /// Moves the cursor, staying inside the list.
+    pub fn move_selection(&mut self, down: bool) {
+        let last = self.apps.len().saturating_sub(1);
+        self.selected = if down {
+            (self.selected + 1).min(last)
+        } else {
+            self.selected.saturating_sub(1)
+        };
+    }
+
+    pub fn selected_app(&self) -> Option<&AppRow> {
+        self.apps.get(self.selected)
+    }
+
     /// One line of the header: the score, or honesty about not having one.
     pub fn headline(&self) -> String {
         if self.loading {

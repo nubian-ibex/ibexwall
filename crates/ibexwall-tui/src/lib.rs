@@ -24,6 +24,12 @@ pub enum Key {
     NextTab,
     PrevTab,
     Refresh,
+    Up,
+    Down,
+    /// Set the selected app's mode: allow, monitor, ask or block.
+    Mode(&'static str),
+    /// Answer the first waiting connection, this time only.
+    Answer(bool),
     Other,
 }
 
@@ -33,6 +39,14 @@ pub fn key_from(code: crossterm::event::KeyCode, ch: char) -> Key {
         (crossterm::event::KeyCode::Char('j') | crossterm::event::KeyCode::Tab, _) => Key::NextTab,
         (crossterm::event::KeyCode::Char('k'), _) => Key::PrevTab,
         (crossterm::event::KeyCode::Char('r'), _) => Key::Refresh,
+        (crossterm::event::KeyCode::Up, _) => Key::Up,
+        (crossterm::event::KeyCode::Down, _) => Key::Down,
+        (crossterm::event::KeyCode::Char('1'), _) => Key::Mode("allow"),
+        (crossterm::event::KeyCode::Char('2'), _) => Key::Mode("monitor"),
+        (crossterm::event::KeyCode::Char('3'), _) => Key::Mode("ask"),
+        (crossterm::event::KeyCode::Char('4'), _) => Key::Mode("block"),
+        (crossterm::event::KeyCode::Char('y'), _) => Key::Answer(true),
+        (crossterm::event::KeyCode::Char('b'), _) => Key::Answer(false),
         _ => Key::Other,
     }
 }
@@ -87,9 +101,64 @@ fn event_loop(terminal: &mut ratatui::DefaultTerminal, socket: &Path) -> Result<
                     model.error = Some(format!("{err:#}"));
                 }
             }
+            Some(Key::Up) => model.move_selection(false),
+            Some(Key::Down) => model.move_selection(true),
+            Some(Key::Mode(mode)) => {
+                let result = runtime.block_on(set_mode(socket, &model, mode));
+                model.notice = Some(match result {
+                    Ok(text) => text,
+                    Err(err) => format!("not changed: {err:#}"),
+                });
+                let _ = runtime.block_on(refresh(socket, &mut model));
+            }
+            Some(Key::Answer(allow)) => {
+                let result = runtime.block_on(answer(socket, &model, allow));
+                model.notice = Some(match result {
+                    Ok(text) => text,
+                    Err(err) => format!("not answered: {err:#}"),
+                });
+                let _ = runtime.block_on(refresh(socket, &mut model));
+            }
             Some(Key::Other) => {}
         }
     }
+}
+
+/// Sets the mode of the app under the cursor (Apps tab only).
+async fn set_mode(socket: &Path, model: &AppModel, mode: &str) -> Result<String> {
+    if model.tab != Tab::Apps {
+        anyhow::bail!("open the Apps tab first");
+    }
+    let Some(app) = model.selected_app() else {
+        anyhow::bail!("no app selected");
+    };
+    let mut client = Client::connect(socket).await?;
+    client
+        .call(
+            "com.ibexwall.Core.SetAppMode",
+            serde_json::json!({ "app": app.key, "mode": mode }),
+        )
+        .await?;
+    Ok(format!("{}: {mode}", app.key))
+}
+
+/// Answers the first waiting connection for this time only.
+async fn answer(socket: &Path, model: &AppModel, allow: bool) -> Result<String> {
+    let Some(prompt) = model.prompts.first() else {
+        anyhow::bail!("no connection is waiting");
+    };
+    let decision = if allow { "allow" } else { "block" };
+    let mut client = Client::connect(socket).await?;
+    client
+        .call(
+            "com.ibexwall.Core.AnswerPrompt",
+            serde_json::json!({ "id": prompt.id, "decision": decision, "scope": "once" }),
+        )
+        .await?;
+    Ok(format!(
+        "{}: {decision} {}:{}",
+        prompt.app, prompt.destination, prompt.port
+    ))
 }
 
 /// Reloads everything for the active tab (and always the overview data).
@@ -120,9 +189,25 @@ async fn refresh(socket: &Path, model: &mut AppModel) -> Result<()> {
         model.apps.push(crate::model::AppRow {
             key: text("key"),
             kind: text("kind"),
+            mode: text("mode"),
             connections: app["connections"].as_u64().unwrap_or(0),
             destinations: app["destinations"].as_u64().unwrap_or(0),
             last_seen: text("last_seen"),
+        });
+    }
+
+    model.selected = model.selected.min(model.apps.len().saturating_sub(1));
+    let prompts = client
+        .call("com.ibexwall.Core.ListPrompts", serde_json::json!({}))
+        .await?;
+    model.prompts.clear();
+    for prompt in prompts["prompts"].as_array().unwrap_or(&Vec::new()).iter() {
+        let text = |field: &str| crate::model::sanitize(prompt[field].as_str().unwrap_or("-"));
+        model.prompts.push(crate::model::PromptRow {
+            id: text("id"),
+            app: text("app"),
+            destination: text("destination"),
+            port: prompt["port"].as_u64().unwrap_or(0),
         });
     }
 
@@ -169,7 +254,12 @@ mod tests {
         assert_eq!(key_from(KeyCode::Tab, '\0'), Key::NextTab);
         assert_eq!(key_from(KeyCode::Char('k'), 'k'), Key::PrevTab);
         assert_eq!(key_from(KeyCode::Char('r'), 'r'), Key::Refresh);
-        assert_eq!(key_from(KeyCode::Down, '\0'), Key::Other);
+        assert_eq!(key_from(KeyCode::Down, '\0'), Key::Down);
+        assert_eq!(key_from(KeyCode::Up, '\0'), Key::Up);
+        assert_eq!(key_from(KeyCode::Char('4'), '4'), Key::Mode("block"));
+        assert_eq!(key_from(KeyCode::Char('y'), 'y'), Key::Answer(true));
+        assert_eq!(key_from(KeyCode::Char('b'), 'b'), Key::Answer(false));
+        assert_eq!(key_from(KeyCode::Char('x'), 'x'), Key::Other);
     }
 
     #[test]

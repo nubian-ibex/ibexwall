@@ -107,6 +107,25 @@ export function filterApps(
   });
 }
 
+export type NetMode = 'allow' | 'monitor' | 'ask' | 'block';
+
+/** Kinds the kernel recognises by their cgroup; the rest by executable. */
+const CGROUP_KINDS = new Set(['flatpak', 'snap', 'system_service', 'container']);
+
+/**
+ * Whether a mode can be chosen for an app. Needs the monitor running; apps
+ * identified by their executable also need the kernel's exec tracing, which
+ * some kernels withhold (the monitor says so in its reason).
+ */
+export function modeAvailable(
+  app: AppEntry,
+  monitor: { running: boolean; reason?: string | null } | null,
+): boolean {
+  if (!monitor?.running) return false;
+  if (CGROUP_KINDS.has(app.kind)) return true;
+  return !(monitor.reason ?? '').includes('exec capture');
+}
+
 /** Blocking is only offered where it works: Flatpak, system-wide. */
 export function canBlock(app: AppEntry): boolean {
   return app.kind === 'flatpak';

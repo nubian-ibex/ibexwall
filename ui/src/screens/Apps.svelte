@@ -10,7 +10,9 @@
     initialOf,
     isNew,
     kindKey,
+    modeAvailable,
     type AppFilter,
+    type NetMode,
   } from '../lib/apps';
   import { i18n, t } from '../lib/i18n.svelte';
   import { relativeTime } from '../lib/time';
@@ -37,6 +39,7 @@
   let blockBusy = $state(false);
   let blockFailure = $state(false);
   let now = $state(new Date());
+  let modeFailure = $state<string | null>(null);
 
   async function load() {
     try {
@@ -87,6 +90,17 @@
       current = false;
     };
   });
+
+  async function chooseMode(entry: AppEntry, mode: NetMode) {
+    if (entry.mode === mode) return;
+    modeFailure = null;
+    try {
+      await app.transport.setAppMode(entry.key, mode);
+      await load();
+    } catch {
+      modeFailure = entry.key;
+    }
+  }
 
   function select(entry: AppEntry) {
     selectedKey = entry.key;
@@ -210,26 +224,24 @@
                   aria-label={t('apps-mode-group', { app: displayName(entry) })}
                 >
                   {#each MODES as mode (mode)}
-                    {@const functional =
-                      mode === 'monitor' || (mode === 'block' && canBlock(entry))}
+                    {@const functional = modeAvailable(entry, monitor)}
                     <button
                       type="button"
                       role="radio"
                       class="seg seg-{mode}"
-                      aria-checked={mode === 'monitor'}
+                      aria-checked={entry.mode === mode}
                       disabled={!functional}
-                      title={functional ? undefined : t('apps-mode-later')}
-                      onclick={() => {
-                        if (mode === 'block') {
-                          select(entry);
-                        }
-                      }}
+                      title={functional ? undefined : t('apps-mode-unavailable')}
+                      onclick={() => void chooseMode(entry, mode)}
                     >
                       {t(`apps-mode-${mode}`)}
                     </button>
                   {/each}
                 </div>
               </div>
+              {#if modeFailure === entry.key}
+                <p class="error small pad" role="alert">{t('apps-mode-failed')}</p>
+              {/if}
             </li>
           {/each}
         </ul>

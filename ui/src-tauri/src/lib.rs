@@ -48,12 +48,37 @@ command!(list_plugins, "ListPlugins");
 command!(list_findings, "ListFindings");
 command!(run_checks, "RunChecks");
 command!(history, "History");
+command!(list_prompts, "ListPrompts");
 
 #[tauri::command]
 async fn get_app_destinations(app: String) -> Result<Value, Value> {
     core("GetAppDestinations", json!({ "app": app }))
         .await
         .map_err(|e| err_text(&e))
+}
+
+#[tauri::command]
+async fn set_app_mode(app: String, mode: String) -> Result<Value, Value> {
+    core("SetAppMode", json!({ "app": app, "mode": mode }))
+        .await
+        .map_err(|e| err_text(&e))
+}
+
+#[tauri::command]
+async fn set_default_mode(mode: String) -> Result<Value, Value> {
+    core("SetDefaultMode", json!({ "mode": mode }))
+        .await
+        .map_err(|e| err_text(&e))
+}
+
+#[tauri::command]
+async fn answer_prompt(id: String, decision: String, scope: String) -> Result<Value, Value> {
+    core(
+        "AnswerPrompt",
+        json!({ "id": id, "decision": decision, "scope": scope }),
+    )
+    .await
+    .map_err(|e| err_text(&e))
 }
 
 #[tauri::command]
@@ -168,6 +193,10 @@ pub fn run() {
             list_apps,
             get_firewall,
             get_app_destinations,
+            set_app_mode,
+            set_default_mode,
+            list_prompts,
+            answer_prompt,
             list_plugins,
             list_findings,
             run_checks,

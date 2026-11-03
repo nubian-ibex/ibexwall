@@ -4,6 +4,7 @@
   import { i18n } from './lib/i18n.svelte';
   import { applyTheme, savedTheme } from './lib/theme';
   import AppShell from './components/AppShell.svelte';
+  import PromptDialog from './components/PromptDialog.svelte';
   import Apps from './screens/Apps.svelte';
   import Dns from './screens/Dns.svelte';
   import Firewall from './screens/Firewall.svelte';
@@ -17,6 +18,10 @@
     document.documentElement.lang = i18n.locale;
     applyTheme(savedTheme());
     app.refresh();
+    // Held connections are time-limited, so ask often.
+    void app.refreshPrompts();
+    const timer = setInterval(() => void app.refreshPrompts(), 2000);
+    return () => clearInterval(timer);
   });
 </script>
 
@@ -39,3 +44,4 @@
     <Settings />
   {/if}
 </AppShell>
+<PromptDialog />

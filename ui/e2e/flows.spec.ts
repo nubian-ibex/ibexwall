@@ -87,3 +87,21 @@ test('firewall: an open network is called out', async ({ page }) => {
   await expect(page.getByText('Cafe WiFi')).toBeVisible();
   await expect(page.getByText(/this network is open/i)).toBeVisible();
 });
+
+test('ask: a held connection is answered from the dialog', async ({ page }) => {
+  await page.goto('/?scenario=attention&prompts=1');
+  const dialog = page.getByRole('alertdialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('heading', { name: /wants to connect/i })).toBeVisible();
+  await dialog.getByRole('radio', { name: /this destination/i }).check();
+  await dialog.getByRole('button', { name: /^allow$/i }).click();
+  await expect(dialog).toBeHidden();
+});
+
+test('apps: a mode chosen in the list stays chosen', async ({ page }) => {
+  await page.goto('/?scenario=attention');
+  await page.getByRole('button', { name: /apps and network/i }).click();
+  const firefox = page.getByRole('radiogroup', { name: /network mode for firefox/i });
+  await firefox.getByRole('radio', { name: 'Ask' }).click();
+  await expect(firefox.getByRole('radio', { name: 'Ask' })).toBeChecked();
+});

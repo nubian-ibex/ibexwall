@@ -1,0 +1,25 @@
+[package]
+name = "ibexwall-plugin-firewall"
+description = "net.firewall plugin: inbound firewall through firewalld, ufw or nftables"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "ibexwall-plugin-firewall"
+path = "main.rs"
+
+[dependencies]
+ibexwall-firewall.workspace = true
+ibexwall-proto.workspace = true
+ibexwall-sdk.workspace = true
+ibexwall-sys.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true

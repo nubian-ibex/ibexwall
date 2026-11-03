@@ -133,14 +133,18 @@ pub const ARTIFACT_NM_DNS: &str = "/etc/NetworkManager/conf.d/50-ibexwall-dns.co
 /// by `ibexwall-dns` (canonical path; the engine translates under a
 /// sandbox root).
 pub const ARTIFACT_DNS_SETTINGS: &str = "/etc/ibexwall/dns/resolver.json";
+/// The inbound rules `net.firewall` keeps when it owns the firewall itself
+/// (no firewalld or ufw): the ports it allows.
+pub const ARTIFACT_FIREWALL_SETTINGS: &str = "/etc/ibexwall/firewall/inbound.json";
 
 /// Every system artifact path IbexWall is allowed to create.
-pub fn artifact_paths() -> [&'static str; 4] {
+pub fn artifact_paths() -> [&'static str; 5] {
     [
         ARTIFACT_SYSCTL,
         ARTIFACT_RESOLVED,
         ARTIFACT_NM_DNS,
         ARTIFACT_DNS_SETTINGS,
+        ARTIFACT_FIREWALL_SETTINGS,
     ]
 }
 
@@ -148,6 +152,8 @@ pub fn artifact_paths() -> [&'static str; 4] {
 pub const NFT_TABLE: &str = "ibexwall";
 /// The secure DNS enforcement chain (prefix `net_dns` per the plugin id).
 pub const DNS_NFT_CHAIN: &str = "net_dns_guard";
+/// The basic inbound protection chain (prefix `net_firewall`).
+pub const FIREWALL_NFT_CHAIN: &str = "net_firewall_input";
 
 // Local DNS resolver defaults (configurable).
 pub const DNS_BIND_ADDR: &str = "127.0.0.153";

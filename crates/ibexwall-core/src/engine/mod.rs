@@ -242,6 +242,51 @@ impl Engine {
         Ok(manifest)
     }
 
+    /// Writes the chains of our table, as they are now, to `file`, so they
+    /// come back after a reboot (nftables keeps nothing across one).
+    /// Atomic: a crash leaves the previous file or the new one.
+    pub fn persist_nft(&self, file: &Path) -> Result<()> {
+        if !self.sys.allow_system_executors {
+            return Ok(());
+        }
+        let mut chains = serde_json::Map::new();
+        for name in self.sys.nft.chains()? {
+            if let Some(definition) = self.sys.nft.capture(&name)? {
+                chains.insert(name, definition);
+            }
+        }
+        if chains.is_empty() {
+            return match std::fs::remove_file(file) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
+                _ => Ok(()),
+            };
+        }
+        let temporary = file.with_extension("tmp");
+        std::fs::write(&temporary, serde_json::to_vec_pretty(&chains)?)?;
+        std::fs::rename(&temporary, file)?;
+        Ok(())
+    }
+
+    /// Puts the persisted chains back, leaving alone any that already
+    /// exist. Returns how many were restored.
+    pub fn restore_nft(&self, file: &Path) -> Result<usize> {
+        if !self.sys.allow_system_executors {
+            return Ok(0);
+        }
+        let Ok(bytes) = std::fs::read(file) else {
+            return Ok(0);
+        };
+        let chains: serde_json::Map<String, serde_json::Value> = serde_json::from_slice(&bytes)?;
+        let mut restored = 0;
+        for (name, definition) in chains {
+            if self.sys.nft.capture(&name)?.is_none() {
+                self.sys.nft.restore(&name, Some(&definition))?;
+                restored += 1;
+            }
+        }
+        Ok(restored)
+    }
+
     /// Executes ops in order. In production (root, systemd), file-touching
     /// transactions run inside the transient executor unit (ADR-0026);
     /// otherwise in-process (sandbox and tests).
@@ -689,6 +734,51 @@ mod tests {
         )];
         let error = rig.engine.execute(None, &ops).unwrap_err();
         assert!(format!("{error:#}").contains("firewall.adapter"));
+    }
+
+    #[test]
+    fn nft_chains_survive_a_restart_through_the_persisted_file() {
+        let rig = rig("nfp", true);
+        let file = rig.dir.join("nft-active.json");
+        // Nothing active: nothing to write, and a stale file is removed.
+        std::fs::write(&file, b"{}").unwrap();
+        rig.engine.persist_nft(&file).unwrap();
+        assert!(!file.exists());
+
+        let fragment = serde_json::json!({ "chains": [
+            { "name": "net_firewall_input", "rules": [] },
+            { "name": "net_dns_guard", "rules": [] },
+        ] });
+        rig.engine
+            .execute(None, &[Op::NftFragment { fragment }])
+            .unwrap();
+        rig.engine.persist_nft(&file).unwrap();
+        assert!(file.exists());
+
+        // A reboot empties nftables; the file brings the chains back.
+        rig.nft.restore("net_firewall_input", None).unwrap();
+        rig.nft.restore("net_dns_guard", None).unwrap();
+        assert_eq!(rig.engine.restore_nft(&file).unwrap(), 2);
+        assert!(rig.nft.has("net_firewall_input") && rig.nft.has("net_dns_guard"));
+        // Chains that are already there are left alone.
+        assert_eq!(rig.engine.restore_nft(&file).unwrap(), 0);
+        // No file, no problem.
+        assert_eq!(
+            rig.engine
+                .restore_nft(&rig.dir.join("missing.json"))
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn a_sandbox_never_persists_or_restores_chains() {
+        let rig = rig("nfs", false);
+        let file = rig.dir.join("nft-active.json");
+        rig.engine.persist_nft(&file).unwrap();
+        assert!(!file.exists());
+        std::fs::write(&file, b"{\"x\": {}}").unwrap();
+        assert_eq!(rig.engine.restore_nft(&file).unwrap(), 0);
     }
 
     #[test]

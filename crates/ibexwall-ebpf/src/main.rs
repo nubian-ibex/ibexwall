@@ -58,20 +58,21 @@ fn remember_exec(ctx: &TracePointContext) -> Result<(), i32> {
     exes.insert(&pid, &path, 0)
 }
 
+/// A cgroup/connect program lets the call proceed when it returns 1 and
+/// fails it with EPERM when it returns 0. This monitor only observes, so
+/// it returns 1 on every path, including when recording fails.
+const ALLOW: i32 = 1;
+
 #[cgroup_sock_addr(connect4)]
 pub fn ibexwall_connect4(ctx: SockAddrContext) -> i32 {
-    match record(&ctx, 4) {
-        Ok(()) => 0,
-        Err(code) => code,
-    }
+    let _ = record(&ctx, 4);
+    ALLOW
 }
 
 #[cgroup_sock_addr(connect6)]
 pub fn ibexwall_connect6(ctx: SockAddrContext) -> i32 {
-    match record(&ctx, 6) {
-        Ok(()) => 0,
-        Err(code) => code,
-    }
+    let _ = record(&ctx, 6);
+    ALLOW
 }
 
 /// Raw kernel-side fields, exactly as the hook provides them: the IP and

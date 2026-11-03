@@ -15,7 +15,7 @@ tracepoints, or LSM hooks.
 ## Decision
 
 cgroup/connect4 and connect6 on aya 0.16 / aya-ebpf 0.3, one program per
-family, always returning 0 (monitor only), submitting a fixed 52-byte
+family, always returning 1 (allow; see the correction below), submitting a fixed 52-byte
 little-endian record to one ring buffer; the loader polls the map fd so
 events are drained as they happen.
 
@@ -52,3 +52,14 @@ events are drained as they happen.
   runtime (env `IBEXWALL_EBPF`, `/usr/lib/ibexwall/ebpf`, `target/bpf`).
 - `bpf-linker` is the upstream prebuilt binary in `~/.local/bin`; the
   cargo build needs llvm-config, which is not installed on this host.
+
+## Correction (2026-11-03): the hooks must return 1
+
+For `cgroup/connect4` and `connect6`, a program that returns 0 makes the
+`connect()` fail with EPERM; 1 lets it proceed. The first version of the
+spike returned 0 and so silently blocked every outbound connection while
+loaded. The spike scenarios did not notice because they ignored
+`OSError`; the end-to-end run did, when DNS stopped working in the VM.
+The programs now return 1 on every path (including a failed recording),
+and scenario e0 requires real IPv4 and IPv6 loopback connections to
+complete with the monitor attached.

@@ -70,6 +70,23 @@ sudo sh -c 'nohup /usr/bin/ibexwall-ebpf-loader >/tmp/ev.json 2>/tmp/ev.err & ec
 sleep 2
 # The loader logs its banner to stderr; being alive is the health check.
 sudo kill -0 $(cat /tmp/loader.pid) || { echo "LOADER DIED"; cat /tmp/ev.err; exit 1; }
+# Observing must never get in the way: with the programs attached, real
+# connections still complete, on IPv4 and IPv6 loopback.
+python3 - <<'EOF'
+import socket, threading
+for family, host in [(socket.AF_INET, "127.0.0.1"), (socket.AF_INET6, "::1")]:
+    server = socket.socket(family, socket.SOCK_STREAM)
+    server.bind((host, 0)); server.listen(1)
+    port = server.getsockname()[1]
+    def accept(server=server):
+        conn, _ = server.accept(); conn.sendall(b"ok"); conn.close()
+    threading.Thread(target=accept, daemon=True).start()
+    client = socket.socket(family, socket.SOCK_STREAM); client.settimeout(5)
+    client.connect((host, port))
+    assert client.recv(2) == b"ok", host
+    client.close(); server.close()
+print("connections complete with the monitor loaded")
+EOF
 python3 - <<'EOF'
 import socket
 for host, port, family in [("149.112.112.112", 443, socket.AF_INET), ("2620:fe::9", 853, socket.AF_INET6), ("1.1.1.1", 80, socket.AF_INET)]:
@@ -283,6 +300,105 @@ sudo ibexctl rollback "$TX" --json >/dev/null
 sudo test ! -e $D/org.ibexwall.Fresh || {{ echo "FRESH FILE SURVIVED ROLLBACK"; exit 1; }}
 "#,
             JSON_ID = JSON_ID
+        )
+    );
+
+    scenario!(
+        "m6 the real core attributes curl, a service, a Flatpak scope, a container and a snap",
+        &format!(
+            r#"
+set -e
+sudo systemctl start ibexwall-monitor.service
+wait_for() {{
+  for i in $(seq 1 40); do
+    if sudo ibexctl apps list --json | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if $1 else 1)"; then return 0; fi
+    sleep 0.5
+  done
+  echo "TIMEOUT waiting for: $1" >&2
+  sudo ibexctl apps list >&2 || true
+  return 1
+}}
+wait_for 'd["monitor"]["running"]'
+
+# The resolver reports which name it answered for an address; do it the
+# way ibexwall-dns does, over the datagram socket the core owns.
+sudo test -S /run/ibexwall/dns/answers.sock
+sudo python3 - <<'EOF'
+import socket
+s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+s.sendto(b'{{"domain":"named.example.test.","ip":"203.0.113.1","ttl":300}}', "/run/ibexwall/dns/answers.sock")
+EOF
+sleep 1
+
+# 1. a terminal program, owned by a package
+curl -s -o /dev/null --max-time 3 http://203.0.113.1/ || true
+# 2. a system service
+sudo systemd-run --quiet --wait --unit=ibx-test curl -s -o /dev/null --max-time 3 http://203.0.113.2/ || true
+# 3. a Flatpak app: the cgroup scope name Flatpak and systemd give it
+sudo systemd-run --quiet --scope --unit=app-flatpak-org.ibexwall.One-77 curl -s -o /dev/null --max-time 3 http://203.0.113.3/ || true
+# 4. a real container
+if ! command -v podman >/dev/null; then
+  if command -v dnf >/dev/null; then sudo dnf install -y -q podman
+  elif command -v apt-get >/dev/null; then sudo apt-get update -qq; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq podman
+  elif command -v pacman >/dev/null; then sudo pacman -Sy --noconfirm --needed podman
+  fi
+fi
+# Some cloud images run systemd-resolved with no upstream server; QEMU's
+# user network offers one at 10.0.2.3 (the VM only, never the host).
+if ! getent hosts registry-1.docker.io >/dev/null; then
+  sudo mkdir -p /etc/systemd/resolved.conf.d
+  printf '[Resolve]\nDNS=10.0.2.3\n' | sudo tee /etc/systemd/resolved.conf.d/10-vm-upstream.conf >/dev/null
+  sudo systemctl restart systemd-resolved
+  sleep 2
+fi
+getent hosts registry-1.docker.io >/dev/null || {{ echo "VM CANNOT RESOLVE THE REGISTRY" >&2; exit 1; }}
+sudo podman run --rm docker.io/library/alpine:3 wget -q -T 3 -O /dev/null http://203.0.113.4/ || true
+# 5. a real snap (Ubuntu only)
+SNAP=no
+. /etc/os-release
+if command -v snap >/dev/null; then
+  if sudo snap install curl >&2; then SNAP=yes; fi
+  # On Ubuntu a snap that cannot be installed is a failure, not a skip.
+  if [ "$ID" = ubuntu ] && [ "$SNAP" != yes ]; then echo "SNAP INSTALL FAILED ON UBUNTU" >&2; exit 1; fi
+  if [ "$SNAP" = yes ]; then sudo snap run curl -s -o /dev/null --max-time 3 http://203.0.113.5/ || true; fi
+elif [ "$ID" = ubuntu ]; then
+  echo "NO SNAP ON UBUNTU" >&2; exit 1
+fi
+sleep 2
+
+sudo ibexctl apps list --json > /tmp/apps.json
+sudo ibexctl apps list >&2
+python3 - "$SNAP" <<'EOF'
+import json, subprocess, sys
+snap = sys.argv[1] == "yes"
+d = json.load(open("/tmp/apps.json"))
+apps = {{a["key"]: a for a in d["apps"]}}
+
+curl = apps["cli:/usr/bin/curl"]
+assert curl["kind"] == "cli" and curl["package"] == "curl", curl
+assert "service:ibx-test.service" in apps, list(apps)
+assert apps["service:ibx-test.service"]["kind"] == "system_service"
+assert "flatpak:org.ibexwall.One" in apps, list(apps)
+assert apps["flatpak:org.ibexwall.One"]["kind"] == "flatpak"
+containers = [a for k, a in apps.items() if k.startswith("container:")]
+assert containers, list(apps)
+assert containers[0]["kind"] == "container"
+if snap:
+    assert "snap:snap.curl.curl" in apps, list(apps)
+    assert apps["snap:snap.curl.curl"]["kind"] == "snap"
+
+def destinations(key):
+    out = subprocess.run(["sudo", "ibexctl", "apps", "info", key, "--json"], capture_output=True, text=True, check=True).stdout
+    return json.loads(out)["destinations"]
+
+named = [r for r in destinations("cli:/usr/bin/curl") if r["destination"] == "named.example.test"]
+assert named and named[0]["resolved"] is True, destinations("cli:/usr/bin/curl")
+unnamed = [r for r in destinations("service:ibx-test.service") if r["destination"] == "203.0.113.2"]
+assert unnamed and unnamed[0]["resolved"] is False
+print("attribution through the real core ok:", sorted(apps)[:8], "snap" if snap else "no snap")
+EOF
+sudo systemctl stop ibexwall-monitor.service
+"#
         )
     );
 

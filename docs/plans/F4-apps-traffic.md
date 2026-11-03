@@ -39,6 +39,13 @@ Progress:
   plugin, byte-for-byte rollback; the real Flatpak reads the file and
   the VM scenario proves apply, read-back and rollback on the five
   distros. Snap via interface is still to do.
+- M5 CLI done: `ibexctl apps list|info` (terminal-safe output). M6
+  partly done: `--phase f4` proves, through the real core and the real
+  monitor unit, attribution of curl (package), a system service, a
+  Flatpak scope, a Podman container and a snap (Ubuntu), plus domain
+  correlation over the resolver socket; found and fixed a hook that
+  returned 0 and blocked connects (ADR-0031 correction). Still open:
+  Firefox as a package, the GUI Apps screen, the TUI apps view.
 - The `--phase f4` spike scenarios (attribution with asymmetric v4 and
   v6 destinations, overhead) pass 2/2 on the five distros.
 

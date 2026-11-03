@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One allowed or listening port.",
+  "properties": {
+    "port": {
+      "format": "uint16",
+      "maximum": 65535,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "proto": {
+      "description": "`tcp` or `udp`.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "port",
+    "proto"
+  ],
+  "title": "FirewallPort",
+  "type": "object"
+}

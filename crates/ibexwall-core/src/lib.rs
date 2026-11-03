@@ -10,6 +10,7 @@ pub mod audit;
 pub mod config;
 pub mod engine;
 pub mod events;
+pub mod firewall;
 pub mod monitor;
 pub mod plugins;
 pub mod state;
@@ -37,6 +38,8 @@ pub struct Core {
     pub plugins: Arc<plugins::Supervisor>,
     pub events: events::Bus,
     pub monitor: monitor::Monitor,
+    /// The root the daemon works under (`/`, or a sandbox).
+    pub root: PathBuf,
 }
 
 /// Serves the varlink API on `socket` (dev/tests) until the process is
@@ -167,6 +170,7 @@ impl Core {
             plugins,
             events,
             monitor: monitor::Monitor::new(root.clone()),
+            root,
         };
         // nftables keeps nothing across a reboot: put our chains back
         // first, so that recovering an interrupted transaction (which

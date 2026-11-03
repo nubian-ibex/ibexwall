@@ -168,6 +168,9 @@ async fn dispatch(
         "GetInfo" => Ok(Reply::result(info(core))),
         "GetPosture" => Ok(Reply::result(posture(core))),
         "GetDnsStatus" => Ok(Reply::result(dns_status(core))),
+        "GetFirewall" => Ok(Reply::result(
+            json!({ "firewall": crate::firewall::state(core) }),
+        )),
         "ListApps" => Ok(Reply::result(json!({
             "monitor": core.monitor.status(),
             "apps": crate::monitor::list_apps(core).map_err(internal)?,
@@ -296,9 +299,11 @@ async fn dispatch(
 
 fn polkit_action(method: &str) -> Option<&'static str> {
     Some(match method {
-        "GetInfo" | "GetPosture" | "GetDnsStatus" | "ListApps" | "GetAppDestinations"
-        | "ListPlugins" | "ListFindings" | "GetConfig" | "History" | "Subscribe" | "RunChecks"
-        | "GetPlugin" | "AuditVerify" | "RecentEvents" => names::POLKIT_READ,
+        "GetInfo" | "GetPosture" | "GetDnsStatus" | "GetFirewall" | "ListApps"
+        | "GetAppDestinations" | "ListPlugins" | "ListFindings" | "GetConfig" | "History"
+        | "Subscribe" | "RunChecks" | "GetPlugin" | "AuditVerify" | "RecentEvents" => {
+            names::POLKIT_READ
+        }
         "SetPluginEnabled" => names::POLKIT_PLUGINS_MANAGE,
         "PlanChange" => names::POLKIT_PLAN,
         "Apply" | "Confirm" => names::POLKIT_APPLY,

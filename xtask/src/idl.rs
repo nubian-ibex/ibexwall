@@ -54,6 +54,8 @@ const CORE_TYPES: &[&str] = &[
     "Transaction",
     "HistoryEntry",
     "Event",
+    "FirewallPort",
+    "FirewallState",
     "MonitorStatus",
     "AppEntry",
     "AppDestination",
@@ -88,6 +90,9 @@ method RecentEvents(limit: ?int) -> (events: []Event)
 # Added in v1 (additive): per-app traffic from the connection monitor.
 method ListApps() -> (monitor: MonitorStatus, apps: []AppEntry)
 method GetAppDestinations(app: string) -> (destinations: []AppDestination)
+
+# Added in v1 (additive): the inbound firewall, as read from the manager.
+method GetFirewall() -> (firewall: FirewallState)
 
 error PermissionDenied (action: string)
 error NotFound (kind: string, id: string)

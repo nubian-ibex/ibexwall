@@ -133,6 +133,37 @@ pub struct AppDestination {
     pub last_seen: String,
 }
 
+/// One allowed or listening port.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FirewallPort {
+    pub port: u16,
+    /// `tcp` or `udp`.
+    pub proto: String,
+}
+
+/// The inbound firewall as IbexWall can read it (spec 4.7). Names from
+/// configuration files are untrusted display text.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FirewallState {
+    /// `firewalld`, `ufw` or `nftables` (IbexWall's own chain).
+    pub backend: String,
+    /// Whether the manager is filtering; absent when it cannot be told.
+    #[serde(default)]
+    pub active: Option<bool>,
+    /// firewalld's default zone.
+    #[serde(default)]
+    pub zone: Option<String>,
+    /// Ports the firewall allows in.
+    pub ports: Vec<FirewallPort>,
+    pub services: Vec<String>,
+    /// Ports with a socket bound on every address.
+    pub listening: Vec<FirewallPort>,
+    /// Rules read but not edited (ranges, rich rules, other targets).
+    pub other: Vec<String>,
+}
+
 /// Reference to a control in an external framework (own wording only;
 /// never copy protected norm texts).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

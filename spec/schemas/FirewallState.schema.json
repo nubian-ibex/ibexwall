@@ -1,0 +1,86 @@
+{
+  "$defs": {
+    "FirewallPort": {
+      "additionalProperties": false,
+      "description": "One allowed or listening port.",
+      "properties": {
+        "port": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "proto": {
+          "description": "`tcp` or `udp`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "port",
+        "proto"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The inbound firewall as IbexWall can read it (spec 4.7). Names from\nconfiguration files are untrusted display text.",
+  "properties": {
+    "active": {
+      "default": null,
+      "description": "Whether the manager is filtering; absent when it cannot be told.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "backend": {
+      "description": "`firewalld`, `ufw` or `nftables` (IbexWall's own chain).",
+      "type": "string"
+    },
+    "listening": {
+      "description": "Ports with a socket bound on every address.",
+      "items": {
+        "$ref": "#/$defs/FirewallPort"
+      },
+      "type": "array"
+    },
+    "other": {
+      "description": "Rules read but not edited (ranges, rich rules, other targets).",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "ports": {
+      "description": "Ports the firewall allows in.",
+      "items": {
+        "$ref": "#/$defs/FirewallPort"
+      },
+      "type": "array"
+    },
+    "services": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "zone": {
+      "default": null,
+      "description": "firewalld's default zone.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "backend",
+    "ports",
+    "services",
+    "listening",
+    "other"
+  ],
+  "title": "FirewallState",
+  "type": "object"
+}

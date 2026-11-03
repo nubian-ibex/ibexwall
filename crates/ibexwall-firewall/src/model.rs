@@ -74,6 +74,9 @@ pub struct State {
     pub zone: Option<String>,
     pub ports: Vec<PortRule>,
     pub services: Vec<String>,
+    /// Ports with a socket bound on every address (reachable from other
+    /// computers when the firewall allows them).
+    pub listening: Vec<PortRule>,
     /// Rules we read but do not edit (ranges, rich rules, other targets),
     /// shown as the manager wrote them.
     pub other: Vec<String>,

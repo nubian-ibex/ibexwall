@@ -31,7 +31,27 @@ pub struct Chain {
     /// Base chain priority relative to other tables (lower runs first).
     #[serde(default)]
     pub priority: i32,
+    /// Which hook the base chain attaches to (output by default).
+    #[serde(default)]
+    pub hook: Hook,
     pub rules: Vec<Rule>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Hook {
+    #[default]
+    Output,
+    Input,
+}
+
+impl Hook {
+    fn name(self) -> &'static str {
+        match self {
+            Hook::Output => "output",
+            Hook::Input => "input",
+        }
+    }
 }
 
 /// One rule. Every condition that is present must match.
@@ -41,6 +61,19 @@ pub struct Rule {
     /// Only packets leaving through the loopback interface.
     #[serde(default)]
     pub oif_loopback: bool,
+    /// Only packets arriving through the loopback interface.
+    #[serde(default)]
+    pub iif_loopback: bool,
+    /// Only packets arriving on an interface whose name starts with this
+    /// (container and VM bridges, VPNs: not "external" traffic).
+    #[serde(default)]
+    pub iif_prefix: Option<String>,
+    /// Only packets of connections already established or related.
+    #[serde(default)]
+    pub ct_established: bool,
+    /// Only ICMP and ICMPv6.
+    #[serde(default)]
+    pub icmp: bool,
     /// Only packets whose sending user is not this uid.
     #[serde(default)]
     pub uid_not: Option<u32>,
@@ -93,6 +126,15 @@ impl Fragment {
                 bail!("chain `{name}` has more than {MAX_RULES} rules");
             }
             for rule in &chain.rules {
+                if let Some(prefix) = &rule.iif_prefix {
+                    let ok = (1..=14).contains(&prefix.len())
+                        && prefix
+                            .bytes()
+                            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+                    if !ok {
+                        bail!("chain `{name}`: `{prefix}` is not an interface name prefix");
+                    }
+                }
                 if rule.protocols.is_empty() != rule.dports.is_empty() {
                     bail!("chain `{name}`: protocols and dports go together");
                 }
@@ -117,7 +159,7 @@ impl Fragment {
             let handle = json!({ "family": "inet", "table": NFT_TABLE, "name": chain.name });
             commands.push(json!({ "add": { "chain": {
                 "family": "inet", "table": NFT_TABLE, "name": chain.name,
-                "type": "filter", "hook": "output", "prio": chain.priority, "policy": "accept",
+                "type": "filter", "hook": chain.hook.name(), "prio": chain.priority, "policy": "accept",
             } } }));
             commands.push(json!({ "flush": { "chain": handle } }));
             for rule in &chain.rules {
@@ -137,6 +179,25 @@ impl Rule {
     /// nftables rules).
     fn expressions(&self) -> Vec<Vec<Value>> {
         let mut base = vec![];
+        if self.ct_established {
+            base.push(json!({ "match": { "op": "in",
+                "left": { "ct": { "key": "state" } },
+                "right": ["established", "related"] } }));
+        }
+        if self.iif_loopback {
+            base.push(json!({ "match": { "op": "==",
+                "left": { "meta": { "key": "iifname" } }, "right": "lo" } }));
+        }
+        if let Some(prefix) = &self.iif_prefix {
+            // A trailing `*` is nftables' own prefix match.
+            base.push(json!({ "match": { "op": "==",
+                "left": { "meta": { "key": "iifname" } }, "right": format!("{prefix}*") } }));
+        }
+        if self.icmp {
+            base.push(json!({ "match": { "op": "in",
+                "left": { "meta": { "key": "l4proto" } },
+                "right": { "set": ["icmp", "ipv6-icmp"] } } }));
+        }
         if self.oif_loopback {
             base.push(json!({ "match": { "op": "==",
                 "left": { "meta": { "key": "oifname" } }, "right": "lo" } }));
@@ -513,5 +574,69 @@ mod tests {
         assert!(!nft.has("net_dns_guard"));
         nft.restore("net_dns_guard", prior.as_ref()).unwrap();
         assert!(nft.has("net_dns_guard"));
+    }
+
+    fn inbound() -> Fragment {
+        serde_json::from_value(json!({ "chains": [{
+            "name": "net_firewall_input", "priority": 5, "hook": "input",
+            "rules": [
+                { "ct_established": true, "verdict": "accept" },
+                { "iif_loopback": true, "verdict": "accept" },
+                { "icmp": true, "verdict": "accept" },
+                { "iif_prefix": "docker", "verdict": "accept" },
+                { "protocols": ["udp"], "dports": [68, 546], "verdict": "accept" },
+                { "verdict": "drop" },
+            ],
+        }] }))
+        .unwrap()
+    }
+
+    #[test]
+    fn an_input_chain_compiles_with_its_hook_and_conditions() {
+        let fragment = inbound();
+        fragment.validate().unwrap();
+        let commands = fragment.compile();
+        let chain = &commands[1]["add"]["chain"];
+        assert_eq!(
+            (
+                chain["hook"].as_str(),
+                chain["prio"].as_i64(),
+                chain["policy"].as_str()
+            ),
+            (Some("input"), Some(5), Some("accept"))
+        );
+        let rule = |n: usize| &commands[3 + n]["add"]["rule"]["expr"];
+        assert_eq!(rule(0)[0]["match"]["left"]["ct"]["key"], "state");
+        assert_eq!(
+            rule(0)[0]["match"]["right"],
+            json!(["established", "related"])
+        );
+        assert_eq!(rule(1)[0]["match"]["left"]["meta"]["key"], "iifname");
+        assert_eq!(rule(1)[0]["match"]["right"], "lo");
+        assert_eq!(
+            rule(2)[0]["match"]["right"]["set"],
+            json!(["icmp", "ipv6-icmp"])
+        );
+        assert_eq!(rule(3)[0]["match"]["right"], "docker*");
+        assert_eq!(rule(4)[0]["match"]["left"]["payload"]["field"], "dport");
+        assert_eq!(rule(5), &json!([{ "drop": null }]));
+    }
+
+    #[test]
+    fn interface_prefixes_cannot_smuggle_anything() {
+        for prefix in ["", "a b", "docker*", "x\"y", &"a".repeat(20)] {
+            let fragment: Fragment = serde_json::from_value(json!({ "chains": [{
+                "name": "net_firewall_input", "hook": "input",
+                "rules": [{ "iif_prefix": prefix, "verdict": "accept" }],
+            }] }))
+            .unwrap();
+            assert!(fragment.validate().is_err(), "{prefix:?}");
+        }
+    }
+
+    #[test]
+    fn existing_fragments_still_hook_output() {
+        let commands = guard().compile();
+        assert_eq!(commands[1]["add"]["chain"]["hook"], "output");
     }
 }

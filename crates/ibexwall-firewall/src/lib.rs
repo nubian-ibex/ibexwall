@@ -7,6 +7,7 @@
 //! string from a configuration file is untrusted display data.
 
 pub mod action;
+pub mod detect;
 pub mod model;
 pub mod parse;
 

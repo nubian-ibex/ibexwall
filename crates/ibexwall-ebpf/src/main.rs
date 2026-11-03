@@ -23,7 +23,7 @@ use ibexwall_net_common::{ConnectEvent, EVENT_LEN, EXE_LEN, verdict};
 // literal) and EVENTS_MAP on the loader side; keep them in sync.
 
 #[map(name = "IBEXWALL_CONNECTS")]
-static mut EVENTS: RingBuf = RingBuf::with_byte_size(1 << 14, 0);
+static mut EVENTS: RingBuf = RingBuf::with_byte_size(1 << 20, 0);
 
 /// pid to the path it was executed with. LRU, so exited processes age out
 /// without an exit hook; a pid reused by a new exec is simply overwritten.
@@ -40,13 +40,29 @@ static mut EXE_RULES: aya_ebpf::maps::Array<[u8; ibexwall_net_common::EXE_RULE_L
 /// The array bound, as the hook's loop needs it.
 const EXE_RULES_MAX_U32: u32 = ibexwall_net_common::EXE_RULES_MAX as u32;
 
-/// The verdict of the rule in `slot` when it matches `path`. Works on the
-/// map value in place: no copy of the rule on the 512-byte stack.
-fn exe_rule_verdict(slot: u32, path: &[u8]) -> Option<u8> {
+/// What one slot of the rules array says about a path.
+enum Slot {
+    /// Rules are packed from slot 0: a free slot ends the walk.
+    Free,
+    Miss,
+    Hit(u8),
+}
+
+/// Checks the rule in `slot` against `path` in place: no copy of the rule
+/// on the 512-byte stack.
+fn exe_rule_slot(slot: u32, path: &[u8]) -> Slot {
     // SAFETY: static map access; the reference lives for the program.
     let rules = unsafe { &*core::ptr::addr_of!(EXE_RULES) };
-    let bytes = rules.get(slot)?;
-    ibexwall_net_common::ExeRule::verdict_if_wire_matches(bytes.as_slice(), path)
+    let Some(bytes) = rules.get(slot) else {
+        return Slot::Free;
+    };
+    if bytes[1] == 0 {
+        return Slot::Free;
+    }
+    match ibexwall_net_common::ExeRule::verdict_if_wire_matches(bytes.as_slice(), path) {
+        Some(verdict) => Slot::Hit(verdict),
+        None => Slot::Miss,
+    }
 }
 
 /// The verdict for this call: the cgroup's rule, else the first exe rule
@@ -64,8 +80,10 @@ fn verdict_for(pid: u32, cgroup_id: u64) -> u8 {
     // SAFETY: map lookup with an owned key.
     if let Some(path) = unsafe { exes.get(&pid) } {
         for slot in 0..EXE_RULES_MAX_U32 {
-            if let Some(found) = exe_rule_verdict(slot, path.as_slice()) {
-                return found;
+            match exe_rule_slot(slot, path.as_slice()) {
+                Slot::Free => break,
+                Slot::Hit(found) => return found,
+                Slot::Miss => {}
             }
         }
     }

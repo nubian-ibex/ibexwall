@@ -13,6 +13,7 @@ workspace = true
 
 [dependencies]
 ibexwall-proto.workspace = true
+ibexwall-firewall.workspace = true
 rustix.workspace = true
 tokio.workspace = true
 zbus.workspace = true

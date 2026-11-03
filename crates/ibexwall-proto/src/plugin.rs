@@ -83,6 +83,10 @@ pub struct Privileges {
     pub exec: Vec<ExecAllow>,
     #[serde(default)]
     pub nft_prefix: Option<String>,
+    /// Firewall managers the plugin may drive through `firewall.adapter`
+    /// (`firewalld`, `ufw`).
+    #[serde(default)]
+    pub firewall_backends: Vec<String>,
 }
 
 /// How the plugin process is sandboxed (reflected into its unit).

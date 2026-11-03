@@ -2135,6 +2135,7 @@ dependencies = [
  "ed25519-dalek",
  "hex",
  "ibexwall-apps",
+ "ibexwall-firewall",
  "ibexwall-identity",
  "ibexwall-proto",
  "ibexwall-sys",
@@ -2328,6 +2329,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "hex",
+ "ibexwall-firewall",
  "ibexwall-proto",
  "rustix",
  "serde",

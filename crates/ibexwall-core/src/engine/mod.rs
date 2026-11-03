@@ -152,6 +152,57 @@ impl Engine {
                         prior,
                     });
                 }
+                Op::FirewallAdapter { backend, action } => {
+                    // The manager rewrites its own files: capture them, and
+                    // note that rollback must tell it to re-read them.
+                    let (kind, action) = ibexwall_sys::ops::parse_firewall(backend, action)?;
+                    let default_zone = self
+                        .sys
+                        .fs
+                        .read(Path::new("/etc/firewalld/firewalld.conf"))
+                        .ok()
+                        .and_then(|bytes| {
+                            ibexwall_firewall::parse::firewalld_default_zone(
+                                &String::from_utf8_lossy(&bytes),
+                            )
+                        })
+                        // firewalld's own default when the file names none.
+                        .unwrap_or_else(|| "public".into());
+                    entries.push(SnapshotEntry::Firewall {
+                        op_index: index,
+                        backend: backend.clone(),
+                    });
+                    for (n, path) in ibexwall_firewall::snapshot_paths(kind, &action, &default_zone)
+                        .into_iter()
+                        .enumerate()
+                    {
+                        let prior = match self.sys.fs.read(Path::new(&path)) {
+                            Ok(content) => {
+                                let meta = self.sys.fs.metadata(Path::new(&path))?;
+                                let blob = format!("{index:03}-{n}.bin");
+                                std::fs::write(dir.join("files").join(&blob), &content)?;
+                                Some(PriorFile {
+                                    sha256: hex::encode(sha2::Sha256::digest(&content)),
+                                    blob,
+                                    mode: meta.mode,
+                                    uid: meta.uid,
+                                    gid: meta.gid,
+                                })
+                            }
+                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                            Err(e) => {
+                                return Err(
+                                    anyhow::Error::new(e).context(format!("snapshotting {path}"))
+                                );
+                            }
+                        };
+                        entries.push(SnapshotEntry::File {
+                            op_index: index,
+                            path,
+                            prior,
+                        });
+                    }
+                }
                 Op::SysctlSet { key, .. } => {
                     let prior = self.sys.sysctl.get(key).ok();
                     entries.push(SnapshotEntry::Sysctl {
@@ -300,13 +351,22 @@ impl Default for Engine {
 fn snapshot_write_directories(manifest: &SnapshotManifest) -> Vec<String> {
     let mut dirs: std::collections::BTreeSet<String> = Default::default();
     for entry in &manifest.entries {
-        if let SnapshotEntry::File { path, .. } = entry
-            && let Some(parent) = Path::new(path).parent()
-        {
-            let parent = parent.to_string_lossy();
-            if !parent.is_empty() {
-                dirs.insert(parent.into_owned());
+        match entry {
+            SnapshotEntry::File { path, .. } => {
+                if let Some(parent) = Path::new(path).parent() {
+                    let parent = parent.to_string_lossy();
+                    if !parent.is_empty() {
+                        dirs.insert(parent.into_owned());
+                    }
+                }
             }
+            // ufw's reload takes the xtables lock under /run.
+            SnapshotEntry::Firewall { backend, .. } => {
+                for path in ibexwall_sys::ops::firewall_write_paths(backend) {
+                    dirs.insert(path);
+                }
+            }
+            _ => {}
         }
     }
     dirs.into_iter().collect()
@@ -388,6 +448,7 @@ mod tests {
         systemd: Arc<FakeSystemd>,
         sysctl: Arc<FakeSysctl>,
         nft: Arc<FakeNft>,
+        runner: Arc<ibexwall_sys::firewall::FakeRunner>,
         state: State,
         dir: std::path::PathBuf,
     }
@@ -406,8 +467,10 @@ mod tests {
         let systemd = Arc::new(FakeSystemd::new());
         let sysctl = Arc::new(FakeSysctl::new());
         let nft = Arc::new(FakeNft::new());
+        let runner = Arc::new(ibexwall_sys::firewall::FakeRunner::new());
         let engine = Engine::with(SysBundle {
             fs: fs.clone(),
+            runner: runner.clone(),
             systemd: systemd.clone(),
             sysctl: sysctl.clone(),
             clock: Arc::new(FakeClock::new(1_793_534_400)),
@@ -421,6 +484,7 @@ mod tests {
             systemd,
             sysctl,
             nft,
+            runner,
             state: State::open(&dir).unwrap(),
             dir,
         }
@@ -477,6 +541,154 @@ mod tests {
         // is gone.
         assert_eq!(rig.fs.read(Path::new(&mine)).unwrap(), before);
         assert!(!rig.fs.exists(Path::new(&fresh)));
+    }
+
+    fn fw(backend: &str, action: serde_json::Value) -> Op {
+        Op::FirewallAdapter {
+            backend: backend.into(),
+            action,
+        }
+    }
+
+    #[test]
+    fn a_firewalld_change_runs_the_fixed_argv_and_rolls_back_with_a_reload() {
+        let rig = rig("fwd", true);
+        let zone = "/etc/firewalld/zones/public.xml";
+        let before = b"<zone>\n  <service name=\"ssh\"/>\n</zone>\n";
+        rig.fs.seed(Path::new(zone), before);
+        let ops = vec![fw(
+            "firewalld",
+            serde_json::json!({"action": "allow_port", "port": 8080, "proto": "tcp"}),
+        )];
+        rig.engine.snapshot(&rig.state, "txw1", &ops).unwrap();
+        rig.engine.execute(None, &ops).unwrap();
+        assert_eq!(
+            rig.runner.calls(),
+            vec![
+                vec![
+                    "/usr/bin/firewall-cmd",
+                    "--permanent",
+                    "--add-port=8080/tcp"
+                ],
+                vec!["/usr/bin/firewall-cmd", "--add-port=8080/tcp"],
+            ]
+        );
+        // What firewalld itself would have written.
+        rig.fs.seed(Path::new(zone), b"<zone>changed</zone>\n");
+        rig.engine.rollback(&rig.state, "txw1").unwrap();
+        assert_eq!(rig.fs.read(Path::new(zone)).unwrap(), before);
+        assert_eq!(
+            rig.runner.calls().last().unwrap(),
+            &vec!["/usr/bin/firewall-cmd", "--reload"]
+        );
+    }
+
+    #[test]
+    fn a_zone_file_that_did_not_exist_is_removed_by_rollback() {
+        let rig = rig("fwn", true);
+        let zone = "/etc/firewalld/zones/public.xml";
+        let ops = vec![fw(
+            "firewalld",
+            serde_json::json!({"action": "allow_service", "name": "http"}),
+        )];
+        rig.engine.snapshot(&rig.state, "txw2", &ops).unwrap();
+        rig.engine.execute(None, &ops).unwrap();
+        rig.fs.seed(Path::new(zone), b"<zone/>");
+        rig.engine.rollback(&rig.state, "txw2").unwrap();
+        assert!(!rig.fs.exists(Path::new(zone)));
+    }
+
+    #[test]
+    fn the_default_zone_comes_from_firewalld_conf() {
+        let rig = rig("fwz", true);
+        rig.fs.seed(
+            Path::new("/etc/firewalld/firewalld.conf"),
+            b"DefaultZone=FedoraWorkstation\n",
+        );
+        rig.fs.seed(
+            Path::new("/etc/firewalld/zones/FedoraWorkstation.xml"),
+            b"<zone/>",
+        );
+        let ops = vec![fw(
+            "firewalld",
+            serde_json::json!({"action": "remove_port", "port": 1, "proto": "udp"}),
+        )];
+        let manifest = rig.engine.snapshot(&rig.state, "txw3", &ops).unwrap();
+        let paths: Vec<_> = manifest
+            .entries
+            .iter()
+            .filter_map(|entry| match entry {
+                ibexwall_sys::ops::SnapshotEntry::File { path, prior, .. } => {
+                    Some((path.clone(), prior.is_some()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            paths,
+            vec![(
+                "/etc/firewalld/zones/FedoraWorkstation.xml".to_string(),
+                true
+            )]
+        );
+    }
+
+    #[test]
+    fn ufw_snapshots_both_rule_files_and_needs_its_directory_and_the_lock() {
+        let rig = rig("ufw", true);
+        rig.fs.seed(Path::new("/etc/ufw/user.rules"), b"v4\n");
+        rig.fs.seed(Path::new("/etc/ufw/user6.rules"), b"v6\n");
+        let ops = vec![fw(
+            "ufw",
+            serde_json::json!({"action": "allow_port", "port": 22, "proto": "tcp"}),
+        )];
+        let manifest = rig.engine.snapshot(&rig.state, "txu1", &ops).unwrap();
+        assert_eq!(
+            ibexwall_sys::write_directories(&ops),
+            vec!["/etc/ufw".to_string(), "/run/xtables.lock".to_string()]
+        );
+        assert_eq!(
+            snapshot_write_directories(&manifest),
+            vec!["/etc/ufw".to_string(), "/run/xtables.lock".to_string()]
+        );
+        rig.engine.execute(None, &ops).unwrap();
+        assert_eq!(
+            rig.runner.calls(),
+            vec![vec!["/usr/sbin/ufw", "allow", "22/tcp"]]
+        );
+        rig.fs.seed(Path::new("/etc/ufw/user.rules"), b"changed\n");
+        rig.engine.rollback(&rig.state, "txu1").unwrap();
+        assert_eq!(
+            rig.fs.read(Path::new("/etc/ufw/user.rules")).unwrap(),
+            b"v4\n"
+        );
+        assert_eq!(
+            rig.runner.calls().last().unwrap(),
+            &vec!["/usr/sbin/ufw", "reload"]
+        );
+    }
+
+    #[test]
+    fn a_sandbox_never_runs_a_firewall_tool() {
+        let rig = rig("fws", false);
+        let ops = vec![fw(
+            "firewalld",
+            serde_json::json!({"action": "allow_port", "port": 1, "proto": "tcp"}),
+        )];
+        assert!(rig.engine.execute(None, &ops).is_err());
+        assert!(rig.runner.calls().is_empty());
+    }
+
+    #[test]
+    fn a_failing_tool_stops_the_op_and_names_it() {
+        let rig = rig("fwf", true);
+        *rig.runner.fail_on.lock().unwrap() = Some("--add-port".into());
+        let ops = vec![fw(
+            "firewalld",
+            serde_json::json!({"action": "allow_port", "port": 9, "proto": "tcp"}),
+        )];
+        let error = rig.engine.execute(None, &ops).unwrap_err();
+        assert!(format!("{error:#}").contains("firewall.adapter"));
     }
 
     #[test]

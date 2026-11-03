@@ -60,6 +60,14 @@
           },
           "type": "array"
         },
+        "firewall_backends": {
+          "default": [],
+          "description": "Firewall managers the plugin may drive through `firewall.adapter`\n(`firewalld`, `ufw`).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "nft_prefix": {
           "default": null,
           "type": [

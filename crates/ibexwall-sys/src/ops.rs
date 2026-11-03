@@ -46,6 +46,8 @@ pub enum SnapshotEntry {
         op_index: usize,
         chains: Vec<NftChainPrior>,
     },
+    /// A firewall manager whose files a firewall.adapter op changes: after\n    /// the files are restored it is told to re-read them.
+    Firewall { op_index: usize, backend: String },
     /// Ops without a system inverse (exec).
     NoInverse { op_index: usize },
 }
@@ -100,6 +102,14 @@ pub fn write_directories(ops: &[Op]) -> Vec<String> {
                 Some(target) => target.path.to_string(),
                 None => continue,
             },
+            // ufw rewrites its own files and takes the xtables lock; the
+            // executor unit needs both (its /run is read-only otherwise).
+            Op::FirewallAdapter { backend, .. } if backend == "ufw" => {
+                for path in firewall_write_paths("ufw") {
+                    dirs.insert(path);
+                }
+                continue;
+            }
             // Likewise one override file per Flatpak application.
             Op::FlatpakOverride { app_id, .. } => match crate::flatpak::override_path(app_id) {
                 Some(path) => path,
@@ -189,8 +199,15 @@ pub fn execute(op: &Op, sys: &crate::SysBundle) -> Result<()> {
             let fragment = parse_fragment(fragment)?;
             sys.nft.apply(&fragment)
         }
-        Op::FirewallAdapter { .. } => {
-            Err(not_implemented("firewall.adapter", "adapter lands in F5"))
+        Op::FirewallAdapter { backend, action } => {
+            if !sys.allow_system_executors {
+                return Err(OpError::SandboxBlocked.into());
+            }
+            let (backend, action) = parse_firewall(backend, action)?;
+            for argv in ibexwall_firewall::argv(backend, &action) {
+                sys.runner.run(&argv)?;
+            }
+            Ok(())
         }
         Op::DnsBackend { .. } => Err(not_implemented("dns.backend", "adapter lands in F3")),
         Op::FlatpakOverride { app_id, args } => {
@@ -269,6 +286,39 @@ pub fn execute(op: &Op, sys: &crate::SysBundle) -> Result<()> {
             "package.install",
             "PackageKit flow lands in F7",
         )),
+    }
+}
+
+/// What a `firewall.adapter` op must be, or why it is refused.
+pub fn parse_firewall(
+    backend: &str,
+    action: &serde_json::Value,
+) -> Result<(
+    ibexwall_firewall::Backend,
+    ibexwall_firewall::FirewallAction,
+)> {
+    let backend =
+        ibexwall_firewall::Backend::from_name(backend).ok_or_else(|| OpError::Invalid {
+            field: "firewall.adapter",
+            reason: format!("unknown backend `{backend}`"),
+        })?;
+    let action: ibexwall_firewall::FirewallAction = serde_json::from_value(action.clone())
+        .map_err(|e| OpError::Invalid {
+            field: "firewall.adapter",
+            reason: e.to_string(),
+        })?;
+    ibexwall_firewall::validate(backend, &action).map_err(|e| OpError::Invalid {
+        field: "firewall.adapter",
+        reason: e.to_string(),
+    })?;
+    Ok((backend, action))
+}
+
+/// The paths a manager's tool needs to write, for the executor unit.
+pub fn firewall_write_paths(backend: &str) -> Vec<String> {
+    match backend {
+        "ufw" => vec!["/etc/ufw".into(), "/run/xtables.lock".into()],
+        _ => vec![],
     }
 }
 
@@ -390,21 +440,29 @@ pub fn apply_snapshot_inverses(
                     sys.nft.restore(&chain.name, chain.prior.as_ref())?;
                 }
             }
-            SnapshotEntry::NoInverse { .. } => {}
+            SnapshotEntry::Firewall { .. } | SnapshotEntry::NoInverse { .. } => {}
         }
     }
     // Second pass: services restarted by the transaction pick up the
     // restored files. Only units that were running before are restarted;
     // a stopped one was already stopped by the first pass.
     for entry in &manifest.entries {
-        if let SnapshotEntry::Unit {
-            unit,
-            active: true,
-            restarted: true,
-            ..
-        } = entry
-        {
-            sys.systemd.apply(unit, UnitAction::Restart, false)?;
+        match entry {
+            SnapshotEntry::Unit {
+                unit,
+                active: true,
+                restarted: true,
+                ..
+            } => sys.systemd.apply(unit, UnitAction::Restart, false)?,
+            // The restored files are on disk: make the manager read them.
+            SnapshotEntry::Firewall { backend, .. } => {
+                if let Some(backend) = ibexwall_firewall::Backend::from_name(backend)
+                    && let Some(argv) = ibexwall_firewall::reload_argv(backend)
+                {
+                    sys.runner.run(&argv)?;
+                }
+            }
+            _ => {}
         }
     }
     Ok(())

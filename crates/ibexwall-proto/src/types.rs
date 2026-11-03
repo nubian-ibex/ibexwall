@@ -118,6 +118,8 @@ pub struct AppEntry {
     pub last_seen: String,
     pub connections: u64,
     pub destinations: u64,
+    /// `allow`, `monitor`, `ask` or `block`.
+    pub mode: String,
 }
 
 /// One destination of an application. `destination` is a domain when the

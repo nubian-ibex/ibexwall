@@ -105,6 +105,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
          );",
     ),
     ("0003_apps", ibexwall_apps::SCHEMA),
+    ("0004_policy", ibexwall_apps::policy::POLICY_SCHEMA),
 ];
 
 impl State {

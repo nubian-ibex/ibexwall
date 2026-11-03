@@ -1055,3 +1055,84 @@ async fn the_firewall_is_read_from_the_managers_own_files() {
             .starts_with("rich rule")
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn choosing_a_mode_pushes_the_policy_to_the_monitor_unit() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
+        return;
+    }
+    use std::io::{BufRead as _, Write as _};
+    let sandbox = prepare_sandbox();
+    let (core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+    let path = sandbox.root.join("run/ibexwall/monitor.sock");
+    let task = tokio::spawn(ibexwall_core::monitor::serve_monitor(
+        Arc::clone(&core),
+        path.clone(),
+    ));
+    for _ in 0..50 {
+        if path.exists() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    let mut stream = std::os::unix::net::UnixStream::connect(&path).unwrap();
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+        .unwrap();
+    writeln!(
+        stream,
+        "{}",
+        connection_line("198.51.100.4", "cli", "", &"cc".repeat(32))
+    )
+    .unwrap();
+    let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
+
+    // On connect the unit gets the current policy: nothing to enforce yet.
+    let mut line = String::new();
+    reader.read_line(&mut line).unwrap();
+    let first: serde_json::Value = serde_json::from_str(&line).unwrap();
+    assert_eq!(first["policy"]["rules"], json!([]));
+    assert_eq!(first["policy"]["default"], "allow");
+
+    // The app is known once its connection is ingested.
+    for _ in 0..50 {
+        let listed = client
+            .call("com.ibexwall.Core.ListApps", json!({}))
+            .await
+            .unwrap();
+        if listed["apps"].as_array().is_some_and(|a| !a.is_empty()) {
+            assert_eq!(listed["apps"][0]["mode"], "monitor");
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    client
+        .call(
+            "com.ibexwall.Core.SetAppMode",
+            json!({ "app": "cli:/usr/bin/curl", "mode": "block" }),
+        )
+        .await
+        .unwrap();
+    line.clear();
+    reader.read_line(&mut line).unwrap();
+    let pushed: serde_json::Value = serde_json::from_str(&line).unwrap();
+    assert_eq!(pushed["policy"]["rules"][0]["exe_exact"], "/usr/bin/curl");
+    assert_eq!(pushed["policy"]["rules"][0]["verdict"], "block");
+
+    let listed = client
+        .call("com.ibexwall.Core.ListApps", json!({}))
+        .await
+        .unwrap();
+    assert_eq!(listed["apps"][0]["mode"], "block");
+
+    // An unknown mode is refused and nothing changes.
+    let refused = client
+        .call(
+            "com.ibexwall.Core.SetAppMode",
+            json!({ "app": "cli:/usr/bin/curl", "mode": "deny" }),
+        )
+        .await;
+    assert!(refused.is_err());
+    task.abort();
+}

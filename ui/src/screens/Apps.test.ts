@@ -120,6 +120,7 @@ describe('Apps screen', () => {
           last_seen: '2026-11-01T00:00:00Z',
           connections: 1,
           destinations: 1,
+          mode: 'monitor',
         } satisfies AppEntry,
       ],
     });

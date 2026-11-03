@@ -40,12 +40,13 @@ static mut EXE_RULES: aya_ebpf::maps::Array<[u8; ibexwall_net_common::EXE_RULE_L
 /// The array bound, as the hook's loop needs it.
 const EXE_RULES_MAX_U32: u32 = ibexwall_net_common::EXE_RULES_MAX as u32;
 
-/// The exe rules as plain bytes, read once per call.
-fn exe_rule_at(slot: u32) -> Option<ibexwall_net_common::ExeRule> {
+/// The verdict of the rule in `slot` when it matches `path`. Works on the
+/// map value in place: no copy of the rule on the 512-byte stack.
+fn exe_rule_verdict(slot: u32, path: &[u8]) -> Option<u8> {
     // SAFETY: static map access; the reference lives for the program.
     let rules = unsafe { &*core::ptr::addr_of!(EXE_RULES) };
     let bytes = rules.get(slot)?;
-    ibexwall_net_common::ExeRule::parse(bytes.as_slice())
+    ibexwall_net_common::ExeRule::verdict_if_wire_matches(bytes.as_slice(), path)
 }
 
 /// The verdict for this call: the cgroup's rule, else the first exe rule
@@ -63,11 +64,8 @@ fn verdict_for(pid: u32, cgroup_id: u64) -> u8 {
     // SAFETY: map lookup with an owned key.
     if let Some(path) = unsafe { exes.get(&pid) } {
         for slot in 0..EXE_RULES_MAX_U32 {
-            if let Some(rule) = exe_rule_at(slot)
-                && rule.len != 0
-                && rule.matches(path.as_slice())
-            {
-                return rule.verdict();
+            if let Some(found) = exe_rule_verdict(slot, path.as_slice()) {
+                return found;
             }
         }
     }

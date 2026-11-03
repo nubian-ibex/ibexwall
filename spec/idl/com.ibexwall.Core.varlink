@@ -22,7 +22,7 @@ type FirewallNetwork (kind: string, name: string, recommended: string, warning: 
 type FirewallPort (port: int, proto: string)
 type FirewallState (active: ?bool, backend: string, listening: []FirewallPort, networks: []FirewallNetwork, other: []string, ports: []FirewallPort, services: []string, zone: ?string)
 type MonitorStatus (reason: ?string, running: bool)
-type AppEntry (connections: int, destinations: int, exe_path: ?string, first_seen: string, id: string, key: string, kind: string, last_seen: string, package: ?string)
+type AppEntry (connections: int, destinations: int, exe_path: ?string, first_seen: string, id: string, key: string, kind: string, last_seen: string, mode: string, package: ?string)
 type AppDestination (count: int, destination: string, first_seen: string, last_seen: string, port: int, resolved: bool)
 type ProposalStatus (pending, approved, rejected, expired)
 type Proposal (client: string, created_at: string, id: string, justification: string, plan_id: string, plugin: string, status: ProposalStatus)
@@ -52,6 +52,7 @@ method RecentEvents(limit: ?int) -> (events: []Event)
 
 # Added in v1 (additive): per-app traffic from the connection monitor.
 method ListApps() -> (monitor: MonitorStatus, apps: []AppEntry)
+method SetAppMode(app: string, mode: string) -> ()
 method GetAppDestinations(app: string) -> (destinations: []AppDestination)
 
 # Added in v1 (additive): the inbound firewall, as read from the manager.

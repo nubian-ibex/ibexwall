@@ -8,14 +8,28 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use super::f1::install_binary;
+use super::f1::{install_binary, provision, start_daemon};
 use super::vm::{Vm, run_capture};
 
-pub fn run(vm: &Vm, workspace: &Path) -> Result<()> {
+pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     println!("== f6: build ==");
     run_capture(
         "cargo",
-        ["build", "--release", "-p", "ibexwall-ebpf-loader"],
+        [
+            "build",
+            "--release",
+            "-p",
+            "ibexwall-ebpf-loader",
+            "-p",
+            "ibexwall-core",
+            "-p",
+            "ibexwall-cli",
+            "-p",
+            "ibexwall-exec",
+            "-p",
+            "ibexwall-plugin-echo",
+            "--bins",
+        ],
         None,
         "building the loader",
     )?;
@@ -227,6 +241,120 @@ start_loader --ask-disabled
 R=$(/tmp/asked/python3 /tmp/timed.py)
 echo "METRIC: ask without a listener: $R"
 echo "$R" | grep -q '^connected' && [ "$(ms "$R")" -lt 500 ] || { echo "FAIL-OPEN BROKEN: $R"; exit 1; }
+"#
+    );
+
+    // From here on the whole stack: the packaged core and monitor unit,
+    // with the modes chosen through ibexctl.
+    crate::devkey::run()?;
+    provision(vm, workspace, install)?;
+    super::f1::pipe_file(
+        vm,
+        &workspace.join("packaging/systemd/ibexwall-monitor.service"),
+        "sudo tee /etc/systemd/system/ibexwall-monitor.service >/dev/null",
+    )?;
+    start_daemon(vm)?;
+
+    scenario!(
+        "m3 a mode chosen with ibexctl is enforced, survives restarts, and fails open",
+        r#"
+set -e
+sudo pkill -x python3 2>/dev/null || true
+HOST_IP=$(ip -4 -o addr show scope global | awk 'NR==1{split($4,a,"/"); print a[1]}')
+test -n "$HOST_IP" || { echo "no global IPv4"; exit 1; }
+sudo sh -c "nohup python3 -m http.server 8080 --bind 0.0.0.0 >/dev/null 2>&1 &"
+trap 'sudo pkill -x python3 2>/dev/null || true' EXIT
+sleep 2
+URL=http://$HOST_IP:8080/
+reach() { curl -s -o /dev/null --max-time 4 "$URL"; }
+# Polls instead of sleeping: the policy travels core -> unit -> maps.
+until_reach() { for i in $(seq 1 40); do reach && return 0; sleep 0.5; done; return 1; }
+until_refused() { for i in $(seq 1 40); do reach || return 0; sleep 0.5; done; return 1; }
+
+sudo systemctl start ibexwall-monitor.service
+for i in $(seq 1 40); do
+  sudo ibexctl apps list --json | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)["monitor"]["running"] else 1)' && break
+  sleep 0.5
+done
+reach || { echo "CURL FAILED BEFORE ANY RULE"; exit 1; }
+
+# A service: matched by its cgroup, which every kernel can do. The unit
+# exists before the rule (a cgroup created after it has a short grace).
+sudo systemctl reset-failed ibx-m3 2>/dev/null || true
+sudo systemd-run --quiet --unit=ibx-m3 sh -c "while true; do if curl -s -o /dev/null --max-time 2 $URL; then touch /tmp/m3.ok; else rm -f /tmp/m3.ok; fi; sleep 0.5; done"
+trap 'sudo systemctl stop ibx-m3 2>/dev/null || true; sudo pkill -x python3 2>/dev/null || true' EXIT
+for i in $(seq 1 40); do
+  sudo ibexctl apps list | grep -q 'service:ibx-m3.service' && break
+  sleep 0.5
+done
+sudo ibexctl apps list | grep -q 'service:ibx-m3.service' || { echo "SERVICE NEVER APPEARED"; sudo ibexctl apps list; exit 1; }
+svc_works() { for i in $(seq 1 40); do [ -e /tmp/m3.ok ] && return 0; sleep 0.5; done; return 1; }
+svc_stopped() { for i in $(seq 1 40); do [ ! -e /tmp/m3.ok ] && return 0; sleep 0.5; done; return 1; }
+svc_works || { echo "SERVICE CURL FAILED BEFORE ANY RULE"; exit 1; }
+sudo ibexctl apps set service:ibx-m3.service block
+svc_stopped || { echo "SERVICE NOT BLOCKED"; sudo journalctl -u ibexwall-monitor -n 20 --no-pager; exit 1; }
+reach || { echo "BLOCKING THE SERVICE BLOCKED OTHERS"; exit 1; }
+echo "METRIC: service blocked through its cgroup, others unaffected"
+sudo ibexctl apps set service:ibx-m3.service allow
+svc_works || { echo "SERVICE NOT REOPENED"; exit 1; }
+
+# Stopping the monitor leaves the network open; starting it again closes
+# the service again, from the stored mode (fail open, then restored).
+sudo ibexctl apps set service:ibx-m3.service block
+svc_stopped || { echo "SERVICE NOT BLOCKED AGAIN"; exit 1; }
+sudo systemctl stop ibexwall-monitor.service
+svc_works || { echo "STOPPING THE MONITOR LEFT THE SERVICE BLOCKED"; exit 1; }
+sudo systemctl start ibexwall-monitor.service
+svc_stopped || { echo "BLOCK NOT RESTORED WHEN THE MONITOR CAME BACK"; exit 1; }
+sudo ibexctl apps set service:ibx-m3.service allow
+svc_works || { echo "SERVICE NOT REOPENED (2)"; exit 1; }
+sudo systemctl stop ibx-m3
+
+# A terminal program: matched by the executable path the kernel saw at
+# exec. Needs the exec tracepoint, which some kernels (Debian's
+# perf_event_paranoid=3) only give to CAP_SYS_ADMIN: then it is reported
+# as unavailable, not silently skipped.
+if sudo journalctl -u ibexwall-monitor --no-pager | grep -q 'degraded: kernel-side exec capture'; then
+  echo "METRIC: exe rules unavailable on this kernel (reported as degraded)"
+else
+for i in $(seq 1 40); do
+  sudo ibexctl apps list | grep -q 'cli:/usr/bin/curl' && break
+  reach >/dev/null 2>&1 || true
+  sleep 0.5
+done
+sudo ibexctl apps list | grep -q 'cli:/usr/bin/curl' || { echo "CURL NEVER APPEARED"; sudo ibexctl apps list; exit 1; }
+
+# Block it: refused, the shown mode follows, others are untouched.
+sudo ibexctl apps set cli:/usr/bin/curl block
+until_refused || { echo "CURL NOT BLOCKED"; sudo journalctl -u ibexwall-monitor -n 20 --no-pager; exit 1; }
+sudo ibexctl apps list | grep 'cli:/usr/bin/curl' | grep -q block || { echo "MODE NOT SHOWN"; sudo ibexctl apps list; exit 1; }
+python3 -c "import urllib.request; urllib.request.urlopen('$URL', timeout=4)" || { echo "ANOTHER PROGRAM WAS BLOCKED"; exit 1; }
+echo "METRIC: curl blocked through ibexctl, python unaffected"
+
+# Back to allow: reachable again, with no restart.
+sudo ibexctl apps set cli:/usr/bin/curl allow
+until_reach || { echo "ALLOW DID NOT REOPEN"; exit 1; }
+
+# The choice persists: restart the core, the unit reconnects and gets it.
+sudo ibexctl apps set cli:/usr/bin/curl block
+until_refused || { echo "NOT BLOCKED AGAIN"; exit 1; }
+sudo systemctl restart ibexwalld.service
+for i in $(seq 1 60); do sudo ibexctl status --json >/dev/null 2>&1 && break; sleep 0.5; done
+# The old unit only notices the core is gone at its next write, then
+# systemd restarts it (a short fail-open gap). Wait for the new
+# connection, then the policy it receives must close curl again.
+for i in $(seq 1 80); do
+  sudo ibexctl apps list --json 2>/dev/null | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)["monitor"]["running"] else 1)' && break
+  reach >/dev/null 2>&1 || true
+  sleep 0.5
+done
+until_refused || { echo "BLOCK LOST ACROSS A CORE RESTART"; sudo ibexctl apps list; sudo systemctl status ibexwall-monitor --no-pager | head -12; sudo journalctl -u ibexwall-monitor -n 15 --no-pager; sudo journalctl -u ibexwalld -n 15 --no-pager; exit 1; }
+echo "METRIC: block survived a core restart"
+
+fi
+
+# An unknown mode is refused by the CLI, nothing changes.
+if sudo ibexctl apps set service:ibx-m3.service deny >/dev/null 2>&1; then echo "BAD MODE ACCEPTED"; exit 1; fi
 "#
     );
 

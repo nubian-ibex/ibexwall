@@ -57,6 +57,9 @@ pub struct Monitor {
     status: Mutex<MonitorStatus>,
     package_db: Mutex<(i64, Option<i64>)>,
     root: PathBuf,
+    /// The policy line the monitor unit should be enforcing; every
+    /// connection of the unit gets the current one, then each change.
+    policy: tokio::sync::watch::Sender<String>,
 }
 
 impl Monitor {
@@ -69,7 +72,26 @@ impl Monitor {
             }),
             package_db: Mutex::new((0, None)),
             root,
+            policy: tokio::sync::watch::channel(String::new()).0,
         }
+    }
+
+    /// Rebuilds the policy from the stored modes and pushes it.
+    pub fn refresh_policy(&self, core: &Core) -> Result<()> {
+        let policy = core.state.with_conn(|conn| {
+            let apps = ibexwall_apps::list_apps(conn)?;
+            let modes = ibexwall_apps::policy::modes(conn)?;
+            let default = ibexwall_apps::policy::default_mode(conn)?;
+            Ok::<_, ibexwall_apps::store::Error>(ibexwall_apps::policy::build(
+                &apps,
+                &modes,
+                default,
+                &std::collections::HashMap::new(),
+            ))
+        })?;
+        let line = serde_json::to_string(&serde_json::json!({ "policy": policy }))?;
+        self.policy.send_replace(line);
+        Ok(())
     }
 
     pub fn status(&self) -> MonitorStatus {
@@ -215,13 +237,36 @@ fn to_entry(summary: ibexwall_apps::AppSummary) -> AppEntry {
         last_seen: format_rfc3339(summary.last_seen),
         connections: summary.connections.max(0) as u64,
         destinations: summary.destinations.max(0) as u64,
+        mode: String::new(),
     }
 }
 
 /// Apps for the Apps screen, most recently active first.
 pub fn list_apps(core: &Core) -> Result<Vec<AppEntry>> {
-    let summaries = core.state.with_conn(ibexwall_apps::list_apps)?;
-    Ok(summaries.into_iter().map(to_entry).collect())
+    let (summaries, modes) = core.state.with_conn(|conn| {
+        Ok::<_, ibexwall_apps::store::Error>((
+            ibexwall_apps::list_apps(conn)?,
+            ibexwall_apps::policy::modes(conn)?,
+        ))
+    })?;
+    let default = core.state.with_conn(ibexwall_apps::policy::default_mode)?;
+    Ok(summaries
+        .into_iter()
+        .map(|summary| {
+            let mode = modes.get(&summary.key).copied().unwrap_or(default);
+            let mut entry = to_entry(summary);
+            entry.mode = mode.name().into();
+            entry
+        })
+        .collect())
+}
+
+/// Stores the mode chosen for an app and pushes the new policy.
+pub fn set_app_mode(core: &Core, app: &str, mode: ibexwall_apps::policy::Mode) -> Result<()> {
+    let now = ibexwall_sys::RealClock.unix_now();
+    core.state
+        .with_conn(|conn| ibexwall_apps::policy::set_mode(conn, app, mode, now))?;
+    core.monitor.refresh_policy(core)
 }
 
 pub fn app_destinations(core: &Core, app: &str) -> Result<Vec<AppDestination>> {
@@ -313,13 +358,36 @@ pub async fn serve_monitor(core: Arc<Core>, path: PathBuf) -> Result<()> {
         tokio::spawn(async move {
             active.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             core.monitor.set_status(true, None);
-            let mut lines = BufReader::new(stream).lines();
+            let (read, mut write) = stream.into_split();
+            // The policy goes out on connect and on every change, from
+            // its own task so a slow unit never delays ingestion.
+            let mut changes = core.monitor.policy.subscribe();
+            let writer = tokio::spawn(async move {
+                use tokio::io::AsyncWriteExt as _;
+                loop {
+                    let line = changes.borrow_and_update().clone();
+                    if !line.is_empty()
+                        && (write.write_all(line.as_bytes()).await.is_err()
+                            || write.write_all(b"\n").await.is_err())
+                    {
+                        return;
+                    }
+                    if changes.changed().await.is_err() {
+                        return;
+                    }
+                }
+            });
+            if let Err(error) = core.monitor.refresh_policy(&core) {
+                tracing::error!(%error, "building the app policy failed");
+            }
+            let mut lines = BufReader::new(read).lines();
             while let Ok(Some(line)) = lines.next_line().await {
                 let now = ibexwall_sys::RealClock.unix_now();
                 if let Err(error) = core.monitor.ingest_line(&core, &line, now) {
                     tracing::error!(%error, "monitor ingest failed");
                 }
             }
+            writer.abort();
             if active.fetch_sub(1, std::sync::atomic::Ordering::SeqCst) == 1 {
                 core.monitor
                     .set_status(false, Some("ibexwall-monitor disconnected"));

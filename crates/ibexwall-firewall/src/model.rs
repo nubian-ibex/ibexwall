@@ -14,6 +14,15 @@ pub enum Backend {
 }
 
 impl Backend {
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "firewalld" => Some(Backend::Firewalld),
+            "ufw" => Some(Backend::Ufw),
+            "nftables" => Some(Backend::Nftables),
+            _ => None,
+        }
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Backend::Firewalld => "firewalld",

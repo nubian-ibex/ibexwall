@@ -12,6 +12,7 @@
 
 pub mod browser;
 pub mod clock;
+pub mod firewall;
 pub mod flatpak;
 pub mod fs;
 pub mod identity;
@@ -26,6 +27,8 @@ use std::sync::Arc;
 /// System bundle the engine executes against; fakes for tests.
 pub struct SysBundle {
     pub fs: Arc<dyn Fs>,
+    /// Runs the allowlisted firewall tools (ADR-0034).
+    pub runner: Arc<dyn firewall::Runner>,
     pub systemd: Arc<dyn Systemd>,
     pub sysctl: Arc<dyn Sysctl>,
     pub clock: Arc<dyn Clock>,
@@ -58,6 +61,7 @@ impl SysBundle {
         let real_root = root == std::path::Path::new("/");
         Self {
             fs: Arc::new(RealFs::with_root(root.to_path_buf())),
+            runner: Arc::new(firewall::RealRunner),
             systemd: Arc::new(RealSystemd::new()),
             sysctl: Arc::new(RealSysctl::with_root(root.to_path_buf())),
             clock: Arc::new(RealClock),

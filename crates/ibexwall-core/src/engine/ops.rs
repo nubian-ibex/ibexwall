@@ -93,7 +93,31 @@ fn validate_one(op: &Op, manifest: &Manifest) -> Result<(), OpError> {
             Ok(())
         }
         Op::NftFragment { fragment } => validate_nft(fragment, manifest),
-        Op::FirewallAdapter { .. } => Ok(()),
+        Op::FirewallAdapter { backend, action } => {
+            // A known manager the plugin declared, and a structurally
+            // valid action: nothing else reaches a tool.
+            if !manifest
+                .privileges
+                .firewall_backends
+                .iter()
+                .any(|allowed| allowed == backend)
+            {
+                return Err(OpError::Invalid {
+                    field: "firewall.adapter",
+                    reason: format!("the plugin may not drive `{backend}`"),
+                });
+            }
+            ibexwall_sys::ops::parse_firewall(backend, action).map_err(|e| {
+                match e.downcast::<OpError>() {
+                    Ok(op_error) => op_error,
+                    Err(other) => OpError::Invalid {
+                        field: "firewall.adapter",
+                        reason: other.to_string(),
+                    },
+                }
+            })?;
+            Ok(())
+        }
         Op::DnsBackend { .. } => Ok(()),
         Op::FlatpakOverride { app_id, args } => {
             // One application id, and exactly the network block; the file
@@ -220,8 +244,18 @@ pub fn risk_flags(ops: &[Op]) -> Vec<RiskFlag> {
                     push(RiskFlag::Network);
                 }
             }
-            Op::NftFragment { .. } | Op::FirewallAdapter { .. } | Op::DnsBackend { .. } => {
+            Op::NftFragment { .. } | Op::DnsBackend { .. } => {
                 push(RiskFlag::Network);
+            }
+            // Allowing a port cannot lock anyone out; removing one can.
+            Op::FirewallAdapter { action, .. } => {
+                if action
+                    .get("action")
+                    .and_then(|a| a.as_str())
+                    .is_some_and(|a| a.starts_with("remove_"))
+                {
+                    push(RiskFlag::Network);
+                }
             }
             Op::BrowserPolicy { .. } => {
                 // Steering a browser's DNS is a network change.
@@ -575,10 +609,6 @@ reversible = "immediate"
     fn adapter_ops_validate_their_required_fields() {
         let manifest = manifest();
         let good = [
-            Op::FirewallAdapter {
-                backend: "ufw".into(),
-                action: serde_json::json!({}),
-            },
             Op::DnsBackend {
                 backend: "resolved".into(),
                 action: serde_json::json!({}),
@@ -671,8 +701,8 @@ reversible = "immediate"
         assert!(risk_flags(&nonnet).is_empty());
         let adapters = [
             Op::FirewallAdapter {
-                backend: "x".into(),
-                action: serde_json::json!({}),
+                backend: "ufw".into(),
+                action: serde_json::json!({"action": "remove_port", "port": 22, "proto": "tcp"}),
             },
             Op::NftFragment {
                 fragment: serde_json::json!({}),
@@ -716,5 +746,56 @@ reversible = "immediate"
         // Cutting one app's network cannot lock the machine out, so it
         // carries no network risk and needs no confirmation window.
         assert!(risk_flags(&[op("org.example.App", &["--unshare=network"])]).is_empty());
+    }
+
+    #[test]
+    fn firewall_adapter_needs_a_declared_backend_and_a_valid_action() {
+        let mut manifest = manifest();
+        let op = |backend: &str, action: serde_json::Value| Op::FirewallAdapter {
+            backend: backend.into(),
+            action,
+        };
+        let allow = serde_json::json!({"action": "allow_port", "port": 8080, "proto": "tcp"});
+        // Not declared by the plugin: refused.
+        assert!(validate(&[op("firewalld", allow.clone())], &manifest).is_err());
+        manifest.privileges.firewall_backends = vec!["firewalld".into(), "ufw".into()];
+        assert!(validate(&[op("firewalld", allow.clone())], &manifest).is_ok());
+        assert!(validate(&[op("ufw", allow.clone())], &manifest).is_ok());
+        for bad in [
+            op("iptables", allow.clone()),
+            op("firewalld", serde_json::json!({"action": "flush"})),
+            op(
+                "firewalld",
+                serde_json::json!({"action": "allow_port", "port": 0, "proto": "tcp"}),
+            ),
+            op(
+                "firewalld",
+                serde_json::json!({"action": "allow_service", "name": "--reload"}),
+            ),
+            op(
+                "firewalld",
+                serde_json::json!({"action": "allow_port", "port": 1, "proto": "tcp", "args": "x"}),
+            ),
+            op(
+                "ufw",
+                serde_json::json!({"action": "allow_service", "name": "http"}),
+            ),
+            op("nftables", allow.clone()),
+        ] {
+            assert!(
+                matches!(
+                    validate(std::slice::from_ref(&bad), &manifest),
+                    Err(OpError::Invalid {
+                        field: "firewall.adapter",
+                        ..
+                    })
+                ),
+                "{bad:?}"
+            );
+        }
+        // Allowing cannot lock anyone out; removing can.
+        assert!(risk_flags(&[op("firewalld", allow)]).is_empty());
+        let remove = serde_json::json!({"action": "remove_port", "port": 22, "proto": "tcp"});
+        assert!(risk_flags(&[op("firewalld", remove)]).contains(&RiskFlag::Network));
     }
 }

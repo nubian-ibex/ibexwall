@@ -2103,6 +2103,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ibexwall-apps"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-identity",
+ "rusqlite",
+ "serde",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "ibexwall-cli"
 version = "0.1.0"
 dependencies = [

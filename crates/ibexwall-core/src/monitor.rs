@@ -196,34 +196,60 @@ impl Monitor {
     /// cares about (loopback, unspecified) or not valid are skipped; a
     /// storage failure is returned.
     pub fn ingest_line(&self, core: &Core, line: &str, now: i64) -> Result<()> {
-        if let Ok(envelope) = serde_json::from_str::<crate::ask::AskEnvelope>(line) {
-            return self.handle_ask(core, envelope.ask, now);
-        }
-        if let Ok(meta) = serde_json::from_str::<Meta>(line) {
-            // The loader runs, with a limitation worth showing.
-            if meta.meta == "degraded" {
-                self.set_status(true, Some(&meta.reason));
+        self.ingest_batch(core, &[line], now)
+    }
+
+    /// Several lines at once. Connections are recorded in one transaction:
+    /// at thousands a second, a commit per connection is the bottleneck.
+    /// Questions and status lines are handled as they come.
+    pub fn ingest_batch<S: AsRef<str>>(&self, core: &Core, lines: &[S], now: i64) -> Result<()> {
+        let mut observations = Vec::with_capacity(lines.len());
+        for line in lines {
+            let line = line.as_ref();
+            if let Ok(envelope) = serde_json::from_str::<crate::ask::AskEnvelope>(line) {
+                if let Err(error) = self.handle_ask(core, envelope.ask, now) {
+                    tracing::error!(%error, "handling an Ask request failed");
+                }
+            } else if let Ok(meta) = serde_json::from_str::<Meta>(line) {
+                // The loader runs, with a limitation worth showing.
+                if meta.meta == "degraded" {
+                    self.set_status(true, Some(&meta.reason));
+                }
+            } else if let Some(observation) = self.observation_from(line, now) {
+                observations.push(observation);
             }
+        }
+        if observations.is_empty() {
             return Ok(());
         }
-        let Ok(parsed) = serde_json::from_str::<Line>(line) else {
-            return Ok(());
-        };
-        let Ok(ip) = parsed.dst.parse::<IpAddr>() else {
-            return Ok(());
-        };
+        let recorded = core.state.with_conn(|conn| {
+            let transaction = conn.unchecked_transaction()?;
+            let mut all = Vec::new();
+            for observation in &observations {
+                for alert in ibexwall_apps::record(&transaction, observation)? {
+                    all.push((observation, alert));
+                }
+            }
+            transaction.commit()?;
+            Ok::<_, anyhow::Error>(all)
+        })?;
+        for (observation, alert) in recorded {
+            self.raise(core, observation, alert, now);
+        }
+        Ok(())
+    }
+
+    /// A connection line as an observation; `None` for what is not traffic
+    /// (garbage, unparsable addresses, loopback and unbound sockets).
+    fn observation_from(&self, line: &str, now: i64) -> Option<Observation> {
+        let parsed = serde_json::from_str::<Line>(line).ok()?;
+        let ip = parsed.dst.parse::<IpAddr>().ok()?;
         // Local plumbing is not network traffic: an unbound socket's
         // default destination and loopback services.
         if ip.is_unspecified() || ip.is_loopback() {
-            return Ok(());
+            return None;
         }
-        let domain = self
-            .correlator
-            .lock()
-            .unwrap()
-            .lookup(ip, now.max(0) as u64)
-            .map(str::to_string);
-        let observation = Observation {
+        Some(Observation {
             identity: Identity {
                 kind: parsed.kind,
                 id: parsed.id,
@@ -231,19 +257,12 @@ impl Monitor {
             exe_path: parsed.exe.filter(|path| !path.is_empty()),
             exe_hash: parsed.exe_hash,
             package: parsed.package,
-            domain,
+            domain: self.lookup_domain(ip, now),
             address: ip.to_string(),
             port: parsed.port,
             now,
             package_db_changed: self.package_db_changed(now),
-        };
-        let alerts = core
-            .state
-            .with_conn(|conn| ibexwall_apps::record(conn, &observation))?;
-        for alert in alerts {
-            self.raise(core, &observation, alert, now);
-        }
-        Ok(())
+        })
     }
 
     fn raise(&self, core: &Core, observation: &Observation, alert: Alert, now: i64) {
@@ -474,13 +493,33 @@ pub async fn serve_monitor(core: Arc<Core>, path: PathBuf) -> Result<()> {
             if let Err(error) = core.monitor.refresh_policy(&core) {
                 tracing::error!(%error, "building the app policy failed");
             }
+            // The reader only reads; a worker records, in batches.
+            let (queue, mut incoming) = tokio::sync::mpsc::channel::<String>(65_536);
+            let worker_core = Arc::clone(&core);
+            let worker = tokio::task::spawn_blocking(move || {
+                while let Some(first) = incoming.blocking_recv() {
+                    let mut batch = vec![first];
+                    while batch.len() < 1024 {
+                        match incoming.try_recv() {
+                            Ok(line) => batch.push(line),
+                            Err(_) => break,
+                        }
+                    }
+                    let now = ibexwall_sys::RealClock.unix_now();
+                    if let Err(error) = worker_core.monitor.ingest_batch(&worker_core, &batch, now)
+                    {
+                        tracing::error!(%error, "monitor ingest failed");
+                    }
+                }
+            });
             let mut lines = BufReader::new(read).lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                let now = ibexwall_sys::RealClock.unix_now();
-                if let Err(error) = core.monitor.ingest_line(&core, &line, now) {
-                    tracing::error!(%error, "monitor ingest failed");
+                if queue.send(line).await.is_err() {
+                    break;
                 }
             }
+            drop(queue);
+            let _ = worker.await;
             writer.abort();
             if active.fetch_sub(1, std::sync::atomic::Ordering::SeqCst) == 1 {
                 core.monitor

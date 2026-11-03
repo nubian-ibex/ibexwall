@@ -1,17 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
 // SPDX-License-Identifier: GPL-2.0-only OR MIT
 
-//! IbexWall eBPF programs (aya, CO-RE) (placeholder; lands with its phase, see docs/plans/).
+//! Library target so host tools can typecheck this crate; the program
+//! itself is the `ibexwall-ebpf` bin (see src/main.rs).
 
-/// Returns the crate version.
-pub fn version() -> &'static str {
-    env!("CARGO_PKG_VERSION")
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn version_is_semver_like() {
-        assert!(super::version().split('.').count() >= 2);
-    }
-}
+#![no_std]

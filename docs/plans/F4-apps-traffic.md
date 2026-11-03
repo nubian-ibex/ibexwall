@@ -10,7 +10,15 @@ and a changed-binary alert, and the Flatpak block via `flatpak.override`.
 The Apps and network screen shows the modes; only Monitor and
 Block-Flatpak are functional. Spec phase F4.
 
-Status: draft (autonomous mode, 2026-11-02).
+Status: in progress (autonomous mode).
+
+Progress:
+- S4-a done (ADR-0031): the connect monitor loads, attaches and
+  attributes on all five distros; ring-buffer wake-on-event; overhead
+  bounded (< 3 us per connect in the hook, < 20 us per event in the
+  loader); `cargo xtask ebpf` builds the ELF outside the workspace.
+- The `--phase f4` spike scenarios (attribution with asymmetric v4 and
+  v6 destinations, overhead) pass 2/2 on the five distros.
 
 ## Scope decisions
 
@@ -69,9 +77,7 @@ M6 VM phase `--phase f4`
 
 ## Spikes
 
-- S4-a (M2, 2 days): aya 0.13 on the five distros' kernels; which hooks
-  (tracepoint sys_enter_connect vs cgroup/connect4) survive on each;
-  ring buffer throughput at 5k events/s.
+- S4-a: done (ADR-0031).
 - S4-b (M3, 1 day): cgroup id to path resolution cost; caching strategy.
 - S4-c (M4, 0.5 day): `flatpak override` behavior and file layout per
   distro (verification against Flatpak's own docs).

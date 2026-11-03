@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["crates/*", "xtask", "plugins/*/src", "ui/src-tauri"]
+# Only builds for the eBPF target via `cargo xtask ebpf` (bpf-linker).
+exclude = ["crates/ibexwall-ebpf"]
 
 [workspace.package]
 version = "0.1.0"
@@ -17,6 +19,7 @@ ibexwall-varlink = { path = "crates/ibexwall-varlink", version = "0.1.0" }
 ibexwall-tui = { path = "crates/ibexwall-tui", version = "0.1.0" }
 ibexwall-sys = { path = "crates/ibexwall-sys", version = "0.1.0" }
 ibexwall-dns = { path = "crates/ibexwall-dns", version = "0.1.0" }
+ibexwall-net-common = { path = "crates/ibexwall-net-common", version = "0.1.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 schemars = "1"
@@ -37,7 +40,7 @@ hickory-server = { version = "0.26", default-features = false, features = ["reso
 hickory-resolver = { version = "0.26", default-features = false, features = ["tokio", "tls-ring", "https-ring", "quic-ring", "h3-ring", "webpki-roots"] }
 zbus = { version = "6", default-features = false, features = ["tokio", "proxy"] }
 rusqlite = { version = "0.41", features = ["bundled"] }
-rustix = { version = "1", features = ["fs", "net", "process", "system"] }
+rustix = { version = "1", features = ["event", "fs", "net", "process", "system"] }
 sha2 = "0.11"
 serde_jcs = "0.2"
 hex = "0.4"

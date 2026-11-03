@@ -18,11 +18,12 @@ pub fn draw(frame: &mut Frame, model: &AppModel) {
         .constraints([Constraint::Length(3), Constraint::Min(1)])
         .split(frame.area());
 
-    let titles = ["Overview (j/k)", "Plugins", "History"];
+    let titles = ["Overview (j/k)", "Apps", "Plugins", "History"];
     let selected = match model.tab {
         crate::model::Tab::Overview => 0,
-        crate::model::Tab::Plugins => 1,
-        crate::model::Tab::History => 2,
+        crate::model::Tab::Apps => 1,
+        crate::model::Tab::Plugins => 2,
+        crate::model::Tab::History => 3,
     };
     frame.render_widget(
         Tabs::new(titles)
@@ -33,6 +34,7 @@ pub fn draw(frame: &mut Frame, model: &AppModel) {
 
     match model.tab {
         crate::model::Tab::Overview => draw_overview(frame, model, chunks[1]),
+        crate::model::Tab::Apps => draw_apps(frame, model, chunks[1]),
         crate::model::Tab::Plugins => draw_plugins(frame, model, chunks[1]),
         crate::model::Tab::History => draw_history(frame, model, chunks[1]),
     }
@@ -57,6 +59,39 @@ fn draw_overview(frame: &mut Frame, model: &AppModel, area: ratatui::layout::Rec
         Line::from("j/k or Tab: switch tab · r: refresh · q: quit"),
     ];
     frame.render_widget(Paragraph::new(text).block(block), area);
+}
+
+/// The monitor's state first (it explains an empty list), then the apps.
+pub fn apps_lines(model: &AppModel) -> Vec<String> {
+    let mut lines = Vec::new();
+    match &model.monitor {
+        Some((true, reason)) if reason.is_empty() => lines.push("monitor: running".into()),
+        Some((true, reason)) => lines.push(format!("monitor: running ({reason})")),
+        Some((false, reason)) => lines.push(format!("monitor: off ({reason})")),
+        None => lines.push("monitor: unknown".into()),
+    }
+    if model.apps.is_empty() {
+        lines.push("no applications seen yet".into());
+    }
+    for app in &model.apps {
+        lines.push(format!(
+            "{:<38} {:<15} {:>5} conns {:>4} dests  {}",
+            app.key, app.kind, app.connections, app.destinations, app.last_seen
+        ));
+    }
+    lines
+}
+
+fn draw_apps(frame: &mut Frame, model: &AppModel, area: ratatui::layout::Rect) {
+    let rows: Vec<Line> = apps_lines(model).into_iter().map(Line::from).collect();
+    frame.render_widget(
+        List::new(rows).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Apps and network"),
+        ),
+        area,
+    );
 }
 
 fn draw_plugins(frame: &mut Frame, model: &AppModel, area: ratatui::layout::Rect) {
@@ -100,4 +135,36 @@ fn draw_history(frame: &mut Frame, model: &AppModel, area: ratatui::layout::Rect
         List::new(rows).block(Block::default().borders(Borders::ALL).title("History")),
         area,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::AppRow;
+
+    fn row(key: &str) -> AppRow {
+        AppRow {
+            key: key.into(),
+            kind: "cli".into(),
+            connections: 3,
+            destinations: 2,
+            last_seen: "2026-11-03T10:00:00Z".into(),
+        }
+    }
+
+    #[test]
+    fn the_monitor_state_comes_first_and_explains_an_empty_list() {
+        let mut model = AppModel::default();
+        assert_eq!(apps_lines(&model)[0], "monitor: unknown");
+        model.monitor = Some((false, "waiting for ibexwall-monitor".into()));
+        let lines = apps_lines(&model);
+        assert_eq!(lines[0], "monitor: off (waiting for ibexwall-monitor)");
+        assert_eq!(lines[1], "no applications seen yet");
+        model.monitor = Some((true, String::new()));
+        model.apps = vec![row("cli:/usr/bin/curl")];
+        let lines = apps_lines(&model);
+        assert_eq!(lines[0], "monitor: running");
+        assert!(lines[1].starts_with("cli:/usr/bin/curl"));
+        assert!(lines[1].contains("3 conns"));
+    }
 }

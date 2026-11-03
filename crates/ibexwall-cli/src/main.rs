@@ -87,8 +87,33 @@ enum Command {
         #[command(subcommand)]
         action: AppsAction,
     },
+    /// The inbound firewall: what is allowed in, and changes to it.
+    Firewall {
+        #[command(subcommand)]
+        action: FirewallCmd,
+    },
     /// Interactive terminal UI.
     Tui,
+}
+
+#[derive(Subcommand)]
+enum FirewallCmd {
+    /// What the firewall allows today.
+    Status,
+    /// Let a port or a service in: `8080/tcp`, `53/udp` or `service:http`.
+    Allow {
+        target: String,
+        /// Apply it now (otherwise only the plan is shown).
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Stop letting a port or a service in.
+    Deny {
+        target: String,
+        /// Apply it now (otherwise only the plan is shown).
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -202,6 +227,7 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
         }
         Command::Plugins { action } => plugins(client, action, json).await,
         Command::Apps { action } => apps(client, action, json).await,
+        Command::Firewall { action } => firewall(client, action, json).await,
         Command::Check { plugin } => {
             let params = serde_json::json!({ "plugin": plugin });
             let value = client.call("com.ibexwall.Core.RunChecks", params).await?;
@@ -394,6 +420,142 @@ async fn plugins(
             Ok(Finish::Done)
         }
     }
+}
+
+/// `8080/tcp` goes to the plugin's port settings, `service:http` to its
+/// service settings.
+fn firewall_patch(target: &str, allow: bool) -> serde_json::Value {
+    let (key, value) = match target.strip_prefix("service:") {
+        Some(name) => (
+            if allow {
+                "allow_service"
+            } else {
+                "remove_service"
+            },
+            name,
+        ),
+        None => (if allow { "allow" } else { "remove" }, target),
+    };
+    serde_json::json!({ key: value })
+}
+
+async fn firewall(
+    client: &mut ibexwall_varlink::Client,
+    action: &FirewallCmd,
+    json: bool,
+) -> Result<Finish, CliError> {
+    let (target, allow, yes) = match action {
+        FirewallCmd::Status => {
+            let value = client
+                .call("com.ibexwall.Core.GetFirewall", serde_json::json!({}))
+                .await?;
+            if json {
+                emit(value, json);
+            } else {
+                print!("{}", render_firewall(&value["firewall"]));
+            }
+            return Ok(Finish::Done);
+        }
+        FirewallCmd::Allow { target, yes } => (target, true, *yes),
+        FirewallCmd::Deny { target, yes } => (target, false, *yes),
+    };
+    let plan = client
+        .call(
+            "com.ibexwall.Core.PlanChange",
+            serde_json::json!({ "plugin": "net.firewall", "patch": firewall_patch(target, allow) }),
+        )
+        .await?;
+    let plan_id = plan["plan"]["id"].as_str().unwrap_or_default().to_string();
+    if !yes {
+        if json {
+            emit(plan, json);
+        } else {
+            for op in plan["plan"]["ops"].as_array().cloned().unwrap_or_default() {
+                println!("{} {}", text(&op["op"]), text(&op["target"]));
+            }
+            println!("apply with: ibexctl apply {plan_id}  (or repeat with --yes)");
+        }
+        return Ok(Finish::Done);
+    }
+    let applied = client
+        .call(
+            "com.ibexwall.Core.Apply",
+            serde_json::json!({ "plan_id": plan_id, "confirm_timeout_s": null }),
+        )
+        .await?;
+    let state = applied["transaction"]["state"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    let id = applied["transaction"]["id"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    emit(applied, json);
+    if state == "pending_confirm" {
+        Ok(Finish::AwaitingConfirm(id))
+    } else {
+        if !json {
+            println!("done ({id}); undo with: ibexctl rollback {id}");
+        }
+        Ok(Finish::Done)
+    }
+}
+
+fn ports_line(value: &serde_json::Value) -> String {
+    let ports: Vec<String> = value
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .map(|p| format!("{}/{}", p["port"].as_u64().unwrap_or(0), text(&p["proto"])))
+        .collect();
+    if ports.is_empty() {
+        "none".into()
+    } else {
+        ports.join(", ")
+    }
+}
+
+fn render_firewall(state: &serde_json::Value) -> String {
+    let manager = text(&state["backend"]);
+    let status = match state["active"].as_bool() {
+        Some(true) => "active",
+        Some(false) => "not active",
+        None => "state unknown",
+    };
+    let mut out = format!("firewall: {manager} ({status})");
+    if let Some(zone) = state["zone"].as_str() {
+        out.push_str(&format!(", zone {}", clean(zone)));
+    }
+    out.push('\n');
+    out.push_str(&format!(
+        "  allowed ports:    {}\n",
+        ports_line(&state["ports"])
+    ));
+    let services: Vec<String> = state["services"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .map(text)
+        .collect();
+    out.push_str(&format!(
+        "  allowed services: {}\n",
+        if services.is_empty() {
+            "none".into()
+        } else {
+            services.join(", ")
+        }
+    ));
+    out.push_str(&format!(
+        "  listening on every address: {}\n",
+        ports_line(&state["listening"])
+    ));
+    for line in state["other"].as_array().cloned().unwrap_or_default() {
+        out.push_str(&format!("  read-only: {}\n", text(&line)));
+    }
+    out
 }
 
 async fn apps(
@@ -612,5 +774,44 @@ mod tests {
         );
         assert!(out.contains("example.com:443  x2"));
         assert!(out.contains("203.0.113.7:80  x1  last b  (no domain)"));
+    }
+
+    #[test]
+    fn a_target_becomes_the_plugins_setting() {
+        assert_eq!(
+            firewall_patch("8080/tcp", true),
+            json!({"allow": "8080/tcp"})
+        );
+        assert_eq!(firewall_patch("22", false), json!({"remove": "22"}));
+        assert_eq!(
+            firewall_patch("service:http", true),
+            json!({"allow_service": "http"})
+        );
+        assert_eq!(
+            firewall_patch("service:http", false),
+            json!({"remove_service": "http"})
+        );
+    }
+
+    #[test]
+    fn the_firewall_status_is_readable_and_terminal_safe() {
+        let out = render_firewall(&json!({
+            "backend": "firewalld", "active": true, "zone": "pub\u{1b}lic",
+            "ports": [{"port": 8080, "proto": "tcp"}],
+            "services": ["ssh", "http"],
+            "listening": [{"port": 22, "proto": "tcp"}],
+            "other": ["rich rule: x\u{7}"]
+        }));
+        assert!(out.starts_with("firewall: firewalld (active), zone pub?lic\n"));
+        assert!(out.contains("allowed ports:    8080/tcp"));
+        assert!(out.contains("allowed services: ssh, http"));
+        assert!(out.contains("listening on every address: 22/tcp"));
+        assert!(!out.contains('\u{1b}') && !out.contains('\u{7}'));
+        let bare = render_firewall(&json!({
+            "backend": "nftables", "active": false,
+            "ports": [], "services": [], "listening": [], "other": []
+        }));
+        assert!(bare.contains("nftables (not active)"));
+        assert!(bare.contains("allowed ports:    none"));
     }
 }

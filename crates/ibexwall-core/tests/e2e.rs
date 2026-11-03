@@ -1003,3 +1003,55 @@ async fn a_degraded_notice_from_the_loader_shows_in_the_status() {
     // A meta line is never an app.
     assert!(listed["apps"].as_array().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn the_firewall_is_read_from_the_managers_own_files() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let root = &sandbox.root;
+    let (_core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+
+    // No manager at all: IbexWall's own chain, off.
+    let value = client
+        .call("com.ibexwall.Core.GetFirewall", json!({}))
+        .await
+        .unwrap();
+    assert_eq!(value["firewall"]["backend"], "nftables");
+    assert_eq!(value["firewall"]["active"], false);
+
+    // firewalld running (systemd's marker is a dangling symlink) with a
+    // zone that allows ssh and one port.
+    for dir in ["usr/bin", "run/systemd/units", "etc/firewalld/zones"] {
+        std::fs::create_dir_all(root.join(dir)).unwrap();
+    }
+    std::fs::write(root.join("usr/bin/firewall-cmd"), "").unwrap();
+    std::os::unix::fs::symlink(
+        "no-such-invocation",
+        root.join("run/systemd/units/invocation:firewalld.service"),
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("etc/firewalld/zones/public.xml"),
+        r#"<zone><service name="ssh"/><port protocol="tcp" port="8080"/><rule family="ipv4"><accept/></rule></zone>"#,
+    )
+    .unwrap();
+    let value = client
+        .call("com.ibexwall.Core.GetFirewall", json!({}))
+        .await
+        .unwrap();
+    let firewall = &value["firewall"];
+    assert_eq!(firewall["backend"], "firewalld");
+    assert_eq!(firewall["active"], true);
+    assert_eq!(firewall["zone"], "public");
+    assert_eq!(firewall["services"], json!(["ssh"]));
+    assert_eq!(firewall["ports"], json!([{ "port": 8080, "proto": "tcp" }]));
+    assert!(
+        firewall["other"][0]
+            .as_str()
+            .unwrap()
+            .starts_with("rich rule")
+    );
+}

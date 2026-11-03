@@ -184,6 +184,8 @@ if peer_can 8080; then echo "8080 WAS REACHABLE"; exit 1; fi
 if peer_can 9090; then echo "9090 WAS REACHABLE"; exit 1; fi
 
 TX2=$(tx_apply allow=8080/tcp)
+sudo ibexctl firewall status | grep -q 'nftables (active)' || { echo "status NOT ACTIVE"; sudo ibexctl firewall status >&2; exit 1; }
+sudo ibexctl firewall status | grep -q 'allowed ports:.*8080/tcp' || { echo "status MISSING 8080"; sudo ibexctl firewall status >&2; exit 1; }
 peer_can 8080 || { echo "8080 STILL BLOCKED"; sudo nft list chain inet ibexwall net_firewall_input >&2; exit 1; }
 if peer_can 9090; then echo "9090 OPENED BY MISTAKE"; exit 1; fi
 [ "$(foreign_rules)" = "$BEFORE" ] || { echo "A FOREIGN TABLE CHANGED"; exit 1; }
@@ -362,6 +364,19 @@ sudo firewall-cmd --list-services | grep -qw http || { echo "SERVICE NOT BACK AF
 sudo ibexctl rollback "$TX" --json >/dev/null
 HASH_AFTER=$(sudo sha256sum $ZF 2>/dev/null | cut -d' ' -f1 || true)
 [ "$HASH_BEFORE" = "$HASH_AFTER" ] || { echo "ZONE FILE NOT RESTORED (2): '$HASH_BEFORE' vs '$HASH_AFTER'"; exit 1; }
+# The command line says the same as the manager does, and can change it.
+sudo ibexctl firewall status | grep -q 'firewalld (active)' || { echo "ibexctl firewall status WRONG"; sudo ibexctl firewall status >&2; exit 1; }
+if sudo ibexctl firewall allow 9091/tcp | grep -q "apply with"; then :; else echo "allow WITHOUT --yes DID NOT ONLY PLAN"; exit 1; fi
+if sudo firewall-cmd --list-ports | grep -q 9091; then echo "allow WITHOUT --yes CHANGED THE FIREWALL"; exit 1; fi
+# The plugin asks for confirmation (exit status 5), like any firewall change.
+DONE=$(sudo ibexctl firewall allow 9091/tcp --yes 2>&1 || true)
+TXC=$(echo "$DONE" | grep -o 'tx-[a-z0-9-]*' | head -1)
+test -n "$TXC" || { echo "NO TRANSACTION: $DONE"; exit 1; }
+if echo "$DONE" | grep -q "awaiting confirmation"; then sudo ibexctl confirm "$TXC" >/dev/null; fi
+sudo firewall-cmd --list-ports | grep -q 9091/tcp || { echo "allow --yes DID NOT APPLY: $DONE"; exit 1; }
+sudo ibexctl firewall status | grep -q '9091/tcp' || { echo "status DOES NOT SHOW 9091"; exit 1; }
+sudo ibexctl rollback "$TXC" --json >/dev/null
+if sudo firewall-cmd --list-ports | grep -q 9091; then echo "9091 SURVIVED ROLLBACK"; exit 1; fi
 sudo systemctl disable --now firewalld
 "#
         )

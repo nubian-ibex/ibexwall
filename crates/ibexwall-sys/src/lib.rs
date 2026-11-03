@@ -79,6 +79,7 @@ impl SysBundle {
 }
 
 pub mod nft;
+pub mod nm;
 pub mod polkit;
 pub mod sysctl;
 pub mod systemd;

@@ -1,5 +1,37 @@
 {
   "$defs": {
+    "FirewallNetwork": {
+      "additionalProperties": false,
+      "description": "A network this computer is on and the profile suggested for it.",
+      "properties": {
+        "kind": {
+          "description": "`wired`, `wifi_secured`, `wifi_open` or `other`.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The connection's name; untrusted display text.",
+          "type": "string"
+        },
+        "recommended": {
+          "description": "`home`, `work`, `public` or `travel`.",
+          "type": "string"
+        },
+        "warning": {
+          "default": null,
+          "description": "A Fluent key for the warning that goes with the suggestion.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "recommended"
+      ],
+      "type": "object"
+    },
     "FirewallPort": {
       "additionalProperties": false,
       "description": "One allowed or listening port.",
@@ -45,6 +77,13 @@
       },
       "type": "array"
     },
+    "networks": {
+      "description": "The networks this computer is on, with the suggested profile.",
+      "items": {
+        "$ref": "#/$defs/FirewallNetwork"
+      },
+      "type": "array"
+    },
     "other": {
       "description": "Rules read but not edited (ranges, rich rules, other targets).",
       "items": {
@@ -79,7 +118,8 @@
     "ports",
     "services",
     "listening",
-    "other"
+    "other",
+    "networks"
   ],
   "title": "FirewallState",
   "type": "object"

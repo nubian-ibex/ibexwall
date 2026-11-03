@@ -65,6 +65,20 @@ pub enum NetworkKind {
     Other,
 }
 
+/// Maps NetworkManager's connection type to a kind of network. Virtual
+/// links (VPNs, bridges, tunnels, loopback) are not networks to profile:
+/// the network underneath them is.
+pub fn classify(nm_type: &str, secured: bool) -> Option<NetworkKind> {
+    match nm_type {
+        "802-3-ethernet" | "pppoe" => Some(NetworkKind::Wired),
+        "802-11-wireless" if secured => Some(NetworkKind::WifiSecured),
+        "802-11-wireless" => Some(NetworkKind::WifiOpen),
+        "vpn" | "wireguard" | "tun" | "bridge" | "bond" | "team" | "vlan" | "veth" | "dummy"
+        | "loopback" | "ip-tunnel" | "macvlan" | "vxlan" => None,
+        _ => Some(NetworkKind::Other),
+    }
+}
+
 /// The profile to suggest and, for the cautious ones, why.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Recommendation {
@@ -116,6 +130,24 @@ mod tests {
         let other = recommend(NetworkKind::Other);
         assert_eq!(other.profile, Profile::Travel);
         assert!(other.warning.is_some());
+    }
+
+    #[test]
+    fn network_manager_types_are_classified_and_virtual_links_skipped() {
+        assert_eq!(classify("802-3-ethernet", false), Some(NetworkKind::Wired));
+        assert_eq!(
+            classify("802-11-wireless", true),
+            Some(NetworkKind::WifiSecured)
+        );
+        assert_eq!(
+            classify("802-11-wireless", false),
+            Some(NetworkKind::WifiOpen)
+        );
+        assert_eq!(classify("gsm", false), Some(NetworkKind::Other));
+        assert_eq!(classify("something-new", true), Some(NetworkKind::Other));
+        for virtual_link in ["vpn", "wireguard", "bridge", "loopback", "tun"] {
+            assert_eq!(classify(virtual_link, false), None, "{virtual_link}");
+        }
     }
 
     #[test]

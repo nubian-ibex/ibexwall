@@ -46,6 +46,11 @@ Progress:
   correlation over the resolver socket; found and fixed a hook that
   returned 0 and blocked connects (ADR-0031 correction). Still open:
   Firefox as a package, the GUI Apps screen, the TUI apps view.
+- Overhead measured against the spec criterion (hook plus loader CPU
+  per connection, non-loopback destinations, best of five): fedora 1.26%,
+  debian 1.04%, ubuntu-24.04 0.92%, arch 0.88%, ubuntu-26.04 0.65% of one
+  CPU at 1000 connections/s (target below 2%). The loader reads cgroups
+  from an in-memory index first.
 - The `--phase f4` spike scenarios (attribution with asymmetric v4 and
   v6 destinations, overhead) pass 2/2 on the five distros.
 

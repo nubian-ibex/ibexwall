@@ -134,12 +134,17 @@ EOF
         "e1 overhead of the monitor on a connect loop stays small",
         r#"
 set -e
-cat > /tmp/loop.py <<'EOF'
+# The machine's own address: refused at once like loopback, but not
+# filtered as local plumbing, so the monitor does all of its work.
+TARGET=$(ip -4 -o addr show scope global | awk 'NR==1{split($4,a,"/"); print a[1]}')
+test -n "$TARGET" || { echo "no global IPv4 address" >&2; exit 1; }
+cat > /tmp/loop.py <<EOF
 import socket, time
+TARGET = "$TARGET"
 start = time.process_time()
 for _ in range(1000):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try: s.connect(("127.0.0.1", 9))
+    try: s.connect((TARGET, 9))
     except OSError: pass
     s.close()
 print(f"{time.process_time() * 1000:.1f}")
@@ -163,10 +168,13 @@ on = min(float(x) for x in open("/tmp/t-on").read().split())
 per_connect_us = (on - off) * 1000 / 1000
 loader_cpu_ms = ($LOADER_AFTER - $LOADER_BEFORE) / 1e6
 per_event_us = loader_cpu_ms * 1000 / 5000
+# Spec F4: under 2% CPU at 1000 connections/s, i.e. under 20 us of CPU
+# per connection for the hook plus the loader together.
+total_us = per_connect_us + per_event_us
 print(f"1000 refused connects, best of 5: {off:.1f} -> {on:.1f} ms CPU, {per_connect_us:.2f} us/connect in the hook")
 print(f"loader CPU for 5000 events: {loader_cpu_ms:.1f} ms ({per_event_us:.2f} us/event)")
-assert per_connect_us < 3.0, f"hook overhead too high: {per_connect_us:.2f} us/connect"
-assert per_event_us < 20.0, f"loader CPU too high: {per_event_us:.2f} us/event"
+print(f"METRIC: hook {per_connect_us:.2f} us + loader {per_event_us:.2f} us = {total_us:.2f} us/connect = {total_us / 10:.2f}% of one CPU at 1000 conn/s")
+assert total_us < 20.0, f"monitor overhead too high: {total_us:.2f} us/connect"
 EOF
 "#
     );
@@ -305,11 +313,10 @@ sudo test ! -e $D/org.ibexwall.Fresh || {{ echo "FRESH FILE SURVIVED ROLLBACK"; 
 
     scenario!(
         "m6 the real core attributes curl, a service, a Flatpak scope, a container and a snap",
-        &format!(
-            r#"
+        r#"
 set -e
 sudo systemctl start ibexwall-monitor.service
-wait_for() {{
+wait_for() {
   for i in $(seq 1 40); do
     if sudo ibexctl apps list --json | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if $1 else 1)"; then return 0; fi
     sleep 0.5
@@ -317,7 +324,7 @@ wait_for() {{
   echo "TIMEOUT waiting for: $1" >&2
   sudo ibexctl apps list >&2 || true
   return 1
-}}
+}
 wait_for 'd["monitor"]["running"]'
 
 # The resolver reports which name it answered for an address; do it the
@@ -326,7 +333,7 @@ sudo test -S /run/ibexwall/dns/answers.sock
 sudo python3 - <<'EOF'
 import socket
 s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-s.sendto(b'{{"domain":"named.example.test.","ip":"203.0.113.1","ttl":300}}', "/run/ibexwall/dns/answers.sock")
+s.sendto(b'{"domain":"named.example.test.","ip":"203.0.113.1","ttl":300}', "/run/ibexwall/dns/answers.sock")
 EOF
 sleep 1
 
@@ -351,7 +358,7 @@ if ! getent hosts registry-1.docker.io >/dev/null; then
   sudo systemctl restart systemd-resolved
   sleep 2
 fi
-getent hosts registry-1.docker.io >/dev/null || {{ echo "VM CANNOT RESOLVE THE REGISTRY" >&2; exit 1; }}
+getent hosts registry-1.docker.io >/dev/null || { echo "VM CANNOT RESOLVE THE REGISTRY" >&2; exit 1; }
 sudo podman run --rm docker.io/library/alpine:3 wget -q -T 3 -O /dev/null http://203.0.113.4/ || true
 # 5. a real snap (Ubuntu only)
 SNAP=no
@@ -372,7 +379,7 @@ python3 - "$SNAP" <<'EOF'
 import json, subprocess, sys
 snap = sys.argv[1] == "yes"
 d = json.load(open("/tmp/apps.json"))
-apps = {{a["key"]: a for a in d["apps"]}}
+apps = {a["key"]: a for a in d["apps"]}
 
 curl = apps["cli:/usr/bin/curl"]
 assert curl["kind"] == "cli" and curl["package"] == "curl", curl
@@ -399,7 +406,6 @@ print("attribution through the real core ok:", sorted(apps)[:8], "snap" if snap 
 EOF
 sudo systemctl stop ibexwall-monitor.service
 "#
-        )
     );
 
     if failures == 0 {

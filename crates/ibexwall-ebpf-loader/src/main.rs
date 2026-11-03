@@ -83,7 +83,7 @@ pub struct Sighting {
 
 /// Resolves the process behind an event. Best effort by design: the
 /// monitor observes, it never keeps processes alive.
-pub fn resolve(event: ConnectEvent) -> Sighting {
+pub fn resolve(event: ConnectEvent, cgroups: &mut CgroupIndex) -> Sighting {
     let base = Path::new("/proc").join(event.pid.to_string());
     // /proc is authoritative while the process lives (it resolves symlinks
     // and relative exec paths); the kernel's copy covers the ones that
@@ -92,9 +92,13 @@ pub fn resolve(event: ConnectEvent) -> Sighting {
         .ok()
         .map(|path| path.to_string_lossy().into_owned())
         .or_else(|| event.exe_str().map(str::to_owned));
-    let cgroup = std::fs::read_to_string(base.join("cgroup"))
-        .ok()
-        .map(|text| text.trim().to_string());
+    // The index answers from memory; /proc costs a syscall per event, so
+    // it is only the fallback for a cgroup the index has not seen yet.
+    let cgroup = cgroups.lookup(event.cgroup_id).or_else(|| {
+        std::fs::read_to_string(base.join("cgroup"))
+            .ok()
+            .map(|text| text.trim().to_string())
+    });
     Sighting { event, exe, cgroup }
 }
 
@@ -218,7 +222,11 @@ fn run_argv(binary: &str, args: &[String]) -> Option<String> {
 }
 
 /// Runs until `stop`, printing one JSON object per event on stdout.
-pub fn run(mut ebpf: aya::Ebpf, on_event: &mut dyn FnMut(Sighting)) -> Result<()> {
+pub fn run(
+    mut ebpf: aya::Ebpf,
+    cgroups: &mut CgroupIndex,
+    on_event: &mut dyn FnMut(Sighting),
+) -> Result<()> {
     let map = ebpf
         .take_map(EVENTS_MAP)
         .with_context(|| format!("map {EVENTS_MAP} not found"))?;
@@ -231,7 +239,7 @@ pub fn run(mut ebpf: aya::Ebpf, on_event: &mut dyn FnMut(Sighting)) -> Result<()
         while let Some(item) = ring.next() {
             let bytes: &[u8] = &item;
             match ConnectEvent::parse(bytes) {
-                Some(event) => on_event(resolve(event)),
+                Some(event) => on_event(resolve(event, cgroups)),
                 None => dropped += 1,
             }
         }
@@ -293,10 +301,7 @@ fn amain() -> Result<()> {
     if let Some(reason) = degraded {
         sink.send(&serde_json::json!({ "meta": "degraded", "reason": reason }).to_string());
     }
-    run(ebpf, &mut |mut sighting| {
-        if sighting.cgroup.is_none() {
-            sighting.cgroup = cgroups.lookup(sighting.event.cgroup_id);
-        }
+    run(ebpf, &mut cgroups, &mut |sighting| {
         let identity = Enricher::identity(&sighting);
         let facts = sighting.exe.as_deref().map(|exe| enricher.facts(exe));
         let Sighting { event, exe, cgroup } = &sighting;
@@ -418,7 +423,8 @@ mod tests {
     #[test]
     fn resolve_survives_a_missing_process() {
         // Pid 0xdeadbeef does not exist; nothing may panic.
-        let sighting = resolve(event(0xdead_beef, "gone", 4));
+        let mut cgroups = CgroupIndex::new(PathBuf::from("/nonexistent"));
+        let sighting = resolve(event(0xdead_beef, "gone", 4), &mut cgroups);
         assert_eq!(sighting.exe, None);
         assert_eq!(sighting.cgroup, None);
         assert_eq!(sighting.event.comm_str(), "gone");
@@ -426,7 +432,8 @@ mod tests {
 
     #[test]
     fn resolve_reads_the_current_process() {
-        let sighting = resolve(event(std::process::id(), "self", 4));
+        let mut cgroups = CgroupIndex::new(PathBuf::from("/nonexistent"));
+        let sighting = resolve(event(std::process::id(), "self", 4), &mut cgroups);
         // The test binary name uses underscores, the installed one dashes.
         let exe = sighting.exe.unwrap_or_default().replace('-', "_");
         assert!(exe.contains("ibexwall_ebpf_loader"), "{exe}");

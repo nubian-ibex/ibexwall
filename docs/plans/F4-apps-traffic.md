@@ -17,6 +17,10 @@ Progress:
   attributes on all five distros; ring-buffer wake-on-event; overhead
   bounded (< 3 us per connect in the hook, < 20 us per event in the
   loader); `cargo xtask ebpf` builds the ELF outside the workspace.
+- M1 (kernel-side identity) done: a `sched_process_exec` tracepoint fills
+  an LRU pid-to-exec-path map; the connect hook copies the path into the
+  event (128 bytes), so processes that exit before userspace reads
+  `/proc` stay attributable. Pass on the five distros.
 - The `--phase f4` spike scenarios (attribution with asymmetric v4 and
   v6 destinations, overhead) pass 2/2 on the five distros.
 

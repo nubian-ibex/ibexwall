@@ -8,18 +8,55 @@
 #![no_main]
 
 use aya_ebpf::{
-    helpers::{bpf_get_current_cgroup_id, bpf_get_current_comm, bpf_get_current_pid_tgid},
-    macros::{cgroup_sock_addr, map},
-    maps::RingBuf,
-    programs::SockAddrContext,
+    EbpfContext as _,
+    helpers::{
+        bpf_get_current_cgroup_id, bpf_get_current_comm, bpf_get_current_pid_tgid,
+        bpf_probe_read_kernel_str_bytes,
+    },
+    macros::{cgroup_sock_addr, map, tracepoint},
+    maps::{LruHashMap, RingBuf},
+    programs::{SockAddrContext, TracePointContext},
 };
-use ibexwall_net_common::{ConnectEvent, EVENT_LEN};
+use ibexwall_net_common::{ConnectEvent, EVENT_LEN, EXE_LEN};
 
 // The map name is "IBEXWALL_CONNECTS" in the macro below (it needs a
 // literal) and EVENTS_MAP on the loader side; keep them in sync.
 
 #[map(name = "IBEXWALL_CONNECTS")]
 static mut EVENTS: RingBuf = RingBuf::with_byte_size(1 << 14, 0);
+
+/// pid to the path it was executed with. LRU, so exited processes age out
+/// without an exit hook; a pid reused by a new exec is simply overwritten.
+#[map(name = "IBEXWALL_EXES")]
+static mut EXES: LruHashMap<u32, [u8; EXE_LEN]> = LruHashMap::with_max_entries(8192, 0);
+
+/// Offset of the `__data_loc` filename in `sched_process_exec`, after the
+/// 8-byte common header (stable: see the tracepoint's `format` file).
+const EXEC_FILENAME_AT: usize = 8;
+
+#[tracepoint]
+pub fn ibexwall_exec(ctx: TracePointContext) -> u32 {
+    let _ = remember_exec(&ctx);
+    0
+}
+
+fn remember_exec(ctx: &TracePointContext) -> Result<(), i32> {
+    // SAFETY: reads the u32 __data_loc word the kernel placed at a fixed
+    // offset of the tracepoint record.
+    let data_loc: u32 = unsafe { ctx.read_at(EXEC_FILENAME_AT) }?;
+    // The low 16 bits are the string's offset from the record start.
+    let offset = (data_loc & 0xffff) as usize;
+    let mut path = [0u8; EXE_LEN];
+    // SAFETY: the offset is bounded by the 16-bit mask and the read is
+    // checked by the helper; the destination is our stack buffer.
+    unsafe {
+        let src = (ctx.as_ptr() as *const u8).add(offset);
+        bpf_probe_read_kernel_str_bytes(src, &mut path)?;
+    }
+    let pid = (bpf_get_current_pid_tgid() >> 32) as u32;
+    let exes = unsafe { &*core::ptr::addr_of!(EXES) };
+    exes.insert(&pid, &path, 0)
+}
 
 #[cgroup_sock_addr(connect4)]
 pub fn ibexwall_connect4(ctx: SockAddrContext) -> i32 {
@@ -67,7 +104,15 @@ fn record(ctx: &SockAddrContext, family: u8) -> Result<(), i32> {
         port: u16::from_be((addr.user_port & 0xffff) as u16),
         ip4,
         ip6,
+        exe: [0; EXE_LEN],
     };
+    let pid = event.pid;
+    let exes = unsafe { &*core::ptr::addr_of!(EXES) };
+    if let Some(path) = exes.get_ptr(&pid) {
+        // SAFETY: the pointer comes from the map lookup and is valid for
+        // the program's duration; the value is exactly EXE_LEN bytes.
+        event.exe = unsafe { *path };
+    }
     event.comm = bpf_get_current_comm().unwrap_or([0; 16]);
     let mut bytes = [0u8; EVENT_LEN];
     event.write_to(&mut bytes);

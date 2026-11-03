@@ -79,7 +79,10 @@ curl = [e for e in events if e["exe"] and e["exe"].endswith("/curl")]
 assert any(e["dst"] == "149.112.112.112" and e["port"] == 443 for e in py), py
 assert any(e["dst"] == "2620:fe::9" and e["port"] == 853 for e in py), py
 assert any(e["port"] == 80 for e in curl), curl
-print("attribution ok: python3 and curl events with the right destinations")
+# The kernel's own record of the exec, independent of /proc timing.
+assert any((e["exe_kernel"] or "").endswith("/curl") for e in curl), curl
+assert any((e["exe_kernel"] or "").startswith("/usr/bin/python3") for e in py), py
+print("attribution ok: python3 and curl events with the right destinations and kernel-side exe")
 EOF
 "#
     );

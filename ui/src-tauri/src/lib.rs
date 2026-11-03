@@ -42,10 +42,18 @@ macro_rules! command {
 command!(get_info, "GetInfo");
 command!(get_posture, "GetPosture");
 command!(get_dns_status, "GetDnsStatus");
+command!(list_apps, "ListApps");
 command!(list_plugins, "ListPlugins");
 command!(list_findings, "ListFindings");
 command!(run_checks, "RunChecks");
 command!(history, "History");
+
+#[tauri::command]
+async fn get_app_destinations(app: String) -> Result<Value, Value> {
+    core("GetAppDestinations", json!({ "app": app }))
+        .await
+        .map_err(|e| err_text(&e))
+}
 
 #[tauri::command]
 async fn set_plugin_enabled(id: String, enabled: bool) -> Result<Value, Value> {
@@ -156,6 +164,8 @@ pub fn run() {
             get_info,
             get_posture,
             get_dns_status,
+            list_apps,
+            get_app_destinations,
             list_plugins,
             list_findings,
             run_checks,

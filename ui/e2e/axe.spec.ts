@@ -16,8 +16,16 @@ for (const theme of ['light', 'dark'] as const) {
       await page.reload();
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
-      // Overview first, then the Secure DNS screen (a form with a flow).
-      for (const screen of ['overview', 'dns']) {
+      // Overview first, then the Apps and network screen (list, filters,
+      // details) and the Secure DNS screen (a form with a flow).
+      for (const screen of ['overview', 'apps', 'dns']) {
+        if (screen === 'apps') {
+          await page.getByRole('button', { name: /apps and network|apps e rede/i }).click();
+          await page
+            .getByRole('button', { name: /details for firefox|detalhes de firefox/i })
+            .click();
+          await expect(page.getByText(/search\.duckduckgo\.com/)).toBeVisible();
+        }
         if (screen === 'dns') {
           await page.getByRole('button', { name: /secure dns|dns seguro/i }).click();
           await expect(page.getByRole('radio').first()).toBeVisible();
@@ -38,7 +46,7 @@ test('keyboard navigation reaches every navigation item', async ({ page }) => {
   await page.goto('/?scenario=attention');
   const overview = page.getByRole('button', { name: 'Overview' });
   await overview.focus();
-  for (let step = 0; step < 6; step += 1) {
+  for (let step = 0; step < 7; step += 1) {
     await page.keyboard.press('Tab');
   }
   // After the nav, focus moves into the content: the "Check now" button.

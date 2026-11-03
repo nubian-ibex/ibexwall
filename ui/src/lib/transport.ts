@@ -2,10 +2,13 @@
 // implements it with Tauri commands (varlink on the Rust side); tests and
 // design work use the fixture implementation.
 import type {
+  AppDestination,
+  AppEntry,
   DnsStatus,
   Finding,
   HistoryEntry,
   Info,
+  MonitorStatus,
   Plan,
   PluginInfo,
   Posture,
@@ -30,10 +33,17 @@ export class TransportError extends Error {
   }
 }
 
+export interface AppsListing {
+  monitor: MonitorStatus;
+  apps: AppEntry[];
+}
+
 export interface Transport {
   getInfo(): Promise<Info>;
   getPosture(): Promise<Posture>;
   getDnsStatus(): Promise<DnsStatus>;
+  listApps(): Promise<AppsListing>;
+  getAppDestinations(app: string): Promise<AppDestination[]>;
   listPlugins(): Promise<PluginInfo[]>;
   listFindings(plugin?: string): Promise<Finding[]>;
   runChecks(plugin?: string): Promise<Finding[]>;

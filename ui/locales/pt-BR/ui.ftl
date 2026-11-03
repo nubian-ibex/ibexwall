@@ -220,3 +220,70 @@ dns-counter-errors = Falhas do upstream
 dns-counters-updated = Atualizado { $when }.
 dns-counters-not-running = O resolvedor não está respondendo agora.
 dns-counters-privacy = Apenas contadores. O IbexWall não registra quais domínios você consulta.
+
+nav-apps = Apps e rede
+apps-title = Apps e rede
+apps-subtitle = Veja quais programas usam a internet e para onde eles se conectam.
+apps-mode-allow = Permitir
+apps-mode-allow-body = Acesso livre à internet.
+apps-mode-monitor = Monitorar
+apps-mode-monitor-body = Acesso livre, mas tudo fica registrado.
+apps-mode-ask = Perguntar
+apps-mode-ask-body = Você decide a cada destino novo.
+apps-mode-block = Bloquear
+apps-mode-block-body = Sem acesso à internet.
+apps-mode-later = Disponível com o firewall, em uma versão futura.
+apps-mode-group = Modo de rede de { $app }
+apps-monitor-running = O monitor de conexões está em execução.
+apps-monitor-limited = O monitor de conexões está em execução, com uma limitação: { $reason }
+apps-monitor-off = O monitor de conexões está desligado: { $reason }
+apps-monitor-off-body = Os apps e destinos aparecem aqui quando ele estiver em execução. Nada é bloqueado enquanto ele estiver desligado.
+apps-search = Buscar app
+apps-filters = Filtrar apps
+apps-filter-all = Todos · { $count }
+apps-filter-active = Conectados agora · { $count }
+apps-filter-new = Novos · { $count }
+apps-list-label = Apps
+apps-empty-title = Nenhum app visto ainda
+apps-empty-body = Os programas aparecem aqui depois da primeira conexão.
+apps-none-match = Nenhum app corresponde à busca.
+apps-kind-flatpak = Flatpak
+apps-kind-snap = Snap
+apps-kind-desktop_app = App
+apps-kind-system_service = Serviço do sistema
+apps-kind-container = Contêiner
+apps-kind-cli = Programa
+apps-kind-unknown = Desconhecido
+apps-new-badge = Novo
+apps-summary =
+    { $destinations ->
+        [one] 1 destino
+       *[other] { $destinations } destinos
+    } · { $connections ->
+        [one] 1 conexão
+       *[other] { $connections } conexões
+    }
+apps-last-activity = Última atividade { $when }
+apps-select = Mostrar detalhes de { $app }
+apps-details-title = Detalhes
+apps-details-hint = Escolha um app para ver para onde ele se conecta.
+apps-package = Pacote: { $name }
+apps-exe = Arquivo do programa: { $path }
+apps-first-seen = Visto pela primeira vez { $when }
+apps-where = Para onde se conecta
+apps-no-destinations = Nenhum destino registrado ainda.
+apps-no-domain = domínio desconhecido
+apps-port = porta { $port }
+apps-times =
+    { $count ->
+        [one] 1 vez
+       *[other] { $count } vezes
+    }
+apps-block-title = Cortar o acesso deste app à rede
+apps-block-body = O Flatpak vai iniciar este app sem acesso à rede. Você pode desfazer pelo Histórico.
+apps-block-scope = Vale para apps Flatpak instalados para todo o sistema. Apps instalados para um único usuário não podem ser alterados daqui.
+apps-block-start = Bloquear acesso à rede
+apps-block-enable-failed = Não foi possível ativar o plugin de rede do Flatpak.
+apps-block-unavailable = O bloqueio não está disponível neste sistema.
+apps-block-other = O bloqueio de um único app chega com o firewall, em uma versão futura.
+apps-privacy = Tudo o que aparece aqui fica neste computador. Só contagens e horários são guardados, nunca o que foi enviado.

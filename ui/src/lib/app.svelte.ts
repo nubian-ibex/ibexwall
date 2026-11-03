@@ -3,7 +3,7 @@ import { FixtureTransport, type Scenario } from './fixtures';
 import { insideTauri, TauriTransport } from './tauri-transport';
 import { TransportError, type Transport } from './transport';
 
-export type Route = 'overview' | 'dns' | 'plugins' | 'posture' | 'history' | 'settings';
+export type Route = 'overview' | 'apps' | 'dns' | 'plugins' | 'posture' | 'history' | 'settings';
 
 type Load<T> =
   { status: 'loading' } | { status: 'ready'; data: T } | { status: 'error'; error: TransportError };

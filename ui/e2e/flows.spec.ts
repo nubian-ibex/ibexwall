@@ -46,3 +46,22 @@ test('locale is pt-BR when requested', async ({ page }) => {
   await page.reload();
   await expect(page.getByRole('heading', { name: /pode estar mais protegido/i })).toBeVisible();
 });
+
+test('apps: the list, the details and what each mode can do', async ({ page }) => {
+  await page.goto('/?scenario=attention');
+  await page.getByRole('button', { name: /apps and network/i }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Apps and network' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /details for telegram/i })).toBeVisible();
+  await page.getByRole('button', { name: /details for telegram/i }).click();
+  await expect(page.getByRole('button', { name: /block network access/i })).toBeVisible();
+  // A program that is not a Flatpak app cannot be blocked yet.
+  await page.getByRole('button', { name: /details for firefox/i }).click();
+  await expect(page.getByRole('button', { name: /block network access/i })).toHaveCount(0);
+  await expect(page.getByText('github.com')).toBeVisible();
+});
+
+test('apps: the monitor being off is stated, not hidden', async ({ page }) => {
+  await page.goto('/?scenario=empty');
+  await page.getByRole('button', { name: /apps and network/i }).click();
+  await expect(page.getByText(/connection monitor is off/i)).toBeVisible();
+});

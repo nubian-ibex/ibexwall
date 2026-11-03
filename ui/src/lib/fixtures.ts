@@ -2,6 +2,8 @@
 // Scenarios mirror real situations; the "attention" data comes from the
 // Fedora cloud-image fixtures collected for the check plugins.
 import type {
+  AppDestination,
+  AppEntry,
   DnsStatus,
   CheckResult,
   Finding,
@@ -12,7 +14,7 @@ import type {
   Posture,
   Transaction,
 } from '../gen/contracts';
-import { TransportError, type Transport } from './transport';
+import { TransportError, type AppsListing, type Transport } from './transport';
 
 export type Scenario = 'attention' | 'protected' | 'empty' | 'error' | 'denied';
 
@@ -109,17 +111,115 @@ const PLUGINS: PluginInfo[] = [
   },
 ];
 
+export const FLATPAK_PLUGIN: PluginInfo = {
+  id: 'apps.flatpak-network',
+  name: 'Flatpak network access',
+  version: '0.1.0',
+  kinds: ['check', 'control'],
+  enabled: false,
+  origin: 'official',
+  status: 'ok',
+  compatible: true,
+  conflicts: [],
+  locked: false,
+};
+
 const DNS_PLUGIN: PluginInfo = {
   id: 'net.dns',
   name: 'Secure DNS',
   version: '0.1.0',
   kinds: ['check', 'control'],
   // On in the protected scenario: secure DNS is what protects it.
+  enabled: false,
   origin: 'official',
   status: 'ok',
   compatible: true,
   conflicts: [],
   locked: false,
+};
+
+// Times are relative to "now" so the Connected now and New filters have
+// something to show whenever the fixtures are used.
+const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+
+const app = (key: string, kind: string, id: string, over: Partial<AppEntry> = {}): AppEntry => ({
+  key,
+  kind,
+  id,
+  exe_path: null,
+  package: null,
+  first_seen: ago(60 * 24 * 20),
+  last_seen: ago(2),
+  connections: 40,
+  destinations: 3,
+  ...over,
+});
+
+const APPS = (): AppEntry[] => [
+  app('app:firefox', 'desktop_app', 'firefox', {
+    exe_path: '/usr/lib64/firefox/firefox',
+    package: 'firefox',
+    connections: 412,
+    destinations: 24,
+  }),
+  app('flatpak:org.telegram.desktop', 'flatpak', 'org.telegram.desktop', {
+    first_seen: ago(30),
+    connections: 6,
+    destinations: 2,
+  }),
+  app('flatpak:com.spotify.Client', 'flatpak', 'com.spotify.Client', {
+    last_seen: ago(90),
+    connections: 96,
+    destinations: 7,
+  }),
+  app('cli:/home/user/Downloads/install.sh', 'cli', '', {
+    exe_path: '/home/user/Downloads/install.sh',
+    first_seen: ago(12),
+    connections: 1,
+    destinations: 1,
+  }),
+  app('service:packagekit.service', 'system_service', 'packagekit.service', {
+    exe_path: '/usr/libexec/packagekitd',
+    package: 'PackageKit',
+    last_seen: ago(600),
+    connections: 12,
+    destinations: 2,
+  }),
+  app('cli:/usr/bin/curl', 'cli', '', {
+    exe_path: '/usr/bin/curl',
+    package: 'curl',
+    last_seen: ago(60 * 30),
+    connections: 3,
+    destinations: 2,
+  }),
+];
+
+const dest = (
+  destination: string,
+  port: number,
+  count: number,
+  resolved = true,
+): AppDestination => ({
+  destination,
+  resolved,
+  port,
+  count,
+  first_seen: ago(60 * 24),
+  last_seen: ago(3),
+});
+
+const DESTINATIONS: Record<string, AppDestination[]> = {
+  'app:firefox': [
+    dest('search.duckduckgo.com', 443, 210),
+    dest('github.com', 443, 120),
+    dest('esli.blog', 443, 8),
+    dest('142.250.80.46', 443, 3, false),
+  ],
+  'flatpak:org.telegram.desktop': [
+    dest('149.154.167.51', 443, 4, false),
+    dest('telegram.org', 443, 2),
+  ],
+  'cli:/home/user/Downloads/install.sh': [dest('203.0.113.7', 4444, 1, false)],
 };
 
 const INFO: Info = {
@@ -177,7 +277,11 @@ export class FixtureTransport implements Transport {
   }
 
   listPlugins() {
-    return this.gate(() => [...PLUGINS, { ...DNS_PLUGIN, enabled: this.scenario === 'protected' }]);
+    return this.gate(() => [
+      ...PLUGINS,
+      FLATPAK_PLUGIN,
+      { ...DNS_PLUGIN, enabled: this.scenario === 'protected' },
+    ]);
   }
 
   listFindings(plugin?: string) {
@@ -197,6 +301,18 @@ export class FixtureTransport implements Transport {
       blocked_doh: 2,
       upstream_errors: 0,
     }));
+  }
+
+  listApps() {
+    return this.gate((): AppsListing =>
+      this.scenario === 'empty'
+        ? { monitor: { running: false, reason: 'waiting for ibexwall-monitor' }, apps: [] }
+        : { monitor: { running: true, reason: null }, apps: APPS() },
+    );
+  }
+
+  getAppDestinations(appKey: string) {
+    return this.gate(() => DESTINATIONS[appKey] ?? []);
   }
 
   runChecks(plugin?: string) {

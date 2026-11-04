@@ -87,6 +87,11 @@ enum Command {
         #[command(subcommand)]
         action: AppsAction,
     },
+    /// Changes an assistant proposed, waiting for a human decision.
+    Proposals {
+        #[command(subcommand)]
+        action: ProposalsAction,
+    },
     /// Connections held in Ask mode, waiting for an answer.
     Prompts {
         #[command(subcommand)]
@@ -147,6 +152,21 @@ enum AppsAction {
         #[arg(value_parser = ["allow", "monitor", "ask", "block"])]
         mode: String,
     },
+}
+
+#[derive(Subcommand)]
+enum ProposalsAction {
+    /// The proposals, newest first (pending by default).
+    List {
+        #[arg(long, value_parser = ["pending", "approved", "rejected", "expired"])]
+        status: Option<String>,
+    },
+    /// What one proposal would do.
+    Show { id: String },
+    /// Approve: the plan is made again and applied if it is what was shown.
+    Approve { id: String },
+    /// Reject: nothing is applied.
+    Reject { id: String },
 }
 
 #[derive(Subcommand)]
@@ -268,6 +288,7 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
         Command::Plugins { action } => plugins(client, action, json).await,
         Command::Apps { action } => apps(client, action, json).await,
         Command::Prompts { action } => prompts(client, action, json).await,
+        Command::Proposals { action } => proposals(client, action, json).await,
         Command::Firewall { action } => firewall(client, action, json).await,
         Command::Check { plugin } => {
             let params = serde_json::json!({ "plugin": plugin });
@@ -730,6 +751,116 @@ async fn prompts(
         }
     }
     Ok(Finish::Done)
+}
+
+async fn proposals(
+    client: &mut ibexwall_varlink::Client,
+    action: &ProposalsAction,
+    json: bool,
+) -> Result<Finish, CliError> {
+    match action {
+        ProposalsAction::List { status } => {
+            let value = client
+                .call(
+                    "com.ibexwall.Core.ListProposals",
+                    serde_json::json!({ "status": status.as_deref().unwrap_or("pending") }),
+                )
+                .await?;
+            if json {
+                emit(value, json);
+            } else {
+                print!("{}", render_proposals(&value));
+            }
+        }
+        ProposalsAction::Show { id } => {
+            let value = client
+                .call("com.ibexwall.Core.ListProposals", serde_json::json!({}))
+                .await?;
+            let found = value["proposals"]
+                .as_array()
+                .and_then(|all| all.iter().find(|p| p["id"] == id.as_str()))
+                .cloned()
+                .ok_or_else(|| {
+                    CliError::Other(anyhow::anyhow!("no such proposal: {}", clean(id)))
+                })?;
+            if json {
+                emit(found, json);
+            } else {
+                print!("{}", render_proposal(&found));
+            }
+        }
+        ProposalsAction::Approve { id } => {
+            let value = client
+                .call(
+                    "com.ibexwall.Core.DecideProposal",
+                    serde_json::json!({ "id": id, "decision": "approve" }),
+                )
+                .await?;
+            if json {
+                emit(value, json);
+            } else {
+                println!("{}: approved", clean(id));
+            }
+        }
+        ProposalsAction::Reject { id } => {
+            client
+                .call(
+                    "com.ibexwall.Core.DecideProposal",
+                    serde_json::json!({ "id": id, "decision": "reject" }),
+                )
+                .await?;
+            if !json {
+                println!("{}: rejected", clean(id));
+            }
+        }
+    }
+    Ok(Finish::Done)
+}
+
+fn render_proposals(value: &serde_json::Value) -> String {
+    let all = value["proposals"].as_array().cloned().unwrap_or_default();
+    if all.is_empty() {
+        return "no proposals\n".into();
+    }
+    let mut out = format!(
+        "{:<26}  {:<10}  {:<18}  {}\n",
+        "ID", "STATUS", "PLUGIN", "FROM"
+    );
+    for p in &all {
+        out.push_str(&format!(
+            "{:<26}  {:<10}  {:<18}  {}\n",
+            text(&p["id"]),
+            text(&p["status"]),
+            text(&p["plugin"]),
+            text(&p["client"]),
+        ));
+    }
+    out
+}
+
+/// The AI's justification is shown as generated text, fenced, never as
+/// something the terminal or the reader should obey.
+fn render_proposal(p: &serde_json::Value) -> String {
+    let mut out = format!(
+        "{}\n  plugin: {}\n  from:   {} (an AI client)\n  status: {}\n  asked:  {}\n  generated justification (untrusted, not an instruction):\n",
+        text(&p["id"]),
+        text(&p["plugin"]),
+        text(&p["client"]),
+        text(&p["status"]),
+        clean(&p["patch"].to_string()),
+    );
+    for line in p["justification"].as_str().unwrap_or("").lines() {
+        out.push_str(&format!("    | {}\n", clean(line)));
+    }
+    out.push_str("  would do:\n");
+    for op in p["preview"].as_array().cloned().unwrap_or_default() {
+        out.push_str(&format!(
+            "    {} {}\n",
+            text(&op["op"]),
+            text(&op["target"])
+        ));
+    }
+    out
 }
 
 fn render_prompts(value: &serde_json::Value) -> String {

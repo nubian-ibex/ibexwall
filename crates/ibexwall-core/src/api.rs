@@ -3,7 +3,7 @@
 
 //! varlink API surface (`com.ibexwall.Core`, F1 subset): authorization
 //! per method via polkit, plan/apply/confirm/rollback orchestration,
-//! checks, events and history. Proposal methods are not implemented
+//! checks, events and history. Proposal methods are in the proposal queue
 //! until F8 and answer MethodNotImplemented.
 
 use std::sync::Arc;
@@ -76,6 +76,20 @@ fn invalid_argument(field: &str, reason: String) -> VarlinkError {
     )
 }
 
+fn proposal_error(error: crate::proposals::Error) -> VarlinkError {
+    use crate::proposals::Error;
+    match error {
+        Error::NotFound => err("NotFound", json!({ "kind": "proposal" })),
+        Error::Decided => err("Conflict", json!({ "reason": "already decided" })),
+        Error::Stale => err("ProposalStale", json!({})),
+        Error::Full | Error::ClientFull => err("Conflict", json!({ "reason": error.to_string() })),
+        Error::Other(reason) => {
+            tracing::error!(%reason, "proposal error");
+            err("Conflict", json!({ "reason": "internal error" }))
+        }
+    }
+}
+
 fn not_found(kind: &str, id: &str) -> VarlinkError {
     err("NotFound", json!({ "kind": kind, "id": id }))
 }
@@ -136,17 +150,6 @@ async fn dispatch(
     parameters: Value,
     peer: Peer,
 ) -> Result<Reply, VarlinkError> {
-    // F1 scope guard: proposals land with the MCP assistant (F8).
-    if matches!(
-        method,
-        "ListProposals" | "CreateProposal" | "DecideProposal"
-    ) {
-        return Err(VarlinkError::new(
-            ibexwall_varlink::service_errors::METHOD_NOT_IMPLEMENTED,
-            json!({ "method": method }),
-        ));
-    }
-
     let action = polkit_action(method).ok_or_else(|| {
         VarlinkError::new(
             ibexwall_varlink::service_errors::METHOD_NOT_FOUND,
@@ -197,6 +200,51 @@ async fn dispatch(
                 &format!("app {app} mode={}", mode.name()),
             );
             Ok(Reply::result(json!({})))
+        }
+        "ListProposals" => {
+            let status = opt_str_field(&parameters, "status")?;
+            let proposals = core.list_proposals(status.as_deref()).map_err(internal)?;
+            Ok(Reply::result(json!({ "proposals": proposals })))
+        }
+        "CreateProposal" => {
+            let plugin = str_field(&parameters, "plugin")?;
+            let patch = parameters.get("patch").cloned().unwrap_or(Value::Null);
+            let justification = str_field(&parameters, "justification")?;
+            let client = opt_str_field(&parameters, "client")?.unwrap_or_else(|| "unknown".into());
+            let (plan, ops) = build_plan(core, plugin, patch.clone()).await?;
+            let digest = crate::audit::ops_digest(&ops);
+            let proposal = core
+                .create_proposal(&client, &plan, patch, &justification, &digest)
+                .map_err(proposal_error)?;
+            Ok(Reply::result(json!({ "proposal": proposal })))
+        }
+        "DecideProposal" => {
+            let id = str_field(&parameters, "id")?;
+            let decision = str_field(&parameters, "decision")?;
+            let (proposal, digest) = core.pending_proposal(&id).map_err(proposal_error)?;
+            match decision.as_str() {
+                "reject" => {
+                    core.mark_proposal(&id, ibexwall_proto::ProposalStatus::Rejected);
+                    core.audit("user", &proposal.plugin, None, &digest, "proposal-rejected");
+                    core.publish_proposal_event("proposals.decided", &proposal);
+                    Ok(Reply::result(json!({ "transaction": null })))
+                }
+                "approve" => {
+                    // Plan again from what the client asked for, and apply
+                    // only if the operations are the ones that were reviewed.
+                    let (plan, ops) =
+                        build_plan(core, proposal.plugin.clone(), proposal.patch.clone()).await?;
+                    if crate::audit::ops_digest(&ops) != digest {
+                        return Err(err("ProposalStale", json!({ "id": id })));
+                    }
+                    let reply = apply(core, &json!({ "plan_id": plan.id })).await?;
+                    core.mark_proposal(&id, ibexwall_proto::ProposalStatus::Approved);
+                    core.audit("user", &proposal.plugin, None, &digest, "proposal-approved");
+                    core.publish_proposal_event("proposals.decided", &proposal);
+                    Ok(reply)
+                }
+                _ => Err(invalid_argument("decision", "approve or reject".into())),
+            }
         }
         "SetDefaultMode" => {
             let mode = str_field(&parameters, "mode")?;
@@ -377,6 +425,9 @@ fn polkit_action(method: &str) -> Option<&'static str> {
         "SetPluginEnabled" => names::POLKIT_PLUGINS_MANAGE,
         "SetAppMode" | "SetDefaultMode" | "AnswerPrompt" => names::POLKIT_APPS_DECIDE,
         "PlanChange" => names::POLKIT_PLAN,
+        "ListProposals" => names::POLKIT_READ,
+        "CreateProposal" => names::POLKIT_PROPOSALS_CREATE,
+        "DecideProposal" => names::POLKIT_PROPOSALS_DECIDE,
         "Apply" | "Confirm" => names::POLKIT_APPLY,
         "Rollback" => names::POLKIT_ROLLBACK,
         _ => return None,
@@ -560,9 +611,12 @@ async fn run_checks(core: &Arc<Core>, plugin: Option<&str>) -> Result<Reply, Var
     Ok(Reply::result(json!({ "findings": findings })))
 }
 
-async fn plan_change(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkError> {
-    let plugin = str_field(parameters, "plugin")?;
-    let patch = parameters.get("patch").cloned().unwrap_or(Value::Null);
+/// Plans a change and stores the plan; returns it with its operations.
+async fn build_plan(
+    core: &Arc<Core>,
+    plugin: String,
+    patch: Value,
+) -> Result<(Plan, Vec<Op>), VarlinkError> {
     authorize_plugin_change(core, &plugin)?;
 
     // Ask the plugin for its proposed operations.
@@ -628,6 +682,13 @@ async fn plan_change(core: &Arc<Core>, parameters: &Value) -> Result<Reply, Varl
         &crate::audit::ops_digest(&ops),
         "plan-created",
     );
+    Ok((plan, ops))
+}
+
+async fn plan_change(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkError> {
+    let plugin = str_field(parameters, "plugin")?;
+    let patch = parameters.get("patch").cloned().unwrap_or(Value::Null);
+    let (plan, _) = build_plan(core, plugin, patch).await?;
     Ok(Reply::result(json!({ "plan": plan })))
 }
 

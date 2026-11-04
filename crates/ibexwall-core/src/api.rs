@@ -82,7 +82,9 @@ fn proposal_error(error: crate::proposals::Error) -> VarlinkError {
         Error::NotFound => err("NotFound", json!({ "kind": "proposal" })),
         Error::Decided => err("Conflict", json!({ "reason": "already decided" })),
         Error::Stale => err("ProposalStale", json!({})),
-        Error::Full | Error::ClientFull => err("Conflict", json!({ "reason": error.to_string() })),
+        Error::Full | Error::ClientFull | Error::Irreversible => {
+            err("Conflict", json!({ "reason": error.to_string() }))
+        }
         Error::Other(reason) => {
             tracing::error!(%reason, "proposal error");
             err("Conflict", json!({ "reason": "internal error" }))

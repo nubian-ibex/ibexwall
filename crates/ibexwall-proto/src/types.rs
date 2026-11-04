@@ -434,6 +434,10 @@ pub struct Proposal {
     /// The operations the plan would run, as the human will review them.
     pub preview: Vec<OpPreview>,
     pub may_affect_keys: Vec<String>,
+    pub reversible: Reversible,
+    #[serde(default)]
+    pub risk: Vec<RiskFlag>,
+    pub requires_confirm: bool,
     /// Written by the AI: shown as generated, never as an instruction.
     pub justification: String,
     pub status: ProposalStatus,

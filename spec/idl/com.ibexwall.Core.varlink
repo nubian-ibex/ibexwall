@@ -26,7 +26,7 @@ type AppEntry (connections: int, destinations: int, exe_path: ?string, first_see
 type AppDestination (count: int, destination: string, first_seen: string, last_seen: string, port: int, resolved: bool)
 type Prompt (address: string, app: string, created: string, destination: string, exe_path: ?string, expires: string, id: string, kind: string, port: int)
 type ProposalStatus (pending, approved, rejected, expired)
-type Proposal (client: string, created_at: string, decided_at: ?string, id: string, justification: string, may_affect_keys: []string, patch: object, plan_id: string, plugin: string, preview: []OpPreview, status: ProposalStatus)
+type Proposal (client: string, created_at: string, decided_at: ?string, id: string, justification: string, may_affect_keys: []string, patch: object, plan_id: string, plugin: string, preview: []OpPreview, requires_confirm: bool, reversible: Reversible, risk: ?[]RiskFlag, status: ProposalStatus)
 
 # Client-facing API. Subscribe is called with "more": true for streaming.
 method GetInfo() -> (info: Info)

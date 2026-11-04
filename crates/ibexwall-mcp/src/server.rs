@@ -109,6 +109,7 @@ fn ident(value: &str, what: &str) -> Result<(), String> {
 
 fn app_key(value: &str) -> Result<(), String> {
     let ok = value.len() <= 200
+        && !value.contains("..")
         && value.bytes().all(|b| {
             b.is_ascii_alphanumeric() || matches!(b, b'.' | b':' | b'/' | b'@' | b'+' | b'-' | b'_')
         });
@@ -464,12 +465,18 @@ impl<B: Backend, W: Write> Server<B, W> {
                 }
                 let status = opt_string(args, "status", 16)?;
                 let reply = self.core("ListProposals", json!({ "status": status }))?;
+                // The justification is the client's own text: data, under `untrusted`.
                 let own: Vec<Value> = reply["proposals"]
                     .as_array()
                     .map(|all| {
                         all.iter()
                             .filter(|p| p["client"] == self.client.as_str())
-                            .cloned()
+                            .map(|p| {
+                                json!({ "id": p["id"], "plugin": p["plugin"], "status": p["status"],
+                                        "created_at": p["created_at"], "decided_at": p["decided_at"],
+                                        "operations": p["preview"],
+                                        "untrusted": { "justification": p["justification"] } })
+                            })
                             .collect()
                     })
                     .unwrap_or_default();
@@ -568,11 +575,17 @@ impl<B: Backend, W: Write> Server<B, W> {
             .map(|all| {
                 all.iter()
                     .map(|e| {
-                        let mut e = e.clone();
-                        let by_assistant =
-                            e["actor"].as_str().is_some_and(|a| a.starts_with("mcp:"));
-                        e["by_assistant"] = json!(by_assistant);
-                        e
+                        let actor = e["actor"].as_str().unwrap_or_default();
+                        let who = match actor {
+                            a if a.starts_with("mcp:") => "assistant",
+                            "system" => "system",
+                            _ => "person",
+                        };
+                        let result = e["result"].as_str().filter(|r| {
+                            r.len() <= 40 && r.bytes().all(|b| b.is_ascii_lowercase() || matches!(b, b'-' | b'_'))
+                        });
+                        json!({ "seq": e["seq"], "ts": e["ts"], "plugin": e["plugin"], "transaction": e["transaction"],
+                                "result": result.unwrap_or("other"), "by": who, "by_assistant": who == "assistant" })
                     })
                     .collect()
             })

@@ -2360,6 +2360,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ibexwall-plugin-nts"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "ibexwall-plugin-ports"
 version = "0.1.0"
 dependencies = [
@@ -2405,6 +2416,17 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-updates"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "ibexwall-plugin-wifi"
 version = "0.1.0"
 dependencies = [
  "ibexwall-proto",

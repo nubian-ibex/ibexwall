@@ -38,6 +38,10 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
             "-p",
             "ibexwall-plugin-firmware",
             "-p",
+            "ibexwall-plugin-nts",
+            "-p",
+            "ibexwall-plugin-wifi",
+            "-p",
             "ibexwall-exec",
             "-p",
             "ibexwall-cli",
@@ -59,6 +63,8 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
         "system.audit",
         "system.updates",
         "system.firmware",
+        "net.nts",
+        "net.wifi",
     ] {
         install_plugin(vm, workspace, id)?;
     }
@@ -386,6 +392,109 @@ sudo ibexctl check system.firmware --json | python3 -c 'import json,sys; assert 
 echo "METRIC: dmi vendor: $(cat /sys/class/dmi/id/sys_vendor 2>/dev/null)"
 if sudo ibexctl plan system.firmware --json >/dev/null 2>&1 && ! command -v fwupdmgr >/dev/null; then echo "PLAN ACCEPTED WITHOUT FWUPD"; exit 1; fi
 command -v fwupdmgr >/dev/null && echo "METRIC: fwupd happens to be installed" || true
+"#
+        )
+    );
+
+    scenario!(
+        "m4a net.nts: NTS servers are added, chrony really authenticates them, and rollback removes them",
+        &format!(
+            r#"{lib}
+sudo ibexctl plugins enable net.nts >/dev/null
+# Without chrony: a finding and no plan; IbexWall installs nothing.
+if ! sudo sh -c 'command -v chronyd' >/dev/null; then
+  findings net.nts | grep -q nts.missing || {{ echo "NO FINDING WITHOUT CHRONY"; exit 1; }}
+  if sudo ibexctl plan net.nts --json >/dev/null 2>&1; then echo "PLAN ACCEPTED WITHOUT CHRONY"; exit 1; fi
+  if command -v dnf >/dev/null; then sudo dnf install -y -q chrony
+  elif command -v apt-get >/dev/null; then sudo apt-get update -qq; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq chrony
+  elif command -v pacman >/dev/null; then sudo pacman -Sy --noconfirm --needed chrony
+  fi
+fi
+if [ -e /usr/lib/systemd/system/chronyd.service ]; then UNIT=chronyd; else UNIT=chrony; fi
+sudo systemctl enable --now $UNIT
+sleep 3
+sudo test -e /etc/chrony.conf && CONF=/etc/chrony.conf || CONF=/etc/chrony/chrony.conf
+echo "METRIC: chrony conf $CONF, active lines: $(sudo grep -vE '^[[:space:]]*(#|!|;|$)' $CONF | tr '\n' '|' | cut -c1-400)"
+# A known plain starting point: no NTS source anywhere.
+if sudo grep -rqE '^(server|pool).* nts' $CONF /etc/chrony.d /etc/chrony/conf.d /etc/chrony/sources.d 2>/dev/null; then
+  # Ubuntu 26.04 already ships NTS sources: the check must pass, and there
+  # is nothing for the plugin to change.
+  echo "METRIC: the distro already ships an NTS source"
+  [ -z "$(findings net.nts)" ] || {{ echo "FINDING ON A DISTRO THAT ALREADY USES NTS: $(findings net.nts)"; exit 1; }}
+  OUT=$(sudo chronyc -N authdata 2>/dev/null | awk '$2=="NTS" {{print $1}}' | tr '\n' ' ')
+  echo "METRIC: distro NTS sources seen by chrony: $OUT"
+  exit 0
+fi
+findings net.nts | grep -q nts.off || {{ echo "NO nts.off FINDING: [$(findings net.nts)]"; exit 1; }}
+change net.nts --set preset=cloudflare,netnod,ptb,ntpbr
+D=$(ls /etc/chrony.d/70-ibexwall-nts.conf /etc/chrony/conf.d/70-ibexwall-nts.conf /etc/chrony-ibexwall/chrony.conf 2>/dev/null | head -1)
+[ -n "$D" ] || {{ echo "DROP-IN MISSING"; exit 1; }}
+sudo grep -q 'server time.cloudflare.com iburst nts' $D
+echo "METRIC: adapter used: $D"
+sudo systemctl cat $UNIT | grep -E '^ExecStart' | tail -1 | sed 's/^/METRIC: running: /' >&2 || true
+[ -z "$(findings net.nts)" ] || {{ echo "FINDING SURVIVED THE CHANGE"; exit 1; }}
+# The proof: chrony itself reports authenticated NTS associations.
+OK=""
+for i in $(seq 1 60); do
+  OK=$(sudo chronyc -N authdata 2>/dev/null | awk '$2=="NTS" && $NF!="" && $(NF-1)+0>=1 {{print $1}}' | tr '\n' ' ')
+  echo "$OK" | grep -q 'time.cloudflare.com' && break
+  sleep 2
+done
+echo "METRIC: chronyc authdata NTS ok for: $OK"
+sudo chronyc -N authdata >&2 || true
+echo "$OK" | grep -q 'time.cloudflare.com' || {{ echo "CLOUDFLARE NOT AUTHENTICATED"; sudo chronyc -N authdata; sudo journalctl -u $UNIT -n 15 --no-pager; exit 1; }}
+for host in nts.netnod.se ptbtime1.ptb.de a.st1.ntp.br; do
+  echo "$OK" | grep -q "$host" && echo "METRIC: $host authenticated" || echo "METRIC: $host NOT authenticated within the wait"
+done
+sudo ibexctl rollback "$TX" --json >/dev/null || {{ echo "ROLLBACK FAILED"; exit 1; }}
+sudo test ! -e $D || {{ echo "DROP-IN SURVIVED"; exit 1; }}
+sudo test ! -e /etc/systemd/system/chronyd.service.d/70-ibexwall-nts.conf || {{ echo "SERVICE DROP-IN SURVIVED"; exit 1; }}
+systemctl is-active --quiet $UNIT || {{ echo "CHRONY NOT RUNNING AFTER THE ROLLBACK"; exit 1; }}
+findings net.nts | grep -q nts.off || {{ echo "NOT BACK TO THE PRIOR STATE"; exit 1; }}
+"#
+        )
+    );
+
+    scenario!(
+        "m4b net.wifi: the address policy is found, set with NetworkManager's own view agreeing, open networks named, rollback",
+        &format!(
+            r#"{lib}
+sudo ibexctl plugins enable net.wifi >/dev/null
+NMBIN=$(sudo sh -c 'command -v NetworkManager') || NMBIN=""
+if [ -z "$NMBIN" ]; then
+  # Not a NetworkManager machine: nothing applies, nothing is claimed.
+  [ -z "$(findings net.wifi)" ] || {{ echo "FINDINGS WITHOUT NETWORKMANAGER"; exit 1; }}
+  if sudo ibexctl plan net.wifi --json >/dev/null 2>&1; then echo "PLAN ACCEPTED WITHOUT NETWORKMANAGER"; exit 1; fi
+  echo "METRIC: no NetworkManager on this distro image"
+  exit 0
+fi
+# A saved open network, for the check to name (removed before the change).
+sudo mkdir -p /etc/NetworkManager/system-connections
+printf '[connection]\nid=f7open\ntype=wifi\n[wifi]\nssid=F7 Open Cafe\n' | sudo tee /etc/NetworkManager/system-connections/f7open.nmconnection >/dev/null
+sudo chmod 600 /etc/NetworkManager/system-connections/f7open.nmconnection
+trap 'sudo rm -f /etc/NetworkManager/system-connections/f7open.nmconnection /etc/NetworkManager/conf.d/70-ibexwall-wifi.conf' EXIT
+F=$(findings net.wifi)
+echo "METRIC: wifi findings: [$F]"
+echo "$F" | grep -q 'wifi.open.F7 Open Cafe' || {{ echo "OPEN NETWORK NOT NAMED"; exit 1; }}
+sudo rm -f /etc/NetworkManager/system-connections/f7open.nmconnection
+BEFORE=$(sudo $NMBIN --print-config 2>/dev/null | grep -i cloned-mac-address || true)
+echo "METRIC: nm before: [$BEFORE] from: $(sudo grep -rls 'cloned-mac-address' /etc/NetworkManager /usr/lib/NetworkManager /run/NetworkManager /usr/lib64/NetworkManager 2>/dev/null | tr '\n' ' ')"
+if echo "$BEFORE" | grep -Eq 'random|stable'; then
+  # The distro already randomizes: put the old behavior back for the
+  # test, in a file of ours that sorts before the plugin's.
+  echo "METRIC: the distro already randomizes; forcing preserve for the test"
+  printf '[connection]\nwifi.cloned-mac-address=preserve\n' | sudo tee /etc/NetworkManager/conf.d/50-f7-preserve.conf >/dev/null
+  trap 'sudo rm -f /etc/NetworkManager/system-connections/f7open.nmconnection /etc/NetworkManager/conf.d/70-ibexwall-wifi.conf /etc/NetworkManager/conf.d/50-f7-preserve.conf' EXIT
+fi
+echo "$(findings net.wifi)" | grep -q wifi.mac || {{ echo "NO wifi.mac FINDING"; exit 1; }}
+change net.wifi
+sudo test -f /etc/NetworkManager/conf.d/70-ibexwall-wifi.conf || {{ echo "DROP-IN MISSING"; exit 1; }}
+sudo $NMBIN --print-config 2>/dev/null | grep -q 'cloned-mac-address=stable' || {{ echo "NETWORKMANAGER DOES NOT SEE THE POLICY"; sudo $NMBIN --print-config | grep -i mac; exit 1; }}
+echo "$(findings net.wifi)" | grep -q 'wifi.mac' && {{ echo "wifi.mac SURVIVED"; exit 1; }} || true
+# Still reachable: the restart kept the machine's network.
+curl -s -o /dev/null --max-time 10 https://example.com || {{ echo "NETWORK LOST AFTER THE CHANGE"; exit 1; }}
+sudo ibexctl rollback "$TX" --json >/dev/null || {{ echo "ROLLBACK FAILED"; exit 1; }}
+sudo test ! -e /etc/NetworkManager/conf.d/70-ibexwall-wifi.conf || {{ echo "DROP-IN SURVIVED"; exit 1; }}
 "#
         )
     );

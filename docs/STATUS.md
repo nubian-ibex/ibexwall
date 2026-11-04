@@ -3,7 +3,7 @@
 
 # STATUS
 
-Last updated: 2026-11-04 (F8 delivered, report ready for acceptance)
+Last updated: 2026-11-04 (F9 delivered, report ready for acceptance)
 
 ## Current phase
 
@@ -54,6 +54,18 @@ screen. Every call is logged before it runs in a hash-chained file;
 (no language model), and an injection corpus in the suite. Open: manual
 runs with Claude Code, OpenCode and VS Code, a packaged polkit rule for the
 user that runs an assistant (F10), Streamable HTTP and OAuth (off by spec).
+
+**F9: VPN and endpoint, delivered** (report: `docs/reports/F9-report.md`,
+awaiting acceptance; plan: `docs/plans/F9-vpn-and-endpoint.md`; ADR-0040
+proposed). `endpoint.isolate`, `net.vpn` (WireGuard through NetworkManager and
+a kill switch), `endpoint.persistence`, `endpoint.integrity`, `endpoint.av`;
+engine groundwork (address and interface matches in nft rules, private-file
+previews, symmetric execs). `--phase f9` green on five distros, including a
+`tcpdump` proof that a dropped tunnel leaks nothing under the kill switch and
+the EICAR file flagged by ClamAV and YARA. The F8 polkit rule and group for
+assistants (`ibexwall-assistants`) was accepted and shipped. Open: OpenVPN
+import (ADR-0040), scan folders discovery and a file watcher (need plugin
+units, F10), manual runs with real assistant clients.
 
 ## What exists
 

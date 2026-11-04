@@ -293,3 +293,42 @@ first mandatory review point.
   (see the report); the core's chain is the one out of reach.
 - **Availability.** A flooding client is limited per process and, in the core,
   by the pending bounds. A request over 1 MiB is dropped unparsed.
+
+## 14. VPN and endpoint (F9)
+
+- **Secrets in transit.** A VPN profile carries a private key. It exists
+  only in the plan (SQLite, root) and in the 0600 NetworkManager keyfile;
+  previews, proposals and dry runs show "private file, N lines hidden" for
+  any file written without group or other bits; the audit chain stores a
+  digest of the ops, not their content. `net.vpn` is closed to every MCP
+  client by default, so a key never passes through an assistant or its log.
+- **Cutting the machine off.** `endpoint.isolate` and the kill switch are
+  network changes: the engine asks for a confirmation and reverts if nobody
+  gives one (VM-tested). An empty isolation allow list needs an explicit
+  `lockdown`. Chains sit ahead of the distro's firewall, so another
+  table's accept cannot undo them; they are our own chains in our own table
+  and rollback removes only them.
+- **What the kill switch does not cover.** It governs egress from this
+  machine. Link-local traffic and the multicast groups neighbour discovery
+  needs pass (they do not leave the link). A VPN server must be given as an
+  address. Traffic that goes to the tunnel interface is trusted to be the
+  tunnel: a local root can create an interface named `wg*`, which is outside
+  the model (root can also remove the chain).
+- **Hostile profile text.** `wg-quick` hooks (`PostUp`, `PreDown`, `Table`,
+  `SaveConfig`) are refused by name; every value is validated (keys,
+  networks, endpoints, names) before it reaches a keyfile; names are limited
+  to `[a-z0-9-]` so they are safe in a file name and an interface name.
+- **Scanners and verifiers on hostile files.** Fixed argv, no shell, a time
+  limit, paths limited to plain characters before they enter a unit; file
+  and signature names are Fluent arguments only. ClamAV and YARA parse
+  attacker-controlled files, so the scan unit is sandboxed
+  (`ProtectSystem=strict`, `NoNewPrivileges`, `PrivateDevices`, read-only
+  home); under SELinux the distro's own confinement of `clamscan` applies and
+  the check says when it blocks scanning. Residual: the scanners run as root
+  to be able to read what they scan.
+- **Honest limits.** Integrity and persistence are as good as the package
+  manager's database and the baseline the person accepted: an attacker who
+  edits both is outside what a check on the same machine can see (AIDE with a
+  database kept elsewhere, or a remote attestation, is the answer, and
+  neither is in v1). The daemon's hardened unit hides parts of the filesystem
+  from plugins run as its children; own units per plugin (F10) lift that.

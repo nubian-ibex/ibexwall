@@ -7,6 +7,8 @@
 //! denied · 4 locked by org · 5 awaiting confirmation · 10 findings
 //! present.
 
+mod mcp_config;
+
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
@@ -87,6 +89,11 @@ enum Command {
         #[command(subcommand)]
         action: AppsAction,
     },
+    /// Connect an AI assistant (MCP) to IbexWall.
+    Mcp {
+        #[command(subcommand)]
+        action: McpAction,
+    },
     /// Changes an assistant proposed, waiting for a human decision.
     Proposals {
         #[command(subcommand)]
@@ -155,6 +162,17 @@ enum AppsAction {
 }
 
 #[derive(Subcommand)]
+enum McpAction {
+    /// What to paste to connect a client, and the matching mcp.toml stanza.
+    Config {
+        client: mcp_config::McpClient,
+        /// Show the stanza with change proposals allowed.
+        #[arg(long)]
+        with_proposals: bool,
+    },
+}
+
+#[derive(Subcommand)]
 enum ProposalsAction {
     /// The proposals, newest first (pending by default).
     List {
@@ -209,6 +227,17 @@ fn main() {
 }
 
 async fn run(cli: Cli) -> i32 {
+    // Printing a configuration needs no daemon.
+    if let Command::Mcp {
+        action: McpAction::Config {
+            client,
+            with_proposals,
+        },
+    } = &cli.command
+    {
+        print!("{}", mcp_config::render(*client, *with_proposals));
+        return 0;
+    }
     let socket = names::core_socket();
     let mut client = match ibexwall_varlink::Client::connect(&socket).await {
         Ok(client) => client,
@@ -288,6 +317,7 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
         Command::Plugins { action } => plugins(client, action, json).await,
         Command::Apps { action } => apps(client, action, json).await,
         Command::Prompts { action } => prompts(client, action, json).await,
+        Command::Mcp { .. } => Ok(Finish::Done),
         Command::Proposals { action } => proposals(client, action, json).await,
         Command::Firewall { action } => firewall(client, action, json).await,
         Command::Check { plugin } => {

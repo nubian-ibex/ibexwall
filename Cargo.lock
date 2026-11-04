@@ -2268,6 +2268,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ibexwall-plugin-audit"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "ibexwall-plugin-coredump"
 version = "0.1.0"
 dependencies = [
@@ -2309,6 +2320,17 @@ dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
  "ibexwall-sys",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "ibexwall-plugin-firmware"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
  "serde",
  "serde_json",
  "tokio",
@@ -2372,6 +2394,17 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-sysctl"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "ibexwall-plugin-updates"
 version = "0.1.0"
 dependencies = [
  "ibexwall-proto",

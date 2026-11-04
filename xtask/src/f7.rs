@@ -32,6 +32,12 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
             "-p",
             "ibexwall-plugin-accounts",
             "-p",
+            "ibexwall-plugin-audit",
+            "-p",
+            "ibexwall-plugin-updates",
+            "-p",
+            "ibexwall-plugin-firmware",
+            "-p",
             "ibexwall-exec",
             "-p",
             "ibexwall-cli",
@@ -50,6 +56,9 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
         "system.mounts",
         "system.ssh",
         "system.accounts",
+        "system.audit",
+        "system.updates",
+        "system.firmware",
     ] {
         install_plugin(vm, workspace, id)?;
     }
@@ -274,6 +283,109 @@ assert any(f["id"]=="accounts.empty.f7empty" and f["severity"]=="high" for f in 
 '
 sudo userdel -r f7empty
 [ -z "$(findings system.accounts | tr ' ' '\n' | grep accounts.empty)" ] || {{ echo "FINDING SURVIVED THE ACCOUNT"; exit 1; }}
+"#
+        )
+    );
+
+    scenario!(
+        "m3a system.audit: a real Lynis report becomes findings, and without Lynis nothing is claimed",
+        &format!(
+            r#"{lib}
+sudo ibexctl plugins enable system.audit >/dev/null
+# Not installed: nothing to integrate with, and nothing is reported.
+if ! sudo sh -c 'command -v lynis' >/dev/null; then
+  sudo ibexctl check system.audit --json > /tmp/audit0.json 2>&1 || true
+  python3 -c 'import json; d=json.load(open("/tmp/audit0.json")); assert d.get("findings") == [], d' || {{ echo "FINDINGS WITHOUT LYNIS: $(cat /tmp/audit0.json)"; exit 1; }}
+  if command -v dnf >/dev/null; then sudo dnf install -y -q lynis
+  elif command -v apt-get >/dev/null; then sudo apt-get update -qq; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq lynis
+  elif command -v pacman >/dev/null; then sudo pacman -Sy --noconfirm --needed lynis
+  fi
+fi
+LYNIS=$(sudo sh -c 'command -v lynis') || {{ echo "LYNIS COULD NOT BE INSTALLED"; exit 1; }}
+sudo $LYNIS audit system --quick --no-colors >/tmp/lynis.out 2>&1 || true
+sudo test -s /var/log/lynis-report.dat || {{ echo "NO LYNIS REPORT"; tail -5 /tmp/lynis.out; exit 1; }}
+sudo ibexctl check system.audit --json > /tmp/audit1.json 2>&1 || true
+python3 -c 'import json; json.load(open("/tmp/audit1.json"))["findings"]' 2>/dev/null || {{ echo "CHECK ERROR: $(head -c 600 /tmp/audit1.json)"; sudo journalctl -u ibexwalld -n 8 --no-pager; exit 1; }}
+F=$(findings system.audit)
+echo "METRIC: lynis findings: $(echo $F | wc -w), index: $(sudo grep '^hardening_index=' /var/log/lynis-report.dat)"
+echo "$F" | grep -q 'audit.lynis.index' || {{ echo "NO HARDENING INDEX FINDING"; exit 1; }}
+INDEX=$(sudo sed -n 's/^hardening_index=//p' /var/log/lynis-report.dat)
+sudo ibexctl check system.audit --json | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+idx=[f for f in d["findings"] if f["id"]=="audit.lynis.index"][0]
+assert idx["args"]["index"]=="'$INDEX'", idx
+assert all(f["plugin"]=="system.audit" for f in d["findings"])
+'
+"#
+        )
+    );
+
+    scenario!(
+        "m3b system.updates: automatic updates are found off, turned on for the distro's tool, and turned back off",
+        &format!(
+            r#"{lib}
+sudo ibexctl plugins enable system.updates >/dev/null
+. /etc/os-release
+case "$ID $ID_LIKE" in
+  *debian*|*ubuntu*) FAMILY=apt ;;
+  *fedora*) FAMILY=dnf ;;
+  *) FAMILY=other ;;
+esac
+echo "METRIC: family $FAMILY"
+if [ "$FAMILY" = other ]; then
+  [ -z "$(findings system.updates)" ] || {{ echo "FINDINGS ON A ROLLING DISTRO"; exit 1; }}
+  if sudo ibexctl plan system.updates --json >/dev/null 2>&1; then echo "PLAN ACCEPTED ON A ROLLING DISTRO"; exit 1; fi
+  exit 0
+fi
+# Without the tool: a finding, no plan, and nothing installed behind our back.
+if [ "$FAMILY" = apt ]; then TOOL=/usr/bin/unattended-upgrade; else TOOL=/usr/lib/systemd/system/dnf5-automatic.timer; fi
+if [ ! -e $TOOL ]; then
+  findings system.updates | grep -q updates.automatic || {{ echo "NO FINDING WITHOUT THE TOOL"; exit 1; }}
+  if sudo ibexctl plan system.updates --json >/dev/null 2>&1; then echo "PLAN ACCEPTED WITHOUT THE TOOL"; exit 1; fi
+  if [ "$FAMILY" = apt ]; then sudo apt-get update -qq; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq unattended-upgrades
+  else sudo dnf install -y -q dnf5-plugin-automatic; fi
+fi
+[ -e $TOOL ] || {{ echo "TOOL NOT INSTALLED"; exit 1; }}
+[ "$FAMILY" = dnf ] && echo "METRIC: dnf5 automatic files: $(rpm -ql dnf5-plugin-automatic | grep -E 'conf|timer' | tr '\n' ' ' | cut -c1-200)"
+# A known-off starting point.
+if [ "$FAMILY" = apt ]; then
+  echo 'APT::Periodic::Unattended-Upgrade "0";' | sudo tee /etc/apt/apt.conf.d/20auto-upgrades >/dev/null
+  trap 'sudo rm -f /etc/apt/apt.conf.d/20auto-upgrades' EXIT
+else
+  sudo systemctl disable --now dnf5-automatic.timer >/dev/null 2>&1 || true
+fi
+findings system.updates | grep -q updates.automatic || {{ echo "NO FINDING WHEN OFF"; exit 1; }}
+change system.updates
+if [ "$FAMILY" = apt ]; then
+  sudo test -f /etc/apt/apt.conf.d/52ibexwall-auto-upgrades || {{ echo "DROP-IN MISSING"; exit 1; }}
+  apt-config dump | grep -q 'APT::Periodic::Unattended-Upgrade "1"' || {{ echo "APT DOES NOT SEE IT: $(apt-config dump | grep Unattended-Upgrade)"; exit 1; }}
+else
+  systemctl is-enabled --quiet dnf5-automatic.timer || {{ echo "TIMER NOT ENABLED"; exit 1; }}
+  sudo test -f /etc/dnf/dnf5-plugins/automatic.d/70-ibexwall.conf || {{ echo "DROP-IN MISSING"; exit 1; }}
+fi
+[ -z "$(findings system.updates)" ] || {{ echo "FINDING SURVIVED: $(findings system.updates)"; exit 1; }}
+sudo ibexctl rollback "$TX" --json >/dev/null || {{ echo "ROLLBACK FAILED"; exit 1; }}
+if [ "$FAMILY" = apt ]; then
+  sudo test ! -e /etc/apt/apt.conf.d/52ibexwall-auto-upgrades || {{ echo "DROP-IN SURVIVED"; exit 1; }}
+  apt-config dump | grep -q 'APT::Periodic::Unattended-Upgrade "0"' || {{ echo "NOT BACK TO OFF"; exit 1; }}
+else
+  ! systemctl is-enabled --quiet dnf5-automatic.timer || {{ echo "TIMER STILL ENABLED AFTER ROLLBACK"; exit 1; }}
+  sudo test ! -e /etc/dnf/dnf5-plugins/automatic.d/70-ibexwall.conf || {{ echo "DROP-IN SURVIVED"; exit 1; }}
+fi
+"#
+        )
+    );
+
+    scenario!(
+        "m3c system.firmware: a virtual machine has no firmware to update, and nothing is installed for it",
+        &format!(
+            r#"{lib}
+sudo ibexctl plugins enable system.firmware >/dev/null
+sudo ibexctl check system.firmware --json | python3 -c 'import json,sys; assert json.load(sys.stdin)["findings"] == []'
+echo "METRIC: dmi vendor: $(cat /sys/class/dmi/id/sys_vendor 2>/dev/null)"
+if sudo ibexctl plan system.firmware --json >/dev/null 2>&1 && ! command -v fwupdmgr >/dev/null; then echo "PLAN ACCEPTED WITHOUT FWUPD"; exit 1; fi
+command -v fwupdmgr >/dev/null && echo "METRIC: fwupd happens to be installed" || true
 "#
         )
     );

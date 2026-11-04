@@ -1,0 +1,9 @@
+persistence-new-title = Novo { $kind } que não estava aqui antes
+persistence-new-summary = { $path } é novo desde que a linha de base foi aceita. Se não foi você, examine e remova.
+persistence-changed-title = { $kind } alterado
+persistence-changed-summary = { $path } mudou desde que a linha de base foi aceita. Se não foi você, examine.
+persistence-preload-title = Algo é carregado em todo programa
+persistence-preload-summary = { $path } lista bibliotecas que o sistema carrega em todo programa. Quase só malware faz isso.
+persistence-more-title = E mais { $count }
+persistence-more-summary = Mais { $count } alterações de { $kind } foram encontradas. Rode a verificação com --json para ver todas.
+persistence-may-affect = Aceitar a linha de base registra o que está no computador agora, então só mudanças depois disso são relatadas.

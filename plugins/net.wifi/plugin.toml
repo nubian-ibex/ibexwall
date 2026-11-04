@@ -1,0 +1,40 @@
+id = "net.wifi"
+version = "0.1.0"
+api = 1
+category = "network"
+kinds = ["check", "control"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-wifi"
+default_enabled = true
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "Wi-Fi privacy"
+pt-BR = "Privacidade do Wi-Fi"
+
+[description]
+en = "Checks that Wi-Fi uses a changed hardware address and that open networks are not remembered, and sets the address."
+pt-BR = "Verifica se o Wi-Fi usa um endereço de hardware alterado e se redes abertas não ficam salvas, e configura o endereço."
+
+[privileges]
+write_paths = ["/etc/NetworkManager/conf.d"]
+units = ["NetworkManager.service"]
+unit_actions = ["restart"]
+
+[sandbox]
+user = "dynamic"
+# Saved connections are root-only files.
+capabilities = ["CAP_DAC_READ_SEARCH"]
+read_paths = ["/etc/NetworkManager", "/usr/lib/NetworkManager", "/usr/sbin/NetworkManager", "/usr/bin/NetworkManager", "/run/NetworkManager"]
+network = false
+
+[risk]
+affects = ["network"]
+reversible = "immediate"
+confirm_timeout = true
+may_affect = ["wifi-may-affect-captive", "wifi-may-affect-filters"]
+
+[ui]
+icon = "wifi"
+order = 42

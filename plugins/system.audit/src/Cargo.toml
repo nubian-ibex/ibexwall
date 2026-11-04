@@ -1,0 +1,23 @@
+[package]
+name = "ibexwall-plugin-audit"
+description = "system.audit plugin: reads Lynis reports when Lynis is installed"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "ibexwall-plugin-audit"
+path = "main.rs"
+
+[dependencies]
+ibexwall-proto.workspace = true
+ibexwall-sdk.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true

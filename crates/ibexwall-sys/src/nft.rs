@@ -68,6 +68,17 @@ pub struct Rule {
     /// (container and VM bridges, VPNs: not "external" traffic).
     #[serde(default)]
     pub iif_prefix: Option<String>,
+    /// Only packets leaving through an interface whose name starts with
+    /// this (a VPN's `wg`, `tun`).
+    #[serde(default)]
+    pub oif_prefix: Option<String>,
+    /// Only packets from these addresses or networks (`10.0.0.0/8`,
+    /// `2001:db8::/32`, a bare address).
+    #[serde(default)]
+    pub saddr: Vec<String>,
+    /// Only packets to these addresses or networks.
+    #[serde(default)]
+    pub daddr: Vec<String>,
     /// Only packets of connections already established or related.
     #[serde(default)]
     pub ct_established: bool,
@@ -124,6 +135,44 @@ pub enum Verdict {
 const MAX_CHAINS: usize = 8;
 const MAX_RULES: usize = 64;
 const MAX_PORTS: usize = 16;
+const MAX_ADDRESSES: usize = 32;
+
+/// `1.2.3.4`, `10.0.0.0/8`, `fe80::/10`: the address, its prefix length
+/// and whether it is IPv6.
+fn parse_network(text: &str) -> Result<(std::net::IpAddr, u8)> {
+    let (addr, len) = match text.split_once('/') {
+        Some((a, l)) => (a, Some(l)),
+        None => (text, None),
+    };
+    let addr: std::net::IpAddr = addr
+        .parse()
+        .map_err(|_| anyhow::anyhow!("not an address"))?;
+    let max = if addr.is_ipv4() { 32 } else { 128 };
+    let len = match len {
+        Some(l) => l
+            .parse::<u8>()
+            .ok()
+            .filter(|l| *l <= max)
+            .ok_or_else(|| anyhow::anyhow!("bad prefix length"))?,
+        None => max,
+    };
+    Ok((addr, len))
+}
+
+fn address_set(entries: &[String], v6: bool) -> Vec<Value> {
+    entries
+        .iter()
+        .filter_map(|text| parse_network(text).ok())
+        .filter(|(addr, _)| addr.is_ipv6() == v6)
+        .map(|(addr, len)| {
+            if len == if v6 { 128 } else { 32 } {
+                json!(addr.to_string())
+            } else {
+                json!({ "prefix": { "addr": addr.to_string(), "len": len } })
+            }
+        })
+        .collect()
+}
 
 impl Fragment {
     /// Structural limits; the plugin manifest's name prefix is checked by
@@ -145,7 +194,7 @@ impl Fragment {
                 bail!("chain `{name}` has more than {MAX_RULES} rules");
             }
             for rule in &chain.rules {
-                if let Some(prefix) = &rule.iif_prefix {
+                for prefix in rule.iif_prefix.iter().chain(rule.oif_prefix.iter()) {
                     let ok = (1..=14).contains(&prefix.len())
                         && prefix
                             .bytes()
@@ -153,6 +202,13 @@ impl Fragment {
                     if !ok {
                         bail!("chain `{name}`: `{prefix}` is not an interface name prefix");
                     }
+                }
+                if rule.saddr.len() > MAX_ADDRESSES || rule.daddr.len() > MAX_ADDRESSES {
+                    bail!("chain `{name}`: at most {MAX_ADDRESSES} addresses per rule");
+                }
+                for text in rule.saddr.iter().chain(rule.daddr.iter()) {
+                    parse_network(text)
+                        .map_err(|e| anyhow::anyhow!("chain `{name}`: `{text}`: {e}"))?;
                 }
                 if rule.protocols.is_empty() != rule.dports.is_empty() {
                     bail!("chain `{name}`: protocols and dports go together");
@@ -227,6 +283,10 @@ impl Rule {
                 "left": { "meta": { "key": "l4proto" } },
                 "right": { "set": ["icmp", "ipv6-icmp"] } } }));
         }
+        if let Some(prefix) = &self.oif_prefix {
+            base.push(json!({ "match": { "op": "==",
+                "left": { "meta": { "key": "oifname" } }, "right": format!("{prefix}*") } }));
+        }
         if self.oif_loopback {
             base.push(json!({ "match": { "op": "==",
                 "left": { "meta": { "key": "oifname" } }, "right": "lo" } }));
@@ -241,26 +301,52 @@ impl Rule {
             Verdict::Reject => json!({ "reject": null }),
             Verdict::Queue { num } => json!({ "queue": { "num": num, "flags": "bypass" } }),
         };
-        if self.protocols.is_empty() {
-            let mut expr = base;
-            expr.push(verdict);
-            return vec![expr];
+        // Addresses of one family go in one rule; a list that mixes IPv4
+        // and IPv6 becomes two rules.
+        let mut variants: Vec<Vec<Value>> = Vec::new();
+        if self.saddr.is_empty() && self.daddr.is_empty() {
+            variants.push(base);
+        } else {
+            for v6 in [false, true] {
+                let (s, d) = (address_set(&self.saddr, v6), address_set(&self.daddr, v6));
+                if (!self.saddr.is_empty() && s.is_empty())
+                    || (!self.daddr.is_empty() && d.is_empty())
+                {
+                    continue;
+                }
+                let mut expr = base.clone();
+                for (field, set) in [("saddr", s), ("daddr", d)] {
+                    if !set.is_empty() {
+                        expr.push(json!({ "match": { "op": "==",
+                            "left": { "payload": { "protocol": if v6 { "ip6" } else { "ip" }, "field": field } },
+                            "right": { "set": set } } }));
+                    }
+                }
+                variants.push(expr);
+            }
         }
-        self.protocols
-            .iter()
-            .map(|proto| {
+        let mut out = Vec::new();
+        for variant in variants {
+            if self.protocols.is_empty() {
+                let mut expr = variant;
+                expr.push(verdict.clone());
+                out.push(expr);
+                continue;
+            }
+            for proto in &self.protocols {
                 let name = match proto {
                     Proto::Tcp => "tcp",
                     Proto::Udp => "udp",
                 };
-                let mut expr = base.clone();
+                let mut expr = variant.clone();
                 expr.push(json!({ "match": { "op": "==",
                     "left": { "payload": { "protocol": name, "field": "dport" } },
                     "right": { "set": self.dports } } }));
                 expr.push(verdict.clone());
-                expr
-            })
-            .collect()
+                out.push(expr);
+            }
+        }
+        out
     }
 }
 
@@ -651,6 +737,47 @@ mod tests {
             ],
         }] }))
         .unwrap()
+    }
+
+    #[test]
+    fn interface_prefixes_and_addresses_compile_one_rule_per_family() {
+        let fragment: Fragment = serde_json::from_value(json!({ "chains": [{
+            "name": "net_vpn_out",
+            "rules": [
+                { "oif_prefix": "wg", "verdict": "accept" },
+                { "daddr": ["10.0.0.0/8", "192.0.2.7", "fd00::/8"], "protocols": ["udp"], "dports": [51820], "verdict": "accept" },
+                { "saddr": ["2001:db8::1"], "verdict": "drop" },
+            ],
+        }] })).unwrap();
+        fragment.validate().unwrap();
+        let commands = fragment.compile();
+        // table, chain, flush, then: 1 + 2 (v4 and v6) + 1 rules.
+        assert_eq!(commands.len(), 3 + 4);
+        let expr = |n: usize| commands[3 + n]["add"]["rule"]["expr"].clone();
+        assert_eq!(expr(0)[0]["match"]["right"], "wg*");
+        assert_eq!(expr(1)[0]["match"]["left"]["payload"]["protocol"], "ip");
+        assert_eq!(
+            expr(1)[0]["match"]["right"]["set"],
+            json!([{ "prefix": { "addr": "10.0.0.0", "len": 8 } }, "192.0.2.7"])
+        );
+        assert_eq!(expr(2)[0]["match"]["left"]["payload"]["protocol"], "ip6");
+        assert_eq!(expr(3)[0]["match"]["left"]["payload"]["field"], "saddr");
+    }
+
+    #[test]
+    fn bad_addresses_and_prefixes_are_refused_before_nft_sees_them() {
+        for rule in [
+            json!({ "daddr": ["not-an-address"], "verdict": "drop" }),
+            json!({ "daddr": ["10.0.0.0/33"], "verdict": "drop" }),
+            json!({ "daddr": ["::1/129"], "verdict": "drop" }),
+            json!({ "saddr": ["1.2.3.4; flush ruleset"], "verdict": "drop" }),
+            json!({ "oif_prefix": "w g", "verdict": "drop" }),
+        ] {
+            let fragment: Fragment =
+                serde_json::from_value(json!({ "chains": [{ "name": "c", "rules": [rule] }] }))
+                    .unwrap();
+            assert!(fragment.validate().is_err());
+        }
     }
 
     #[test]

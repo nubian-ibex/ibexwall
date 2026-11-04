@@ -469,6 +469,16 @@ fn op_target(op: &Op) -> String {
 
 fn op_diff(op: &Op, index: usize) -> Option<String> {
     match op {
+        // A file only its owner can read (a VPN key) is not printed into
+        // previews, proposals or logs.
+        Op::FileWrite { content, mode, .. }
+            if u32::from_str_radix(mode, 8).is_ok_and(|m| m & 0o077 == 0) =>
+        {
+            Some(format!(
+                "+(private file, {} lines hidden)",
+                content.lines().count()
+            ))
+        }
         Op::FileWrite { content, .. } => Some(
             content
                 .lines()
@@ -1098,6 +1108,26 @@ mod tests {
         ];
         assert!(rig.engine.execute(None, &ops).is_err());
         assert!(!rig.fs.exists(Path::new("/etc/ibexwall-tests/never.conf")));
+    }
+
+    #[test]
+    fn a_private_file_is_never_printed_into_a_preview() {
+        let rig = rig("pv-private", false);
+        let secret = "PrivateKey = c2VjcmV0LWtleS1ub3Qtb25seS1hLXRlc3Q=";
+        let ops = vec![
+            Op::FileWrite {
+                path: "/etc/vpn.nmconnection".into(),
+                content: format!("[wireguard]\n{secret}\n"),
+                mode: "0600".into(),
+                owner: "root".into(),
+                group: "root".into(),
+            },
+            write("/etc/public.conf", "visible"),
+        ];
+        let preview = rig.engine.preview(&ops);
+        let hidden = preview[0].diff.clone().unwrap();
+        assert!(!hidden.contains("c2VjcmV0") && hidden.contains("private file, 2 lines hidden"));
+        assert_eq!(preview[1].diff.as_deref(), Some("+visible"));
     }
 
     #[test]

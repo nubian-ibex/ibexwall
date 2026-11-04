@@ -887,6 +887,33 @@ mod tests {
         }
     }
 
+    #[test]
+    fn rolling_back_a_restart_does_not_touch_the_units_enablement() {
+        // Ubuntu's ssh.service is "disabled" (its socket is what is
+        // enabled); disabling it again would fail under the executor and
+        // changes nothing the transaction did.
+        let rig = rig("unit2", false);
+        rig.systemd.seed(
+            "ibexwall-test.service",
+            UnitSnapshot {
+                enabled: Enabled::Disabled,
+                active: true,
+            },
+        );
+        let ops = vec![Op::SystemdUnit {
+            unit: "ibexwall-test.service".into(),
+            action: UnitAction::Restart,
+            now: None,
+        }];
+        rig.engine.snapshot(&rig.state, "txu2", &ops).unwrap();
+        rig.engine.execute(None, &ops).unwrap();
+        rig.engine.rollback(&rig.state, "txu2").unwrap();
+        let log = rig.systemd.log.snapshot().join("\n");
+        assert!(!log.contains("Disable"), "{log}");
+        assert!(!log.contains("Enable"), "{log}");
+        assert!(rig.systemd.get("ibexwall-test.service").active);
+    }
+
     fn nft_guard(rules: usize) -> Op {
         Op::NftFragment {
             fragment: json!({ "chains": [{

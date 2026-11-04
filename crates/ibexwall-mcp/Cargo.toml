@@ -1,6 +1,6 @@
 [package]
 name = "ibexwall-mcp"
-description = "IbexWall MCP server"
+description = "IbexWall MCP server: read-only assistant access and change proposals"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,3 +10,23 @@ publish = false
 
 [lints]
 workspace = true
+
+[lib]
+name = "ibexwall_mcp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ibexwall-mcp"
+path = "src/main.rs"
+
+[dependencies]
+ibexwall-proto.workspace = true
+ibexwall-varlink.workspace = true
+ibexwall-sys.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+hex.workspace = true
+toml.workspace = true
+tokio.workspace = true

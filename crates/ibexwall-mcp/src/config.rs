@@ -38,7 +38,9 @@ impl Default for Defaults {
             ]
             .map(String::from)
             .to_vec(),
-            deny_plugins: ["system.accounts", "disk.*", "managed"]
+            // net.vpn: a profile carries a private key, which must never
+            // pass through an assistant.
+            deny_plugins: ["system.accounts", "disk.*", "managed", "net.vpn"]
                 .map(String::from)
                 .to_vec(),
             dns_history: "aggregates".into(),
@@ -212,6 +214,7 @@ rate_limit = "30/min"
             "disk.encryption",
             "managed",
             "managed.org",
+            "net.vpn",
         ] {
             assert!(config.denies(denied), "{denied}");
         }

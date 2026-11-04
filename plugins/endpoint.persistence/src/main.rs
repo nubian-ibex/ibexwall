@@ -44,9 +44,6 @@ struct Watch {
     kind: &'static str,
     /// Only files whose name ends with one of these (empty: all files).
     suffixes: &'static [&'static str],
-    /// Include directories themselves (cron.daily and friends are scripts,
-    /// autostart is files, so this stays false everywhere).
-    max_depth: usize,
 }
 
 const WATCHES: &[Watch] = &[
@@ -54,61 +51,51 @@ const WATCHES: &[Watch] = &[
         dir: "/etc/systemd/system",
         kind: "unit",
         suffixes: &[],
-        max_depth: 1,
     },
     Watch {
         dir: "/usr/lib/systemd/system",
         kind: "unit",
         suffixes: &[],
-        max_depth: 1,
     },
     Watch {
         dir: "/etc/cron.d",
         kind: "cron",
         suffixes: &[],
-        max_depth: 1,
     },
     Watch {
         dir: "/etc/cron.hourly",
         kind: "cron",
         suffixes: &[],
-        max_depth: 1,
     },
     Watch {
         dir: "/etc/cron.daily",
         kind: "cron",
         suffixes: &[],
-        max_depth: 1,
     },
     Watch {
         dir: "/etc/cron.weekly",
         kind: "cron",
         suffixes: &[],
-        max_depth: 1,
     },
     Watch {
         dir: "/etc/cron.monthly",
         kind: "cron",
         suffixes: &[],
-        max_depth: 1,
     },
     Watch {
         dir: "/var/spool/cron",
         kind: "cron",
         suffixes: &[],
-        max_depth: 2,
     },
     Watch {
         dir: "/etc/xdg/autostart",
         kind: "autostart",
         suffixes: &[".desktop"],
-        max_depth: 1,
     },
     Watch {
         dir: "/etc/profile.d",
         kind: "shell",
         suffixes: &[],
-        max_depth: 1,
     },
 ];
 

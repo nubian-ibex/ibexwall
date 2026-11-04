@@ -1,0 +1,53 @@
+id = "system.sysctl"
+version = "0.1.0"
+api = 1
+category = "system"
+kinds = ["check", "control"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-sysctl"
+default_enabled = true
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "Kernel hardening"
+pt-BR = "Endurecimento do kernel"
+
+[description]
+en = "Checks the kernel's security settings against the reference table, and applies them."
+pt-BR = "Compara as configurações de segurança do kernel com a tabela de referência, e aplica."
+
+[privileges]
+sysctl_keys = [
+  "kernel.kptr_restrict", "kernel.dmesg_restrict", "kernel.yama.ptrace_scope",
+  "kernel.unprivileged_bpf_disabled", "net.core.bpf_jit_harden",
+  "fs.protected_symlinks", "fs.protected_hardlinks", "fs.protected_fifos",
+  "fs.protected_regular", "fs.suid_dumpable", "kernel.kexec_load_disabled",
+  "net.ipv4.conf.all.accept_redirects", "net.ipv4.conf.all.send_redirects",
+  "net.ipv4.conf.all.accept_source_route", "net.ipv6.conf.all.accept_redirects",
+  "net.ipv4.tcp_syncookies", "dev.tty.ldisc_autoload",
+  "vm.unprivileged_userfaultfd", "net.ipv4.conf.all.rp_filter", "kernel.sysrq",
+]
+write_paths = ["/etc/sysctl.d"]
+
+[sandbox]
+user = "dynamic"
+capabilities = []
+read_paths = ["/proc/sys", "/etc/sysctl.d"]
+network = false
+
+[risk]
+affects = ["kernel"]
+reversible = "immediate"
+confirm_timeout = false
+may_affect = [
+  "sysctl-may-affect-ptrace",
+  "sysctl-may-affect-bpf",
+  "sysctl-may-affect-kexec",
+  "sysctl-may-affect-rp-filter",
+  "sysctl-may-affect-sysrq",
+]
+
+[ui]
+icon = "sliders"
+order = 20

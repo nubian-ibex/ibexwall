@@ -2327,6 +2327,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ibexwall-plugin-sysctl"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "ibexwall-proto"
 version = "0.1.0"
 dependencies = [

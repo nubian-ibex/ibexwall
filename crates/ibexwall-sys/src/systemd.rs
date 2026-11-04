@@ -192,6 +192,12 @@ impl Systemd for RealSystemd {
             UnitAction::Mask => "mask",
             UnitAction::Unmask => "unmask",
         };
+        // Unit files and drop-ins written by a transaction (or put back by
+        // its rollback) are only seen after a reload; without one a
+        // restart would run the old definition.
+        if !matches!(action, UnitAction::Stop) {
+            systemctl(&["daemon-reload"])?;
+        }
         let mut args: Vec<&str> = vec![verb];
         if now && matches!(action, UnitAction::Enable | UnitAction::Disable) {
             args.push("--now");

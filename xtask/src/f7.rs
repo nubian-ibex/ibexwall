@@ -97,11 +97,30 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
         };
     }
 
+    // Shared by the scenarios below: plan, apply (confirming when the
+    // engine asks) and print the transaction id.
+    let lib = format!(
+        r#"
+set -e
+change() {{
+  PLUGIN=$1; shift
+  P=$(sudo ibexctl plan "$PLUGIN" "$@" --json 2>/tmp/plan.err | {JSON_ID}) || {{ echo "PLAN FAILED: $(cat /tmp/plan.err)"; return 1; }}
+  OUT=$(sudo ibexctl apply "$P" --confirm-timeout 300 --json 2>&1 || true)
+  TX=$(echo "$OUT" | {JSON_ID})
+  if echo "$OUT" | grep -q '"error"'; then echo "APPLY ERROR: $OUT"; sudo journalctl -u 'ibexwall-exec-*' -n 8 --no-pager; return 1; fi
+  [ -n "$TX" ] || {{ echo "APPLY FAILED: $OUT"; sudo journalctl -u ibexwalld -n 20 --no-pager; return 1; }}
+  if echo "$OUT" | grep -Eq '"state": "(failed|rolled_back)"'; then echo "THE CHANGE DID NOT STAY: $OUT"; sudo journalctl -u ibexwalld -n 12 --no-pager; sudo journalctl -u 'ibexwall-exec-*' -n 12 --no-pager; return 1; fi
+  if echo "$OUT" | grep -q pending_confirm; then sudo ibexctl confirm "$TX" >/dev/null || {{ echo "CONFIRM FAILED"; return 1; }}; fi
+}}
+findings() {{ sudo ibexctl check "$1" --json 2>/dev/null | python3 -c 'import json,sys; print(" ".join(f["id"] for f in json.load(sys.stdin)["findings"]))'; }}
+"#,
+        JSON_ID = JSON_ID
+    );
+
     scenario!(
         "m1 system.sysctl: check reports, apply hardens, rollback restores",
         &format!(
-            r#"
-set -e
+            r#"{lib}
 DROP_IN=/etc/sysctl.d/70-ibexwall-sysctl.conf
 
 # Plugins start disabled (the core never runs what nobody turned on).
@@ -165,40 +184,33 @@ sudo test ! -e $DROP_IN || {{ echo "DROP-IN SURVIVED THE ROLLBACK"; exit 1; }}
 [ "$(digest)" = "$BEFORE" ] || {{ echo "DISTRO FILES CHANGED"; exit 1; }}
 echo "METRIC: rollback restored $K1/$D1 and removed the drop-in"
 
-# The one-way kexec lock is offered, flagged, and not applied by default.
+# The one-way kexec lock is offered, flagged "reboot to revert", and never
+# applied by the default preset or by merely planning it.
 P=$(sudo ibexctl plan system.sysctl --set include=kernel.kexec_load_disabled --json)
 echo "$P" | python3 -c '
 import json,sys
-d = json.load(sys.stdin)
-ops = d["plan"]["ops"]
-assert any(op["op"] == "sysctl.set" and op["target"] == "kernel.kexec_load_disabled = 1" for op in ops), ops
+d = json.load(sys.stdin)["plan"]
+assert any(op["op"] == "sysctl.set" and op["target"] == "kernel.kexec_load_disabled = 1" for op in d["ops"]), d["ops"]
+assert "reboot_to_revert" in d["risk"], d["risk"]
+assert "risk-reboot-to-revert" in d["may_affect_keys"], d["may_affect_keys"]
+assert "sysctl-may-affect-kexec" in d["may_affect_keys"], d["may_affect_keys"]
 '
 [ "$(cat /proc/sys/kernel/kexec_load_disabled)" = 0 ] || {{ echo "KEXEC WAS APPLIED BY A PLAN"; exit 1; }}
+# Applying it, then rolling back: the lock stays (the kernel allows no way
+# back until a reboot), the rollback does not fail trying, the file goes.
+change system.sysctl --set include=kernel.kexec_load_disabled
+[ "$(cat /proc/sys/kernel/kexec_load_disabled)" = 1 ] || {{ echo "KEXEC LOCK NOT APPLIED"; exit 1; }}
+sudo grep -q '^kernel.kexec_load_disabled = 1$' $DROP_IN || {{ echo "KEXEC NOT IN THE DROP-IN"; exit 1; }}
+sudo ibexctl rollback "$TX" --json >/dev/null || {{ echo "ROLLBACK OF THE ONE-WAY LOCK FAILED"; exit 1; }}
+sudo test ! -e $DROP_IN || {{ echo "DROP-IN SURVIVED THE ONE-WAY ROLLBACK"; exit 1; }}
+[ "$(cat /proc/sys/kernel/kexec_load_disabled)" = 1 ] || {{ echo "THE KERNEL LET THE LOCK GO"; exit 1; }}
+echo "METRIC: one-way lock applied; rollback removed the drop-in and left the kernel locked until reboot"
 if sudo ibexctl plan system.sysctl --set preset=maximum --json >/dev/null 2>&1; then echo "UNKNOWN PRESET ACCEPTED"; exit 1; fi
 if sudo ibexctl plan system.sysctl --set keys.nope=1 --json >/dev/null 2>&1; then echo "UNKNOWN KEY ACCEPTED"; exit 1; fi
 "#,
-            JSON_ID = JSON_ID
+            JSON_ID = JSON_ID,
+            lib = lib
         )
-    );
-
-    // Shared by the scenarios below: plan, apply (confirming when the
-    // engine asks) and print the transaction id.
-    let lib = format!(
-        r#"
-set -e
-change() {{
-  PLUGIN=$1; shift
-  P=$(sudo ibexctl plan "$PLUGIN" "$@" --json 2>/tmp/plan.err | {JSON_ID}) || {{ echo "PLAN FAILED: $(cat /tmp/plan.err)"; return 1; }}
-  OUT=$(sudo ibexctl apply "$P" --confirm-timeout 300 --json 2>&1 || true)
-  TX=$(echo "$OUT" | {JSON_ID})
-  if echo "$OUT" | grep -q '"error"'; then echo "APPLY ERROR: $OUT"; sudo journalctl -u 'ibexwall-exec-*' -n 8 --no-pager; return 1; fi
-  [ -n "$TX" ] || {{ echo "APPLY FAILED: $OUT"; sudo journalctl -u ibexwalld -n 20 --no-pager; return 1; }}
-  if echo "$OUT" | grep -Eq '"state": "(failed|rolled_back)"'; then echo "THE CHANGE DID NOT STAY: $OUT"; sudo journalctl -u ibexwalld -n 12 --no-pager; sudo journalctl -u 'ibexwall-exec-*' -n 12 --no-pager; return 1; fi
-  if echo "$OUT" | grep -q pending_confirm; then sudo ibexctl confirm "$TX" >/dev/null || {{ echo "CONFIRM FAILED"; return 1; }}; fi
-}}
-findings() {{ sudo ibexctl check "$1" --json 2>/dev/null | python3 -c 'import json,sys; print(" ".join(f["id"] for f in json.load(sys.stdin)["findings"]))'; }}
-"#,
-        JSON_ID = JSON_ID
     );
 
     scenario!(

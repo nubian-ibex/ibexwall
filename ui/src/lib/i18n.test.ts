@@ -1,3 +1,4 @@
+import { FluentResource } from '@fluent/bundle';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { has, i18n, messageKeys, t } from './i18n.svelte';
 import { relativeTime } from './time';
@@ -22,6 +23,51 @@ describe('i18n', () => {
     i18n.set('pt-BR');
     expect(t('posture-disk-encryption-title')).toBe('O disco do sistema não está criptografado');
     expect(has('ports-exposed-summary')).toBe(true);
+  });
+
+  it('has no message that Fluent would silently drop, in the UI or in any plugin', () => {
+    const files = {
+      ...import.meta.glob('../../locales/*/ui.ftl', {
+        query: '?raw',
+        import: 'default',
+        eager: true,
+      }),
+      ...import.meta.glob('../../../plugins/*/locales/*.ftl', {
+        query: '?raw',
+        import: 'default',
+        eager: true,
+      }),
+    } as Record<string, string>;
+    for (const [path, text] of Object.entries(files)) {
+      // A message starts at column 0 with a valid identifier; a dot in the
+      // id (plugin-system.ports-summary) makes Fluent drop it silently.
+      const starts = text
+        .split('\n')
+        .filter((line) => line !== '' && !/^[\s#-]/.test(line) && !line.startsWith('}'));
+      for (const line of starts) {
+        expect(line, path).toMatch(/^[a-zA-Z][a-zA-Z0-9_-]*\s*=/);
+      }
+      expect(new FluentResource(text).body.length, path).toBe(starts.length);
+    }
+  });
+
+  it('has every "may affect" note of each plugin, in both languages', () => {
+    const manifests = import.meta.glob('../../../plugins/*/plugin.toml', {
+      query: '?raw',
+      import: 'default',
+      eager: true,
+    }) as Record<string, string>;
+    expect(Object.keys(manifests).length).toBeGreaterThan(20);
+    for (const [, text] of Object.entries(manifests)) {
+      const id = /^id = "([^"]+)"/m.exec(text)?.[1] ?? '';
+      const keys: string[] = [];
+      const block = /may_affect = \[([^\]]*)\]/s.exec(text)?.[1] ?? '';
+      for (const match of block.matchAll(/"([^"]+)"/g)) keys.push(match[1]!);
+      for (const locale of ['en', 'pt-BR'] as const) {
+        i18n.set(locale);
+        for (const key of keys) expect(has(key), `${id}: ${key} (${locale})`).toBe(true);
+      }
+    }
   });
 
   it('falls back to the key, never to an empty string', () => {

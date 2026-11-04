@@ -32,7 +32,7 @@ network = false
 affects = ["network"]
 reversible = "immediate"
 confirm_timeout = true
-may_affect = ["remote access, such as SSH, if it is not allowed", "services other computers use on this one, such as file sharing", "container and virtual machine networking on some setups"]
+may_affect = ["firewall-may-affect-remote", "firewall-may-affect-sharing", "firewall-may-affect-containers"]
 
 [ui]
 icon = "brick-wall"

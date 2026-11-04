@@ -358,3 +358,4 @@ prompt-scope-once = Só desta vez
 prompt-countdown = Sem resposta em { $seconds } s, a conexão segue.
 prompt-more = Mais { $count } aguardando
 prompt-failed = Não foi possível enviar a resposta. Ela pode ter expirado.
+risk-reboot-to-revert = Isto não pode ser desfeito até o computador reiniciar. Desfazer a mudança no Histórico não a traz de volta.

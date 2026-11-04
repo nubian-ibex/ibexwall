@@ -1,4 +1,3 @@
-plugin-privacy.telemetry-summary = Usage reporting sent by the distribution and some apps.
 telemetry-popcon-title = This computer reports which packages it has installed
 telemetry-popcon-summary = popularity-contest is turned on and sends the list of installed packages to the distribution every week.
 telemetry-apport-title = Crash reports can be sent to the distribution

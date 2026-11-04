@@ -1,4 +1,3 @@
-plugin-device.usb-summary = Se novos dispositivos USB esperam a sua permissão.
 usb-missing-title = Novos dispositivos USB são aceitos sem perguntar
 usb-missing-summary = O USBGuard não está instalado, então qualquer dispositivo USB que você conectar (inclusive um feito para digitar comandos) é confiável na hora. Instale o USBGuard e depois ligue isto.
 usb-off-title = A proteção de USB está instalada mas não está valendo

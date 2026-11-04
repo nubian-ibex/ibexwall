@@ -1,1 +1,2 @@
-plugin-apps.flatpak-network-summary = Corta o acesso à rede de um app Flatpak.
+flatpak-network-may-affect-needs-network = O app deixa de funcionar se precisar da rede.
+flatpak-network-may-affect-updates = Atualizações e login dentro do app deixam de funcionar.

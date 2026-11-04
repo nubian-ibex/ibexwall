@@ -1,4 +1,3 @@
-plugin-system.sysctl-summary = Configurações de segurança do kernel pela tabela de referência.
 sysctl-off-title = Uma configuração do kernel está abaixo da referência
 sysctl-off-summary = { $key } está em { $current }; o valor de referência é { $want }.
 sysctl-may-affect-ptrace = Anexar um depurador a um programa já em execução (gdb, strace) deixa de funcionar.

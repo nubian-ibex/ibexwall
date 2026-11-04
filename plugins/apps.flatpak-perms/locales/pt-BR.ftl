@@ -1,4 +1,3 @@
-plugin-apps.flatpak-perms-summary = Apps Flatpak com permissões que enfraquecem o sandbox.
 flatpak-host-title = { $app } pode ler e alterar todos os arquivos que você pode
 flatpak-host-summary = O app Flatpak { $app } recebeu { $permission }. Mude com o Flatseal ou `flatpak override`.
 flatpak-home-title = { $app } pode ler e alterar toda a sua pasta pessoal

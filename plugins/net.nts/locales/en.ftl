@@ -1,4 +1,3 @@
-plugin-net.nts-summary = Whether the clock is set by servers it can authenticate.
 nts-missing-title = The clock is not kept by a client that can authenticate servers
 nts-missing-summary = chrony is not installed. Without it the time comes from plain NTP or nothing, and anyone on the path can change it. Install chrony, then turn this on.
 nts-off-title = The clock takes time from servers it cannot authenticate

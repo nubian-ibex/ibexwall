@@ -1,4 +1,3 @@
-plugin-system.sysctl-summary = Kernel security settings from the reference table.
 sysctl-off-title = A kernel security setting is below the reference
 sysctl-off-summary = { $key } is { $current }; the reference value is { $want }.
 sysctl-may-affect-ptrace = Attaching a debugger to an already running program (gdb, strace) stops working.

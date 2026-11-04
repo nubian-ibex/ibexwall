@@ -1,0 +1,39 @@
+id = "system.updates"
+version = "0.1.0"
+api = 1
+category = "system"
+kinds = ["check", "control"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-updates"
+default_enabled = true
+distros = ["fedora", "ubuntu", "debian"]
+
+[name]
+en = "Automatic updates"
+pt-BR = "Atualizações automáticas"
+
+[description]
+en = "Checks that security updates install themselves, and turns it on when the distro's tool is installed."
+pt-BR = "Verifica se as atualizações de segurança se instalam sozinhas, e liga isso quando a ferramenta da distro está instalada."
+
+[privileges]
+write_paths = ["/etc/apt/apt.conf.d", "/etc/dnf/dnf5-plugins/automatic.d"]
+units = ["dnf5-automatic.timer", "apt-daily-upgrade.timer"]
+unit_actions = ["enable"]
+
+[sandbox]
+user = "dynamic"
+capabilities = []
+read_paths = ["/etc/os-release", "/etc/apt", "/etc/dnf", "/etc/systemd/system", "/usr/lib/systemd/system", "/usr/bin", "/usr/lib/os-release"]
+network = false
+
+[risk]
+affects = ["updates"]
+reversible = "immediate"
+confirm_timeout = false
+may_affect = ["updates-may-affect-reboots"]
+
+[ui]
+icon = "refresh-cw"
+order = 68

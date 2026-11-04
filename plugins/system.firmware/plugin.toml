@@ -1,0 +1,38 @@
+id = "system.firmware"
+version = "0.1.0"
+api = 1
+category = "system"
+kinds = ["check", "control"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-firmware"
+default_enabled = true
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "Firmware"
+pt-BR = "Firmware"
+
+[description]
+en = "Checks that the firmware update service (fwupd) is installed and refreshing its list."
+pt-BR = "Verifica se o serviço de atualização de firmware (fwupd) está instalado e atualizando sua lista."
+
+[privileges]
+units = ["fwupd-refresh.timer"]
+unit_actions = ["enable"]
+
+[sandbox]
+user = "dynamic"
+capabilities = []
+read_paths = ["/sys/class/dmi/id", "/usr/libexec/fwupd", "/usr/lib/fwupd", "/usr/lib/systemd/system", "/etc/systemd/system"]
+network = false
+
+[risk]
+affects = ["firmware"]
+reversible = "immediate"
+confirm_timeout = false
+may_affect = []
+
+[ui]
+icon = "cpu"
+order = 69

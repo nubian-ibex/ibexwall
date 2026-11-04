@@ -432,7 +432,9 @@ pub fn apply_snapshot_inverses(
             }
             SnapshotEntry::Sysctl { key, prior, .. } => {
                 if let Some(value) = prior {
-                    sys.sysctl.set(key, value)?;
+                    sys.sysctl
+                        .set(key, value)
+                        .with_context(|| format!("restoring sysctl {key} = {value}"))?;
                 }
             }
             SnapshotEntry::Nft { chains, .. } => {

@@ -2394,6 +2394,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ibexwall-plugin-integrity"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "ibexwall-sys",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "ibexwall-plugin-isolate"
 version = "0.1.0"
 dependencies = [

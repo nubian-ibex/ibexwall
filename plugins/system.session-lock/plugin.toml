@@ -1,0 +1,37 @@
+id = "system.session-lock"
+version = "0.1.0"
+api = 1
+category = "system"
+kinds = ["check"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-session-lock"
+default_enabled = false
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "Screen lock"
+pt-BR = "Bloqueio de tela"
+
+[description]
+en = "Checks that the desktop locks the screen by itself when you step away."
+pt-BR = "Verifica se a área de trabalho bloqueia a tela sozinha quando você se afasta."
+
+[privileges]
+# Read-only check: the core executes nothing on its behalf.
+
+[sandbox]
+user = "dynamic"
+capabilities = ["CAP_DAC_READ_SEARCH"]
+read_paths = ["/etc/dconf", "/home", "/usr/bin"]
+network = false
+
+[risk]
+affects = []
+reversible = "immediate"
+confirm_timeout = false
+may_affect = []
+
+[ui]
+icon = "lock"
+order = 82

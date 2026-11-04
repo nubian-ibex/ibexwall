@@ -1,0 +1,37 @@
+id = "privacy.telemetry"
+version = "0.1.0"
+api = 1
+category = "privacy"
+kinds = ["check"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-telemetry"
+default_enabled = false
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "Telemetry"
+pt-BR = "Telemetria"
+
+[description]
+en = "Lists the usage reporting the distribution and some apps send, so you can decide about it."
+pt-BR = "Lista os relatórios de uso que a distribuição e alguns apps enviam, para você decidir sobre eles."
+
+[privileges]
+# Read-only check: the core executes nothing on its behalf.
+
+[sandbox]
+user = "dynamic"
+capabilities = []
+read_paths = ["/etc", "/usr/bin", "/usr/sbin", "/usr/lib", "/usr/lib64"]
+network = false
+
+[risk]
+affects = []
+reversible = "immediate"
+confirm_timeout = false
+may_affect = []
+
+[ui]
+icon = "eye-off"
+order = 84

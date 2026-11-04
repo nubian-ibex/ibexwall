@@ -1,0 +1,11 @@
+plugin-privacy.telemetry-summary = Usage reporting sent by the distribution and some apps.
+telemetry-popcon-title = This computer reports which packages it has installed
+telemetry-popcon-summary = popularity-contest is turned on and sends the list of installed packages to the distribution every week.
+telemetry-apport-title = Crash reports can be sent to the distribution
+telemetry-apport-summary = apport is enabled; crashes may be reported with details about the program that failed.
+telemetry-motd-title = The login message fetches news from the distribution
+telemetry-motd-summary = motd-news is enabled; each login contacts the distribution's servers.
+telemetry-countme-title = The package manager counts this computer
+telemetry-countme-summary = A repository has countme turned on, which sends an anonymous weekly flag so the distribution can count its users.
+telemetry-firefox-title = Firefox sends usage data to Mozilla
+telemetry-firefox-summary = Firefox is installed and no system policy turns its telemetry off.

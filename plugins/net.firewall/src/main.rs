@@ -353,6 +353,9 @@ fn accept(configure: impl FnOnce(&mut Rule)) -> Rule {
     let mut rule = Rule {
         iif_loopback: false,
         iif_prefix: None,
+        oif_prefix: None,
+        saddr: vec![],
+        daddr: vec![],
         ct_established: false,
         ct_new: false,
         mark: None,

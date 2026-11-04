@@ -286,6 +286,9 @@ fn enforcement_op(sandbox: &Sandbox) -> Result<Op, PluginError> {
                 Rule {
                     iif_loopback: false,
                     iif_prefix: None,
+                    oif_prefix: None,
+                    saddr: vec![],
+                    daddr: vec![],
                     ct_established: false,
                     ct_new: false,
                     mark: None,
@@ -299,6 +302,9 @@ fn enforcement_op(sandbox: &Sandbox) -> Result<Op, PluginError> {
                 Rule {
                     iif_loopback: false,
                     iif_prefix: None,
+                    oif_prefix: None,
+                    saddr: vec![],
+                    daddr: vec![],
                     ct_established: false,
                     ct_new: false,
                     mark: None,

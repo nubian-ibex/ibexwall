@@ -1,0 +1,39 @@
+id = "net.vpn"
+version = "0.1.0"
+api = 1
+category = "network"
+kinds = ["check", "control"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-vpn"
+default_enabled = false
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "VPN and kill switch"
+pt-BR = "VPN e kill switch"
+
+[description]
+en = "Imports WireGuard profiles into NetworkManager and blocks all traffic outside the tunnel if it drops."
+pt-BR = "Importa perfis WireGuard no NetworkManager e bloqueia todo o tráfego fora do túnel se ele cair."
+
+[privileges]
+write_paths = ["/etc/NetworkManager/system-connections", "/etc/ibexwall/vpn"]
+nft_prefix = "net_vpn"
+exec = [{ path = "/usr/bin/nmcli", args = ["connection", "reload"], symmetric = true }]
+
+[sandbox]
+user = "dynamic"
+capabilities = []
+read_paths = ["/etc/ibexwall/vpn", "/etc/ibexwall/dns", "/usr/lib/systemd/system", "/lib/systemd/system", "/etc/systemd/system", "/usr/bin"]
+network = false
+
+[risk]
+affects = ["network"]
+reversible = "immediate"
+confirm_timeout = true
+may_affect = ["vpn-may-affect-network", "vpn-may-affect-lan"]
+
+[ui]
+icon = "shield"
+order = 28

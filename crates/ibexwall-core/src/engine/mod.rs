@@ -203,6 +203,14 @@ impl Engine {
                         });
                     }
                 }
+                // A one-way sysctl cannot be put back at runtime: the rollback
+                // has no inverse for it (the plan said so), and must not fail
+                // trying.
+                Op::SysctlSet { key, value }
+                    if ops::ONE_WAY_SYSCTLS.contains(&key.as_str()) && value != "0" =>
+                {
+                    entries.push(SnapshotEntry::NoInverse { op_index: index });
+                }
                 Op::SysctlSet { key, .. } => {
                     let prior = self.sys.sysctl.get(key).ok();
                     entries.push(SnapshotEntry::Sysctl {
@@ -916,6 +924,23 @@ mod tests {
         assert!(!log.contains("Disable"), "{log}");
         assert!(!log.contains("Enable"), "{log}");
         assert!(rig.systemd.get("ibexwall-test.service").active);
+    }
+
+    #[test]
+    fn rolling_back_a_one_way_sysctl_does_not_try_to_undo_it() {
+        let rig = rig("oneway", false);
+        rig.sysctl.seed("kernel.kexec_load_disabled", "0");
+        let ops = vec![Op::SysctlSet {
+            key: "kernel.kexec_load_disabled".into(),
+            value: "1".into(),
+        }];
+        rig.engine.snapshot(&rig.state, "txow", &ops).unwrap();
+        rig.engine.execute(None, &ops).unwrap();
+        rig.engine.rollback(&rig.state, "txow").unwrap();
+        // Nothing wrote the prior value back (the kernel would refuse).
+        let log = rig.sysctl.log.snapshot();
+        assert_eq!(log.len(), 1, "{log:?}");
+        assert!(log[0].contains("kexec_load_disabled = 1"));
     }
 
     fn nft_guard(rules: usize) -> Op {

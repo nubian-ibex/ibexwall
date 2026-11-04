@@ -608,7 +608,16 @@ async fn plan_change(core: &Arc<Core>, parameters: &Value) -> Result<Reply, Varl
         ops: preview,
         risk: risk.clone(),
         reversible: manifest.risk.reversible,
-        may_affect_keys: manifest.risk.may_affect.clone(),
+        may_affect_keys: {
+            let mut keys = manifest.risk.may_affect.clone();
+            // Only the keys of what this plan really does: the manifest
+            // lists everything the plugin can ever affect, and the one-way
+            // warning belongs to the plans that carry it.
+            if risk.contains(&ibexwall_proto::RiskFlag::RebootToRevert) {
+                keys.push("risk-reboot-to-revert".to_string());
+            }
+            keys
+        },
         requires_confirm,
         expires_at,
     };

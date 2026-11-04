@@ -225,6 +225,10 @@ fn parse_mode(mode: &str) -> Option<u32> {
 }
 
 /// Risk flags derived from the operations themselves (spec §4.5).
+/// Sysctls that can be turned on but not off again at runtime.
+pub(crate) const ONE_WAY_SYSCTLS: &[&str] =
+    &["kernel.kexec_load_disabled", "kernel.modules_disabled"];
+
 pub fn risk_flags(ops: &[Op]) -> Vec<RiskFlag> {
     let mut flags = Vec::new();
     let mut push = |flag| {
@@ -239,9 +243,14 @@ pub fn risk_flags(ops: &[Op]) -> Vec<RiskFlag> {
                     push(RiskFlag::Network);
                 }
             }
-            Op::SysctlSet { key, .. } => {
+            Op::SysctlSet { key, value } => {
                 if key.starts_with("net.") {
                     push(RiskFlag::Network);
+                }
+                // The kernel accepts these one way: nothing, a rollback
+                // included, can put them back until the next boot.
+                if ONE_WAY_SYSCTLS.contains(&key.as_str()) && value != "0" {
+                    push(RiskFlag::RebootToRevert);
                 }
             }
             Op::NftFragment { .. } | Op::DnsBackend { .. } => {
@@ -406,6 +415,24 @@ reversible = "immediate"
                 key: "kernel.dmesg_restrict".into()
             })
         );
+    }
+
+    #[test]
+    fn a_one_way_sysctl_carries_the_reboot_to_revert_flag() {
+        let one_way = |value: &str| {
+            risk_flags(&[Op::SysctlSet {
+                key: "kernel.kexec_load_disabled".into(),
+                value: value.into(),
+            }])
+        };
+        assert_eq!(one_way("1"), [RiskFlag::RebootToRevert]);
+        // Setting it to its permissive value is not one-way.
+        assert!(one_way("0").is_empty());
+        let ordinary = risk_flags(&[Op::SysctlSet {
+            key: "kernel.kptr_restrict".into(),
+            value: "2".into(),
+        }]);
+        assert!(ordinary.is_empty());
     }
 
     #[test]

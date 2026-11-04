@@ -1,0 +1,37 @@
+id = "privacy.camera-mic"
+version = "0.1.0"
+api = 1
+category = "privacy"
+kinds = ["check"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-camera-mic"
+default_enabled = false
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "Camera and microphone"
+pt-BR = "Câmera e microfone"
+
+[description]
+en = "Shows which programs are using the camera or the microphone right now."
+pt-BR = "Mostra quais programas estão usando a câmera ou o microfone agora."
+
+[privileges]
+# Read-only check: the core executes nothing on its behalf.
+
+[sandbox]
+user = "dynamic"
+capabilities = ["CAP_DAC_READ_SEARCH", "CAP_SYS_PTRACE"]
+read_paths = ["/proc", "/dev"]
+network = false
+
+[risk]
+affects = []
+reversible = "immediate"
+confirm_timeout = false
+may_affect = []
+
+[ui]
+icon = "camera"
+order = 80

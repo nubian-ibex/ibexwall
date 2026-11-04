@@ -1,0 +1,11 @@
+plugin-privacy.telemetry-summary = Relatórios de uso enviados pela distribuição e por alguns apps.
+telemetry-popcon-title = Este computador informa quais pacotes tem instalados
+telemetry-popcon-summary = O popularity-contest está ligado e envia toda semana a lista de pacotes instalados à distribuição.
+telemetry-apport-title = Relatórios de falha podem ser enviados à distribuição
+telemetry-apport-summary = O apport está ativo; falhas podem ser reportadas com detalhes do programa que falhou.
+telemetry-motd-title = A mensagem de login busca notícias da distribuição
+telemetry-motd-summary = O motd-news está ativo; cada login contata os servidores da distribuição.
+telemetry-countme-title = O gerenciador de pacotes conta este computador
+telemetry-countme-summary = Um repositório tem countme ligado, o que envia uma marca anônima por semana para a distribuição contar seus usuários.
+telemetry-firefox-title = O Firefox envia dados de uso à Mozilla
+telemetry-firefox-summary = O Firefox está instalado e nenhuma política do sistema desliga a sua telemetria.

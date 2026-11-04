@@ -48,7 +48,7 @@ pub trait Systemd: Send + Sync {
     /// daemon, and the call blocks until the unit finishes.
     fn run_transient_executor(
         &self,
-        tx: &str,
+        unit: &str,
         exec_args: &[String],
         dirs: &[String],
     ) -> anyhow::Result<()>;
@@ -105,7 +105,7 @@ fn systemctl(args: &[&str]) -> anyhow::Result<String> {
 impl Systemd for RealSystemd {
     fn run_transient_executor(
         &self,
-        tx: &str,
+        unit: &str,
         exec_args: &[String],
         dirs: &[String],
     ) -> anyhow::Result<()> {
@@ -114,12 +114,15 @@ impl Systemd for RealSystemd {
             "transient units are disabled under IBEXWALL_ROOT"
         );
         // systemd-run is the CLI front-end of StartTransientUnit: fixed
-        // argv, no shell. --wait propagates the helper's exit status.
-        let unit = format!("ibexwall-exec-{tx}");
+        // argv, no shell. --wait propagates the helper's exit status. The
+        // caller names the unit (`apply`/`rollback`): a rollback follows its
+        // apply immediately and garbage collection of the finished unit is
+        // asynchronous, so the two must not share a name.
+        let unit_name = unit;
         let mut command = Command::new("systemd-run");
         command
             .arg("--unit")
-            .arg(&unit)
+            .arg(unit)
             .arg("--collect")
             .arg("--wait")
             .arg("--property")
@@ -149,7 +152,7 @@ impl Systemd for RealSystemd {
         let output = command.output()?;
         if !output.status.success() {
             anyhow::bail!(
-                "executor unit {unit} failed ({}): {}",
+                "executor unit {unit_name} failed ({}): {}",
                 output.status,
                 String::from_utf8_lossy(&output.stderr).trim()
             );
@@ -227,11 +230,11 @@ impl FakeSystemd {
 impl Systemd for FakeSystemd {
     fn run_transient_executor(
         &self,
-        tx: &str,
+        unit: &str,
         _exec_args: &[String],
         _dirs: &[String],
     ) -> anyhow::Result<()> {
-        self.log.push(format!("transient-exec {tx}"));
+        self.log.push(format!("transient-exec {unit}"));
         Ok(())
     }
 

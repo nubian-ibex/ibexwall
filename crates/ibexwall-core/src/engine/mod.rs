@@ -321,7 +321,7 @@ impl Engine {
         let exec_args = vec!["apply".to_string(), ops_file.to_string_lossy().into_owned()];
         self.sys
             .systemd
-            .run_transient_executor(tx, &exec_args, &dirs)
+            .run_transient_executor(&format!("ibexwall-exec-{tx}-apply"), &exec_args, &dirs)
             .with_context(|| format!("starting the executor unit for {tx}"))?;
         Ok(())
     }
@@ -380,7 +380,7 @@ impl Engine {
         ];
         self.sys
             .systemd
-            .run_transient_executor(tx, &exec_args, &dirs)
+            .run_transient_executor(&format!("ibexwall-exec-{tx}-rollback"), &exec_args, &dirs)
             .with_context(|| format!("starting the rollback executor unit for {tx}"))?;
         Ok(())
     }

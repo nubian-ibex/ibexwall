@@ -3,7 +3,7 @@
 
 # STATUS
 
-Last updated: 2026-11-03 (F6 delivered, report ready for acceptance)
+Last updated: 2026-11-04 (F7 delivered, report ready for acceptance)
 
 ## Current phase
 
@@ -28,9 +28,20 @@ connection (NetworkManager zones), rich-rule editing, ufw app profiles.
 on five distros (8 scenarios): block over TCP, UDP, QUIC and IPv6 for the
 target only, Ask held until answered with scopes and a 30 s fallback, fail
 open when the unit or the daemon stops, Docker and Podman coexistence, 5000
-connections a second all recorded. Decisions waiting for you: ADR-0036 (Ask
-chains are derived state, not a plugin proposal), ADR-0037 (no nft fallback
-without eBPF), and the plugin-id naming inconsistency in the spec.
+connections a second all recorded. ADR-0036 (Ask chains are derived state),
+ADR-0037 (no nft fallback without eBPF) and the plugin-id naming (ADR-0038,
+hyphens) were decided on 2026-11-04.
+
+**F7: hardening and system plugins, delivered** (report:
+`docs/reports/F7-report.md`, awaiting acceptance; plan:
+`docs/plans/F7-hardening-and-system.md`; ADR-0038). Sixteen plugins
+(sysctl, coredump, mounts, ssh, accounts, updates, firmware, audit,
+session-lock, usb, wifi, nts, camera-mic, telemetry, flatpak-perms, cves);
+`--phase f7` green on five distros (15 scenarios), including chrony
+authenticating Cloudflare, Netnod, PTB and NTP.br. Open: pending firmware
+and HSI, a plugin monitor interface (camera and microphone events), GNOME
+user lock settings through the agent, telemetry control, OSV lookup, a unit
+of their own for each plugin (F10).
 
 ## What exists
 

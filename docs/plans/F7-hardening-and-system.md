@@ -8,7 +8,7 @@ says so, change the system through plans with snapshot and rollback, with
 the "may affect" and reboot-to-revert warnings the spec demands. Spec phase
 F7; decisions ADR-0036 to 0038 are in force (plugin ids use hyphens).
 
-Status: in progress (autonomous mode).
+Status: delivered (report: `docs/reports/F7-report.md`).
 
 ## Approach
 

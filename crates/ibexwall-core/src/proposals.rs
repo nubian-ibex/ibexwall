@@ -60,6 +60,8 @@ pub enum Error {
     Full,
     #[error("this client has too many proposals waiting")]
     ClientFull,
+    #[error("the change cannot be rolled back, so it cannot be proposed")]
+    Irreversible,
     #[error("no such proposal")]
     NotFound,
     #[error("the proposal was already decided")]
@@ -120,6 +122,10 @@ impl Core {
         let now = ibexwall_sys::RealClock.unix_now();
         self.expire_proposals(now)
             .map_err(|e| Error::Other(e.to_string()))?;
+        // The assistant may only propose what a human can take back.
+        if plan.reversible == ibexwall_proto::Reversible::Irreversible {
+            return Err(Error::Irreversible);
+        }
         let client = clean(client, 60);
         let pending = self
             .list_proposals(Some("pending"))
@@ -144,6 +150,9 @@ impl Core {
             patch,
             preview: plan.ops.clone(),
             may_affect_keys: plan.may_affect_keys.clone(),
+            reversible: plan.reversible,
+            risk: plan.risk.clone(),
+            requires_confirm: plan.requires_confirm,
             justification: clean(justification, MAX_JUSTIFICATION),
             status: ProposalStatus::Pending,
             created_at: format_rfc3339(now),

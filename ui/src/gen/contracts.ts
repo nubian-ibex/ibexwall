@@ -634,6 +634,9 @@ export interface Proposal {
    * The operations the plan would run, as the human will review them.
    */
   preview: OpPreview[];
+  requires_confirm: boolean;
+  reversible: Reversible;
+  risk?: RiskFlag[];
   status: ProposalStatus;
 }
 export interface Report {

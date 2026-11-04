@@ -41,6 +41,15 @@
       ],
       "type": "string"
     },
+    "Reversible": {
+      "description": "How easily an operation reverses.",
+      "enum": [
+        "immediate",
+        "reboot",
+        "irreversible"
+      ],
+      "type": "string"
+    },
     "RiskFlag": {
       "description": "Risk flags attached to plans and transactions (spec §4.5).",
       "enum": [
@@ -99,6 +108,19 @@
       },
       "type": "array"
     },
+    "requires_confirm": {
+      "type": "boolean"
+    },
+    "reversible": {
+      "$ref": "#/$defs/Reversible"
+    },
+    "risk": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/RiskFlag"
+      },
+      "type": "array"
+    },
     "status": {
       "$ref": "#/$defs/ProposalStatus"
     }
@@ -111,6 +133,8 @@
     "patch",
     "preview",
     "may_affect_keys",
+    "reversible",
+    "requires_confirm",
     "justification",
     "status",
     "created_at"

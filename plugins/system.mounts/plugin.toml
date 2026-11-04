@@ -1,0 +1,37 @@
+id = "system.mounts"
+version = "0.1.0"
+api = 1
+category = "system"
+kinds = ["check", "control"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-mounts"
+default_enabled = true
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "Temporary mounts"
+pt-BR = "Montagens temporárias"
+
+[description]
+en = "Checks that /tmp and /dev/shm cannot run programs or hold setuid files, and sets it for the next boot."
+pt-BR = "Verifica se /tmp e /dev/shm não executam programas nem guardam arquivos setuid, e configura para a próxima inicialização."
+
+[privileges]
+write_paths = ["/etc/systemd/system/tmp.mount.d", "/etc/systemd/system/dev-shm.mount.d"]
+
+[sandbox]
+user = "dynamic"
+capabilities = []
+read_paths = ["/proc/mounts", "/etc/systemd/system", "/usr/lib/systemd/system"]
+network = false
+
+[risk]
+affects = ["boot"]
+reversible = "immediate"
+confirm_timeout = false
+may_affect = ["mounts-may-affect-programs", "mounts-take-effect-after-reboot"]
+
+[ui]
+icon = "hard-drive"
+order = 62

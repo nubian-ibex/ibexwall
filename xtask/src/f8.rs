@@ -46,16 +46,6 @@ scopes = ["read:posture", "read:findings", "read:events:plugins", "read:audit", 
 rate_limit = "120/min"
 "#;
 
-/// The user that runs the assistant may read, plan and propose, and nothing
-/// else: no apply, no rollback, no decision.
-const POLKIT_RULE: &str = r#"polkit.addRule(function(action, subject) {
-  var allowed = ["com.ibexwall.read", "com.ibexwall.plan", "com.ibexwall.proposals.create"];
-  if (subject.user == "mcpbot" && allowed.indexOf(action.id) >= 0) {
-    return polkit.Result.YES;
-  }
-});
-"#;
-
 pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     println!("== f8: build ==");
     run_capture(
@@ -88,11 +78,18 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     )?;
     vm.ssh("id mcpbot >/dev/null 2>&1 || sudo useradd -m -s /bin/bash mcpbot")?;
     pipe_data(vm, MCP_TOML, "sudo tee /etc/ibexwall/mcp.toml >/dev/null")?;
+    // The packaged rule and group, exactly as shipped.
     pipe_data(
         vm,
-        POLKIT_RULE,
-        "sudo mkdir -p /etc/polkit-1/rules.d && sudo tee /etc/polkit-1/rules.d/45-ibexwall-mcp-test.rules >/dev/null",
+        include_str!("../../packaging/polkit/49-ibexwall-assistants.rules"),
+        "sudo mkdir -p /etc/polkit-1/rules.d && sudo tee /etc/polkit-1/rules.d/49-ibexwall-assistants.rules >/dev/null",
     )?;
+    pipe_data(
+        vm,
+        include_str!("../../packaging/sysusers.d/ibexwall.conf"),
+        "sudo tee /usr/lib/sysusers.d/ibexwall.conf >/dev/null && sudo systemd-sysusers /usr/lib/sysusers.d/ibexwall.conf",
+    )?;
+    vm.ssh("sudo usermod -aG ibexwall-assistants mcpbot && (id mcpout >/dev/null 2>&1 || sudo useradd -m mcpout)")?;
     pipe_data(
         vm,
         CLIENT,
@@ -149,6 +146,10 @@ mcp f8-agent tools/call '{{"name":"decide_proposal","arguments":{{}}}}' | py 'as
 tool stranger propose_change '{{"plugin":"system.sysctl","patch":{{"preset":"recommended"}},"justification":"x"}}' | py 'assert r["isError"], d'
 tool stranger query_events '{{"source":"plugins"}}' | py 'assert r["isError"], d'
 tool stranger get_posture '{{}}' | py 'assert t and "posture" in t, d'
+
+# The rule is the group: someone outside it gets nothing, not even a read.
+if sudo -u mcpout ibexctl proposals list >/dev/null 2>&1; then echo "A USER OUTSIDE THE GROUP COULD READ"; exit 1; fi
+if sudo -u mcpout ibexctl proposals approve prop-x >/dev/null 2>&1; then echo "A USER OUTSIDE THE GROUP DECIDED"; exit 1; fi
 
 # A dry run shows the operations and applies nothing.
 tool f8-agent dry_run '{{"plugin":"system.sysctl","patch":{{"preset":"recommended"}}}}' | py '

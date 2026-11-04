@@ -116,15 +116,15 @@ core and polkit, so a client that bypasses the server gains nothing.
 - `get_app_connections` ignores `since` (the monitor keeps aggregates), and
   says so in its answer.
 - Streamable HTTP and OAuth are not built (the spec keeps them off).
-- The VM test grants the test user read, plan and propose by a polkit rule.
-  A real install needs the same for the user who runs an assistant; until a
-  packaged rule exists (F10) the default policy only allows these in an
-  active local session.
+- Access for the user that runs an assistant is the group
+  `ibexwall-assistants` (created by `packaging/sysusers.d/ibexwall.conf`),
+  with the packaged polkit rule `49-ibexwall-assistants.rules` granting only
+  read, plan and `proposals.create`. The VM test installs both as shipped and
+  checks that a user outside the group cannot even read.
 
 ## Decisions for the maintainer
 
 - ADR-0039 (own MCP protocol instead of `rmcp`) was taken in autonomous
   mode; it is local and reversible.
-- Should `proposals.create` be granted by a packaged polkit rule for
-  members of a group (for example `ibexwall-assistants`) in F10, instead of
-  relying on an active session?
+- Accepted 2026-11-04: access through a packaged polkit rule for the group
+  `ibexwall-assistants` (done), `ibexctl mcp config` tells people to join it.

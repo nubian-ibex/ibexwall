@@ -61,6 +61,9 @@ pub fn render(client: McpClient, with_proposals: bool) -> String {
     if client.name() == "claude-code" {
         out.push_str("\nOr, from a terminal:\n\n  claude mcp add ibexwall -- ibexwall-mcp --client claude-code\n");
     }
+    out.push_str(
+        "\nFirst, let the user that runs the client talk to IbexWall (read, plan and propose only):\n\n  sudo usermod -aG ibexwall-assistants $USER\n\nand log in again. Remove the user from the group to take the access away.\n",
+    );
     out.push_str(&format!(
         "\nThen choose what {name} may do in /etc/ibexwall/mcp.toml. A client the file does not name can only read the posture and the findings.\n\n[[client]]\nname = \"{name}\"\nscopes = [\"read:posture\", \"read:findings\", \"read:events:apps\", {propose}]\nrate_limit = \"30/min\"\n"
     ));

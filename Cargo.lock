@@ -2428,6 +2428,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ibexwall-plugin-persistence"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "ibexwall-sys",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tokio",
+]
+
+[[package]]
 name = "ibexwall-plugin-ports"
 version = "0.1.0"
 dependencies = [

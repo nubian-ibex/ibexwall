@@ -1,0 +1,26 @@
+[package]
+name = "ibexwall-plugin-persistence"
+description = "endpoint.persistence plugin: what changed in the places programs persist"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "ibexwall-plugin-persistence"
+path = "main.rs"
+
+[dependencies]
+ibexwall-proto.workspace = true
+ibexwall-sdk.workspace = true
+ibexwall-sys.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+sha2.workspace = true
+hex.workspace = true

@@ -1,0 +1,9 @@
+persistence-new-title = New { $kind } that was not there before
+persistence-new-summary = { $path } is new since the baseline was accepted. If you did not add it, look at it and remove it.
+persistence-changed-title = { $kind } changed
+persistence-changed-summary = { $path } changed since the baseline was accepted. If you did not change it, look at it.
+persistence-preload-title = Something loads into every program
+persistence-preload-summary = { $path } lists libraries that the system loads into every program. Almost only malware does this.
+persistence-more-title = And { $count } more
+persistence-more-summary = { $count } more { $kind } changes were found. Run the check with --json to see them all.
+persistence-may-affect = Accepting the baseline records what is on the computer now, so only later changes are reported.

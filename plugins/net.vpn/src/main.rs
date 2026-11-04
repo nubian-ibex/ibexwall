@@ -756,7 +756,7 @@ mod tests {
 
     #[test]
     fn a_wg_quick_profile_becomes_a_private_keyfile_and_a_public_record() {
-        let (root, sandbox) = tree(&[NM]);
+        let (root, sandbox) = tree(&NM);
         let ops = plan(
             &sandbox,
             &cfg(json!({ "action": "import", "name": "lab", "profile": wg("") })),
@@ -848,7 +848,7 @@ mod tests {
 
     #[test]
     fn names_and_missing_networkmanager_are_refused() {
-        let (root, sandbox) = tree(&[NM]);
+        let (root, sandbox) = tree(&NM);
         for name in ["", "Lab", "-lab", "a.b", "toolongnamehere", "a b"] {
             assert!(
                 plan(
@@ -884,7 +884,8 @@ mod tests {
     #[test]
     fn the_kill_switch_lets_the_tunnel_and_its_server_through_and_drops_the_rest() {
         let (root, sandbox) = tree(&[
-            NM,
+            ("/usr/lib/systemd/system/NetworkManager.service", ""),
+            ("/usr/bin/nmcli", ""),
             (
                 "/etc/ibexwall/vpn/profiles/lab.json",
                 r#"{"endpoints":["10.99.0.2:51820"],"dns":false}"#,
@@ -931,7 +932,7 @@ mod tests {
 
     #[test]
     fn the_kill_switch_refuses_names_and_an_unknown_server() {
-        let (root, sandbox) = tree(&[NM]);
+        let (root, sandbox) = tree(&NM);
         assert!(plan(&sandbox, &cfg(json!({ "action": "killswitch" }))).is_err());
         let error = plan(
             &sandbox,

@@ -406,7 +406,9 @@ async fn crash_recovery_rolls_back_interrupted_transactions() {
 
     // Simulate a crash mid-apply: snapshot taken, ops partially run, the
     // transaction row says `applying`.
-    core.engine.snapshot(&core.state, "tx-crash", &ops).unwrap();
+    core.engine
+        .snapshot(&core.state, "tx-crash", &ops, &[])
+        .unwrap();
     core.engine.execute(None, &ops).unwrap();
     core.state
         .insert_transaction(

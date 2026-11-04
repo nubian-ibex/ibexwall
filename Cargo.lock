@@ -2516,6 +2516,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ibexwall-plugin-vpn"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "ibexwall-sys",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tokio",
+]
+
+[[package]]
 name = "ibexwall-plugin-wifi"
 version = "0.1.0"
 dependencies = [

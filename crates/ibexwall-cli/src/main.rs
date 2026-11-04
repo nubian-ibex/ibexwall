@@ -60,6 +60,9 @@ enum Command {
         /// Setting for the plugin config, e.g. --set template=dropin.
         #[arg(long = "set", value_name = "KEY=VALUE")]
         sets: Vec<String>,
+        /// Setting whose value is a file's text, e.g. --set-file profile=lab.conf.
+        #[arg(long = "set-file", value_name = "KEY=PATH")]
+        set_files: Vec<String>,
     },
     /// Apply a plan.
     Apply {
@@ -339,8 +342,25 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
             emit(value, json);
             Ok(Finish::Done)
         }
-        Command::Plan { plugin, sets } => {
+        Command::Plan {
+            plugin,
+            sets,
+            set_files,
+        } => {
             let mut config = serde_json::Map::new();
+            for set in set_files {
+                let (key, path) = set
+                    .split_once('=')
+                    .with_context(|| format!("--set-file expects KEY=PATH, got `{set}`"))
+                    .map_err(CliError::Other)?;
+                let text = std::fs::read(path)
+                    .ok()
+                    .filter(|bytes| bytes.len() <= 64 * 1024)
+                    .and_then(|bytes| String::from_utf8(bytes).ok())
+                    .with_context(|| format!("cannot read `{path}` as text under 64 KiB"))
+                    .map_err(CliError::Other)?;
+                config.insert(key.into(), serde_json::Value::String(text));
+            }
             for set in sets {
                 let (key, value) = set
                     .split_once('=')

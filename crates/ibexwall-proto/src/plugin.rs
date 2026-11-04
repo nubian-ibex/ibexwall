@@ -49,6 +49,10 @@ pub struct ExecAllow {
     pub path: String,
     #[serde(default)]
     pub args: Vec<String>,
+    /// This exec is its own inverse: the rollback runs it again after the
+    /// files are restored (a manager told to re-read its directory).
+    #[serde(default)]
+    pub symmetric: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

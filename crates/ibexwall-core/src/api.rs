@@ -764,15 +764,25 @@ async fn apply(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkErr
         "apply-start",
     );
 
-    // Snapshot, then execute (spec §4.5 order).
+    // Snapshot, then execute (spec §4.5 order). Execs the manifest marked
+    // symmetric are re-run by the rollback once the files are back.
+    let reload_execs: Vec<(String, Vec<String>)> = manifest
+        .privileges
+        .exec
+        .iter()
+        .filter(|entry| entry.symmetric)
+        .map(|entry| (entry.path.clone(), entry.args.clone()))
+        .collect();
     let engine_core = Arc::clone(core);
     let ops_for_exec = ops.clone();
     let tx_for_exec = tx_id.clone();
     let result = tokio::task::spawn_blocking(move || {
-        let snapshot =
-            engine_core
-                .engine
-                .snapshot(&engine_core.state, &tx_for_exec, &ops_for_exec)?;
+        let snapshot = engine_core.engine.snapshot(
+            &engine_core.state,
+            &tx_for_exec,
+            &ops_for_exec,
+            &reload_execs,
+        )?;
         engine_core
             .engine
             .execute(Some(&tx_for_exec), &ops_for_exec)?;

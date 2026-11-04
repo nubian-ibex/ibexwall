@@ -339,7 +339,9 @@ impl State {
             }
             for finding in &report.findings {
                 tx.execute(
-                    "INSERT INTO findings (id, plugin, severity, json, detected_at)
+                    // A plugin that repeats a finding id must not fail the
+                    // whole run: the first one is kept.
+                    "INSERT OR IGNORE INTO findings (id, plugin, severity, json, detected_at)
                      VALUES (?1, ?2, ?3, ?4, ?5)",
                     rusqlite::params![
                         finding.id,
@@ -542,6 +544,33 @@ mod tests {
             .mark_transaction("tx-1", TxStatus::RolledBack)
             .unwrap();
         assert!(state.list_recoverable_transactions().unwrap().is_empty());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_repeated_finding_id_keeps_the_first_and_does_not_fail_the_run() {
+        use ibexwall_proto::{CheckReport, Finding, FindingStatus, Severity};
+        let (dir, state) = temp_state();
+        let finding = |title: &str| Finding {
+            id: "dup.one".into(),
+            plugin: "dev.echo".into(),
+            severity: Severity::Low,
+            title_key: title.into(),
+            summary_key: "s".into(),
+            args: Default::default(),
+            references: vec![],
+            remediation: None,
+            status: FindingStatus::Open,
+            detected_at: "2026-11-01T00:00:00Z".into(),
+        };
+        let report = CheckReport {
+            results: vec![],
+            findings: vec![finding("first"), finding("second")],
+        };
+        state.replace_check_run("dev.echo", &report, "now").unwrap();
+        let stored = state.list_findings(Some("dev.echo")).unwrap();
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0]["title_key"], "first");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

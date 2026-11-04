@@ -12,7 +12,12 @@ use anyhow::Result;
 use super::f1::{install_plugin, provision, run_script, start_daemon};
 use super::vm::{Vm, run_capture};
 
-const PLUGINS: [&str; 3] = ["endpoint.isolate", "net.vpn", "endpoint.persistence"];
+const PLUGINS: [&str; 4] = [
+    "endpoint.isolate",
+    "net.vpn",
+    "endpoint.persistence",
+    "endpoint.integrity",
+];
 
 const LIB: &str = r#"
 set -e
@@ -283,6 +288,39 @@ LINE=$(check_ids); [ "$LINE" = "persistence.preload" ] || { echo "AFTER THE ROLL
 echo "METRIC: baseline rolled back; honest again"
 "#;
 
+const INTEGRITY: &str = r#"
+sudo ibexctl plugins enable endpoint.integrity >/dev/null
+check_paths() { sudo ibexctl check endpoint.integrity --json >/tmp/i-check.json 2>/dev/null || true; python3 -c 'import json
+print(" ".join(f["args"].get("path","") for f in json.load(open("/tmp/i-check.json"))["findings"]))'; }
+
+# A machine as the package manager shipped it: quiet.
+BEFORE=$(check_paths)
+echo "$BEFORE" | grep -vq "^$" && { echo "ALREADY DIRTY BEFORE THE TEST: $BEFORE"; exit 1; }
+
+# One altered program file: an extra byte on a real installed binary.
+SIZE=$(stat -c %s /usr/bin/hostid)
+printf 'x' | sudo tee -a /usr/bin/hostid >/dev/null
+AFTER=$(check_paths)
+echo "$AFTER" | grep -q '/usr/bin/hostid' || { echo "THE ALTERED BINARY WAS NOT SEEN: $AFTER"; exit 1; }
+for path in $AFTER; do
+  case "$path" in /etc/*) echo "A CONFIGURATION FILE WAS REPORTED: $path"; exit 1;; esac
+done
+sudo ibexctl check endpoint.integrity --json | python3 -c '
+import json,sys
+report = json.load(sys.stdin)
+for f in report["findings"]:
+    if f["id"] == "integrity.altered":
+        assert f["severity"] == "high", f
+print("severity high")'
+echo "METRIC: the altered binary was found ($(echo $AFTER | wc -w) finding(s)), configuration files stayed out"
+
+# Restored, quiet again.
+sudo truncate -s "$SIZE" /usr/bin/hostid
+RESTORED=$(check_paths)
+[ "$RESTORED" = "$BEFORE" ] || { echo "NOT QUIET AFTER THE RESTORE: $RESTORED"; exit 1; }
+echo "METRIC: restored to the shipped byte, the check is quiet again"
+"#;
+
 pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     println!("== f9: build ==");
     let mut args = vec!["build".to_string(), "--release".to_string()];
@@ -323,6 +361,11 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     scenario!(
         "p1 endpoint.persistence: the places a program stays are watched against an accepted baseline",
         PERSISTENCE
+    );
+
+    scenario!(
+        "i1 endpoint.integrity: an altered installed file is found, configuration stays out",
+        INTEGRITY
     );
 
     scenario!(

@@ -1,0 +1,35 @@
+id = "endpoint.integrity"
+version = "0.1.0"
+api = 1
+category = "endpoint"
+kinds = ["check"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-integrity"
+default_enabled = false
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "File integrity"
+pt-BR = "Integridade de arquivos"
+
+[description]
+en = "Asks the package manager which installed files are not what it shipped, and AIDE when it is set up."
+pt-BR = "Pergunta ao gerenciador de pacotes quais arquivos instalados não são o que ele entregou, e ao AIDE quando configurado."
+
+[privileges]
+
+[sandbox]
+user = "dynamic"
+capabilities = []
+read_paths = ["/var/lib/rpm", "/usr/lib/sysimage/rpm", "/var/lib/dpkg", "/var/lib/pacman", "/var/lib/aide", "/usr/bin", "/usr/sbin", "/bin", "/sbin"]
+network = false
+
+[risk]
+affects = []
+reversible = "immediate"
+confirm_timeout = false
+
+[ui]
+icon = "shield-check"
+order = 93

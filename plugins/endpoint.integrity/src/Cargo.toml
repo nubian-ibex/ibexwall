@@ -1,0 +1,24 @@
+[package]
+name = "ibexwall-plugin-integrity"
+description = "endpoint.integrity plugin: installed files against what the package manager shipped"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "ibexwall-plugin-integrity"
+path = "main.rs"
+
+[dependencies]
+ibexwall-proto.workspace = true
+ibexwall-sdk.workspace = true
+ibexwall-sys.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true

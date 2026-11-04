@@ -261,3 +261,35 @@ first mandatory review point.
   page may not load. The agent announces the portal with the relief steps
   (ADR-0030); enforcement is never lifted automatically, so a faked portal
   cannot weaken the machine.
+
+## 13. AI assistant (F8)
+
+- **What an assistant can reach.** The server is a separate process run by
+  the user, with no root and no network; it speaks to the core's socket.
+  Behind it, polkit decides: the user that runs an assistant needs only
+  `read`, `plan` and `proposals.create`. A client that skips the server and
+  calls the core directly gets the same refusals for apply, rollback,
+  plugin management and `proposals.decide` (VM-tested as that user).
+- **Writes.** The only write path is a proposal. It is planned when created
+  (the person sees real operations), bounded (20 pending, 8 per client),
+  expires after a day, and is refused if the plan cannot be rolled back.
+  Approval plans again and applies only if the operations match what was
+  reviewed. Approval, rejection and creation are rows in the core's audit
+  chain naming the client.
+- **Prompt injection.** Text from outside, and the assistant's own
+  justification, is returned under `untrusted` and shown to people as quoted
+  text marked as not checked. Control characters are refused in the
+  justification and stripped in the core. A corpus runs through every read
+  tool in CI. Residual: a model can be misled in what it tells the person;
+  nothing here stops it from writing a misleading justification, which is why
+  the plan, not the words, is what the person approves.
+- **Exfiltration.** Scopes per client, sensitive plugins closed and removed
+  from answers, DNS history as counts, redaction to HMAC pseudonyms at one
+  choke point, a size cap on answers, a rate limit. Residual: everything the
+  scopes allow goes to the model the user connected.
+- **Accountability.** Every call is logged before it runs and the call is
+  refused if the log cannot be written; lines are hash-chained. Residual: the
+  log lives in the user's directory, so the same user can delete it whole
+  (see the report); the core's chain is the one out of reach.
+- **Availability.** A flooding client is limited per process and, in the core,
+  by the pending bounds. A request over 1 MiB is dropped unparsed.

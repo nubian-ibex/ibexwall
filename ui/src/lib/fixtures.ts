@@ -288,7 +288,7 @@ const PROPOSALS = (): Proposal[] => [
   {
     id: 'prop-fixture-1',
     client: 'claude-code',
-    plugin: 'system-sysctl',
+    plugin: 'system.sysctl',
     plan_id: 'plan-fixture-1',
     patch: { 'kernel.kptr_restrict': 2 },
     preview: [
@@ -312,7 +312,7 @@ const PROPOSALS = (): Proposal[] => [
   {
     id: 'prop-fixture-2',
     client: 'claude-code',
-    plugin: 'system-coredump',
+    plugin: 'system.coredump',
     plan_id: 'plan-fixture-2',
     patch: { storage: 'none' },
     preview: [{ op: 'write_file', target: '/etc/systemd/coredump.conf.d/90-ibexwall.conf' }],

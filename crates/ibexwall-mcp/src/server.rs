@@ -569,7 +569,7 @@ impl<B: Backend, W: Write> Server<B, W> {
 
     fn history(&mut self, limit: i64) -> Outcome {
         self.need("read:audit")?;
-        let reply = self.core("History", json!({ "limit": limit }))?;
+        let reply = self.core("ListAudit", json!({ "limit": limit }))?;
         let entries: Vec<Value> = reply["entries"]
             .as_array()
             .map(|all| {
@@ -585,7 +585,8 @@ impl<B: Backend, W: Write> Server<B, W> {
                             r.len() <= 40 && r.bytes().all(|b| b.is_ascii_lowercase() || matches!(b, b'-' | b'_'))
                         });
                         json!({ "seq": e["seq"], "ts": e["ts"], "plugin": e["plugin"], "transaction": e["transaction"],
-                                "result": result.unwrap_or("other"), "by": who, "by_assistant": who == "assistant" })
+                                "result": result.unwrap_or("other"), "by": who, "by_assistant": who == "assistant",
+                                "untrusted": { "client": actor.strip_prefix("mcp:") } })
                     })
                     .collect()
             })

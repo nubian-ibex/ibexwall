@@ -48,7 +48,7 @@ pub fn list() -> Vec<Value> {
             "list_findings",
             "Open findings, optionally for one plugin or from a minimum severity (read only).",
             json!({
-                "plugin": s("Plugin id, e.g. system-sysctl"),
+                "plugin": s("Plugin id, e.g. system.sysctl"),
                 "min_severity": { "type": "string", "enum": ["info", "low", "medium", "high", "critical"] },
             }),
             &[],

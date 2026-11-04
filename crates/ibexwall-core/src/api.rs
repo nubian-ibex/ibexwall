@@ -390,6 +390,25 @@ async fn dispatch(
             Ok(Reply::result(json!({ "entries": entries })))
         }
         "Subscribe" => subscribe(core),
+        "ListAudit" => {
+            let limit = parameters
+                .get("limit")
+                .and_then(Value::as_u64)
+                .unwrap_or(50)
+                .min(500) as usize;
+            let rows = core
+                .state
+                .with_conn(|conn| crate::audit::tail(conn, limit))
+                .unwrap_or_default();
+            let entries: Vec<Value> = rows
+                .into_iter()
+                .map(|e| {
+                    json!({ "seq": e.seq, "ts": e.ts, "actor": e.actor, "plugin": e.plugin,
+                            "transaction": e.transaction, "result": e.result })
+                })
+                .collect();
+            Ok(Reply::result(json!({ "entries": entries })))
+        }
         "AuditVerify" => {
             let verification = core.audit_verify();
             let value = match &verification {
@@ -421,9 +440,8 @@ fn polkit_action(method: &str) -> Option<&'static str> {
     Some(match method {
         "GetInfo" | "GetPosture" | "GetDnsStatus" | "GetFirewall" | "ListApps" | "ListPrompts"
         | "GetAppDestinations" | "ListPlugins" | "ListFindings" | "GetConfig" | "History"
-        | "Subscribe" | "RunChecks" | "GetPlugin" | "AuditVerify" | "RecentEvents" => {
-            names::POLKIT_READ
-        }
+        | "Subscribe" | "RunChecks" | "GetPlugin" | "AuditVerify" | "RecentEvents"
+        | "ListAudit" => names::POLKIT_READ,
         "SetPluginEnabled" => names::POLKIT_PLUGINS_MANAGE,
         "SetAppMode" | "SetDefaultMode" | "AnswerPrompt" => names::POLKIT_APPS_DECIDE,
         "PlanChange" => names::POLKIT_PLAN,

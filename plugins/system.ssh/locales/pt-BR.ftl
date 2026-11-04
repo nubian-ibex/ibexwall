@@ -1,0 +1,11 @@
+plugin-system.ssh-summary = Configurações do servidor SSH.
+ssh-root-title = O servidor SSH deixa o root entrar com senha
+ssh-root-summary = PermitRootLogin está em { $value }. Quem adivinhar a senha de root controla tudo.
+ssh-empty-title = O servidor SSH aceita senhas vazias
+ssh-empty-summary = PermitEmptyPasswords está em yes: uma conta sem senha pode entrar pela rede.
+ssh-x11-title = O servidor SSH encaminha sessões gráficas
+ssh-x11-summary = X11Forwarding está em yes. Um servidor comprometido pode alcançar a tela e o teclado do cliente.
+ssh-password-title = O servidor SSH aceita senhas
+ssh-password-summary = Senhas podem ser adivinhadas pela rede; chaves não.
+ssh-may-affect-root = Entrar como root por SSH com senha deixa de funcionar. Use um usuário comum e sudo, ou uma chave.
+ssh-may-affect-password = Sem senhas, só entra quem tem uma chave autorizada. Confira a sua antes, ou você pode ficar sem acesso.

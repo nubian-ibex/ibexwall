@@ -1,0 +1,40 @@
+id = "system.ssh"
+version = "0.1.0"
+api = 1
+category = "system"
+kinds = ["check", "control"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-ssh"
+default_enabled = true
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "SSH server"
+pt-BR = "Servidor SSH"
+
+[description]
+en = "Checks the SSH server's settings (root login, empty passwords, forwarding) and tightens them with a drop-in."
+pt-BR = "Verifica as configurações do servidor SSH (login de root, senhas vazias, encaminhamento) e as reforça com um drop-in."
+
+[privileges]
+write_paths = ["/etc/ssh/sshd_config.d"]
+units = ["sshd.service", "ssh.service"]
+unit_actions = ["restart"]
+exec = [{ path = "/usr/sbin/sshd", args = ["-t"] }]
+
+[sandbox]
+user = "dynamic"
+capabilities = []
+read_paths = ["/etc/ssh", "/usr/sbin/sshd", "/usr/lib/systemd/system", "/run"]
+network = false
+
+[risk]
+affects = ["remote-access"]
+reversible = "immediate"
+confirm_timeout = true
+may_affect = ["ssh-may-affect-root", "ssh-may-affect-password"]
+
+[ui]
+icon = "terminal"
+order = 64

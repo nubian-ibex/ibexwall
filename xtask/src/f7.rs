@@ -42,6 +42,18 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
             "-p",
             "ibexwall-plugin-wifi",
             "-p",
+            "ibexwall-plugin-usb",
+            "-p",
+            "ibexwall-plugin-flatpak-perms",
+            "-p",
+            "ibexwall-plugin-cves",
+            "-p",
+            "ibexwall-plugin-camera-mic",
+            "-p",
+            "ibexwall-plugin-session-lock",
+            "-p",
+            "ibexwall-plugin-telemetry",
+            "-p",
             "ibexwall-exec",
             "-p",
             "ibexwall-cli",
@@ -65,6 +77,12 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
         "system.firmware",
         "net.nts",
         "net.wifi",
+        "device.usb",
+        "apps.flatpak-perms",
+        "vuln.cves",
+        "privacy.camera-mic",
+        "system.session-lock",
+        "privacy.telemetry",
     ] {
         install_plugin(vm, workspace, id)?;
     }
@@ -173,7 +191,9 @@ change() {{
   P=$(sudo ibexctl plan "$PLUGIN" "$@" --json 2>/tmp/plan.err | {JSON_ID}) || {{ echo "PLAN FAILED: $(cat /tmp/plan.err)"; return 1; }}
   OUT=$(sudo ibexctl apply "$P" --confirm-timeout 300 --json 2>&1 || true)
   TX=$(echo "$OUT" | {JSON_ID})
+  if echo "$OUT" | grep -q '"error"'; then echo "APPLY ERROR: $OUT"; sudo journalctl -u 'ibexwall-exec-*' -n 8 --no-pager; return 1; fi
   [ -n "$TX" ] || {{ echo "APPLY FAILED: $OUT"; sudo journalctl -u ibexwalld -n 20 --no-pager; return 1; }}
+  if echo "$OUT" | grep -Eq '"state": "(failed|rolled_back)"'; then echo "THE CHANGE DID NOT STAY: $OUT"; sudo journalctl -u ibexwalld -n 12 --no-pager; sudo journalctl -u 'ibexwall-exec-*' -n 12 --no-pager; return 1; fi
   if echo "$OUT" | grep -q pending_confirm; then sudo ibexctl confirm "$TX" >/dev/null || {{ echo "CONFIRM FAILED"; return 1; }}; fi
 }}
 findings() {{ sudo ibexctl check "$1" --json 2>/dev/null | python3 -c 'import json,sys; print(" ".join(f["id"] for f in json.load(sys.stdin)["findings"]))'; }}
@@ -495,6 +515,179 @@ echo "$(findings net.wifi)" | grep -q 'wifi.mac' && {{ echo "wifi.mac SURVIVED";
 curl -s -o /dev/null --max-time 10 https://example.com || {{ echo "NETWORK LOST AFTER THE CHANGE"; exit 1; }}
 sudo ibexctl rollback "$TX" --json >/dev/null || {{ echo "ROLLBACK FAILED"; exit 1; }}
 sudo test ! -e /etc/NetworkManager/conf.d/70-ibexwall-wifi.conf || {{ echo "DROP-IN SURVIVED"; exit 1; }}
+"#
+        )
+    );
+
+    scenario!(
+        "m5a device.usb: USBGuard is enforced with an allow list from what is plugged in, and rolled back",
+        &format!(
+            r#"{lib}
+sudo ibexctl plugins enable device.usb >/dev/null
+# A cloud VM may have no USB bus at all: USBGuard cannot start there, so the
+# plugin says it does not apply and refuses to plan.
+if [ ! -d /sys/bus/usb/devices ]; then
+  [ -z "$(findings device.usb)" ] || {{ echo "FINDINGS ON A MACHINE WITHOUT A USB BUS"; exit 1; }}
+  if sudo ibexctl plan device.usb --json >/dev/null 2>&1; then echo "PLAN ACCEPTED WITHOUT A USB BUS"; exit 1; fi
+  echo "METRIC: no USB bus on this VM: not applicable, plan refused"
+  exit 0
+fi
+if ! sudo sh -c 'command -v usbguard-daemon' >/dev/null; then
+  findings device.usb | grep -q usb.missing || {{ echo "NO FINDING WITHOUT USBGUARD"; exit 1; }}
+  if sudo ibexctl plan device.usb --json >/dev/null 2>&1; then echo "PLAN ACCEPTED WITHOUT USBGUARD"; exit 1; fi
+  if command -v dnf >/dev/null; then sudo dnf install -y -q usbguard
+  elif command -v apt-get >/dev/null; then sudo apt-get update -qq; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq usbguard
+  elif command -v pacman >/dev/null; then sudo pacman -Sy --noconfirm --needed usbguard
+  fi
+fi
+sudo sh -c 'command -v usbguard-daemon' >/dev/null || {{ echo "USBGUARD NOT INSTALLED"; exit 1; }}
+sudo systemctl disable --now usbguard >/dev/null 2>&1 || true
+echo "METRIC: usb devices in sysfs: $(ls /sys/bus/usb/devices 2>/dev/null | tr '\n' ' ')"
+findings device.usb | grep -q usb.off || {{ echo "NO usb.off FINDING: [$(findings device.usb)]"; exit 1; }}
+change device.usb
+R=/etc/usbguard/rules.d/70-ibexwall.conf
+sudo test -e $R || {{ echo "RULES FILE MISSING AFTER THE CHANGE. apply said: $OUT"; sudo ls -la /etc/usbguard /etc/usbguard/rules.d; sudo journalctl -u usbguard -n 10 --no-pager; sudo journalctl -u 'ibexwall-exec-*' -n 10 --no-pager; exit 1; }}
+[ "$(sudo stat -c %a $R)" = 600 ] || {{ echo "RULES FILE MODE $(sudo stat -c %a $R)"; exit 1; }}
+sudo grep -q 'with-interface equals {{ 09:\*:\* }}' $R || {{ echo "HUB RULE MISSING"; sudo cat $R; exit 1; }}
+for i in $(seq 1 20); do systemctl is-active --quiet usbguard && break; sleep 1; done
+systemctl is-active --quiet usbguard || {{ echo "USBGUARD NOT RUNNING"; sudo journalctl -u usbguard -n 15 --no-pager; exit 1; }}
+sudo usbguard list-rules | grep -q 'with-interface' || {{ echo "USBGUARD DID NOT LOAD OUR RULES: $(sudo usbguard list-rules | head -5)"; exit 1; }}
+[ -z "$(findings device.usb)" ] || {{ echo "FINDING SURVIVED"; exit 1; }}
+sudo ibexctl rollback "$TX" --json >/dev/null || {{ echo "ROLLBACK FAILED"; exit 1; }}
+sudo test ! -e $R || {{ echo "RULES SURVIVED THE ROLLBACK"; exit 1; }}
+! systemctl is-active --quiet usbguard || {{ echo "USBGUARD STILL RUNNING AFTER THE ROLLBACK"; exit 1; }}
+"#
+        )
+    );
+
+    scenario!(
+        "m5b apps.flatpak-perms: broad permissions are named per app, overrides are honored, nothing else is flagged",
+        &format!(
+            r#"{lib}
+sudo ibexctl plugins enable apps.flatpak-perms >/dev/null
+A=/var/lib/flatpak/app
+trap 'sudo rm -rf $A/org.f7.Wide $A/org.f7.Narrow /var/lib/flatpak/overrides/org.f7.Wide' EXIT
+sudo mkdir -p $A/org.f7.Wide/current/active $A/org.f7.Narrow/current/active /var/lib/flatpak/overrides
+printf '[Context]\nfilesystems=host;xdg-download;\nsockets=wayland;ssh-auth;\ndevices=all;\n[Session Bus Policy]\norg.freedesktop.Flatpak=talk\n' | sudo tee $A/org.f7.Wide/current/active/metadata >/dev/null
+printf '[Context]\nsockets=wayland;\nfilesystems=xdg-documents;\n' | sudo tee $A/org.f7.Narrow/current/active/metadata >/dev/null
+F=$(findings apps.flatpak-perms)
+echo "METRIC: flatpak findings: $(echo $F | wc -w)"
+for want in 'filesystem=host' 'device=all' 'socket=ssh-auth' 'talk=org.freedesktop.Flatpak'; do
+  echo "$F" | tr ' ' '\n' | grep -q "flatpak.org.f7.Wide.$want" || {{ echo "MISSING $want: [$F]"; exit 1; }}
+done
+echo "$F" | grep -q 'org.f7.Narrow' && {{ echo "A NARROW APP WAS FLAGGED"; exit 1; }}
+# The administrator's override takes the host filesystem away.
+printf '[Context]\nfilesystems=!host;\n' | sudo tee /var/lib/flatpak/overrides/org.f7.Wide >/dev/null
+F=$(findings apps.flatpak-perms)
+echo "$F" | tr ' ' '\n' | grep -q 'filesystem=host' && {{ echo "OVERRIDE NOT HONORED"; exit 1; }}
+echo "$F" | tr ' ' '\n' | grep -q 'device=all' || {{ echo "DEVICE FINDING LOST"; exit 1; }}
+"#
+        )
+    );
+
+    scenario!(
+        "m5c vuln.cves: the distro's own security updates agree with what the package manager says, offline",
+        &format!(
+            r#"{lib}
+sudo ibexctl plugins enable vuln.cves >/dev/null
+. /etc/os-release
+case "$ID $ID_LIKE" in
+  *debian*|*ubuntu*) FAMILY=apt ;;
+  *fedora*) FAMILY=dnf ;;
+  *) FAMILY=other ;;
+esac
+echo "METRIC: cves family $FAMILY"
+case $FAMILY in
+  apt)
+    sudo apt-get update -qq
+    RAW=$(sudo apt-get -s -q upgrade | grep '^Inst' | grep -ci 'security' || true) ;;
+  dnf)
+    sudo dnf makecache -q >/dev/null 2>&1 || true
+    RAW=$(sudo dnf5 --cacheonly --quiet updateinfo list --security 2>/dev/null | grep -c '^FEDORA-' || true)
+    echo "METRIC: dnf5 sample: $(sudo dnf5 --cacheonly --quiet updateinfo list --security 2>/dev/null | head -2 | tr '\n' '|' | cut -c1-200)" ;;
+  *)
+    if ! command -v arch-audit >/dev/null; then sudo pacman -Sy --noconfirm --needed arch-audit >/dev/null 2>&1 || true; fi
+    if command -v arch-audit >/dev/null; then RAW=$(arch-audit 2>/dev/null | grep -c '^Package' || true); else RAW=skip; fi ;;
+esac
+sudo ibexctl check vuln.cves --json > /tmp/cves.json 2>&1 || true
+python3 -c 'import json; json.load(open("/tmp/cves.json"))["findings"]' || {{ echo "CHECK ERROR: $(head -c 400 /tmp/cves.json)"; exit 1; }}
+GOT=$(python3 -c 'import json; print(sum(1 for f in json.load(open("/tmp/cves.json"))["findings"] if f["id"].startswith(("cves.update.","cves.affected."))))')
+echo "METRIC: package manager says $RAW, plugin lists $GOT"
+if [ "$RAW" != skip ]; then
+  EXPECT=$RAW; [ "$EXPECT" -gt 50 ] && EXPECT=50
+  [ "$GOT" = "$EXPECT" ] || {{ echo "DISAGREEMENT: manager $RAW (cap 50), plugin $GOT"; exit 1; }}
+fi
+# Hostile text from the manager cannot reach the keys: every finding uses a fixed one.
+python3 -c '
+import json
+for f in json.load(open("/tmp/cves.json"))["findings"]:
+    assert f["title_key"].startswith("cves-") and f["summary_key"].startswith("cves-"), f
+'
+"#
+        )
+    );
+
+    scenario!(
+        "m5d privacy.camera-mic: a program holding a video device is named, and only while it holds it",
+        &format!(
+            r#"{lib}
+sudo ibexctl plugins enable privacy.camera-mic >/dev/null
+trap 'sudo pkill -f "sleep 120" >/dev/null 2>&1 || true; sudo rm -f /dev/video9 /etc/systemd/system/ibexwalld.service.d/f7-ptrace.conf; sudo systemctl daemon-reload; sudo systemctl restart ibexwalld' EXIT
+# Reading what another program holds open needs CAP_SYS_PTRACE and the real
+# /dev; the plugin's own unit declares both in its manifest (F10 packaging),
+# while a plugin run as a child of the hardened daemon lacks them. The test
+# gives the daemon what the plugin's unit would have.
+printf '[Service]\nCapabilityBoundingSet=CAP_NET_ADMIN CAP_CHOWN CAP_FOWNER CAP_DAC_READ_SEARCH CAP_SYS_PTRACE\nPrivateDevices=no\n' | sudo tee /etc/systemd/system/ibexwalld.service.d/f7-ptrace.conf >/dev/null
+sudo systemctl daemon-reload; sudo systemctl restart ibexwalld
+for i in $(seq 1 20); do sudo ibexctl status --json >/dev/null 2>&1 && break; sleep 0.5; done
+sudo ibexctl plugins enable privacy.camera-mic >/dev/null 2>&1 || true
+[ -z "$(findings privacy.camera-mic)" ] || {{ echo "SOMETHING IS IN USE ON A FRESH VM: $(findings privacy.camera-mic)"; exit 1; }}
+# A device node named like a camera (it is /dev/null underneath), held open.
+sudo mknod /dev/video9 c 1 3
+sudo sh -c 'sleep 120 < /dev/video9 &'
+sleep 1
+F=$(findings privacy.camera-mic)
+echo "METRIC: camera findings: [$F]"
+echo "$F" | grep -q 'cameramic.camera.' || {{ echo "CAMERA IN USE NOT REPORTED"; exit 1; }}
+sudo ibexctl check privacy.camera-mic --json | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+f=[x for x in d["findings"] if x["id"].startswith("cameramic.camera.")][0]
+assert f["args"]["process"]=="sleep" and f["args"]["device"]=="/dev/video9" and f["severity"]=="info", f
+'
+sudo pkill -f "sleep 120"
+sleep 1
+[ -z "$(findings privacy.camera-mic)" ] || {{ echo "STILL REPORTED AFTER THE PROGRAM LET GO"; exit 1; }}
+"#
+        )
+    );
+
+    scenario!(
+        "m5e system.session-lock and privacy.telemetry: honest when they cannot tell, exact when a file decides",
+        &format!(
+            r#"{lib}
+sudo ibexctl plugins enable system.session-lock >/dev/null
+sudo ibexctl plugins enable privacy.telemetry >/dev/null
+# No desktop on a cloud image: nothing is claimed either way.
+[ -z "$(findings system.session-lock)" ] || {{ echo "SESSION LOCK FINDINGS WITHOUT A DESKTOP"; exit 1; }}
+. /etc/os-release
+trap 'sudo rm -f /etc/yum.repos.d/f7-countme.repo; [ -f /tmp/popcon.bak ] && sudo cp /tmp/popcon.bak /etc/popularity-contest.conf || true' EXIT
+if command -v dnf >/dev/null; then
+  printf '[f7countme]\nname=f7\nenabled=1\ncountme=1\nbaseurl=http://localhost/none\n' | sudo tee /etc/yum.repos.d/f7-countme.repo >/dev/null
+  findings privacy.telemetry | grep -q telemetry.countme || {{ echo "COUNTME NOT FOUND"; exit 1; }}
+  sudo rm -f /etc/yum.repos.d/f7-countme.repo
+  findings privacy.telemetry | grep -q telemetry.countme && {{ echo "COUNTME STILL REPORTED"; exit 1; }} || true
+elif command -v apt-get >/dev/null; then
+  sudo apt-get update -qq; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq popularity-contest
+  sudo cp /etc/popularity-contest.conf /tmp/popcon.bak
+  sudo sed -i 's/^PARTICIPATE=.*/PARTICIPATE="yes"/' /etc/popularity-contest.conf
+  findings privacy.telemetry | grep -q telemetry.popcon || {{ echo "POPCON NOT FOUND"; exit 1; }}
+  sudo sed -i 's/^PARTICIPATE=.*/PARTICIPATE="no"/' /etc/popularity-contest.conf
+  findings privacy.telemetry | grep -q telemetry.popcon && {{ echo "POPCON STILL REPORTED"; exit 1; }} || true
+else
+  echo "METRIC: no telemetry source to toggle on this distro"
+fi
+echo "METRIC: telemetry findings now: [$(findings privacy.telemetry)]"
 "#
         )
     );

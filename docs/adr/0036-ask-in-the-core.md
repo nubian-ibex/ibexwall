@@ -3,9 +3,7 @@
 
 # ADR-0036: Ask is driven by the core, and its nft chains are derived state
 
-Status: accepted for F6 (autonomous mode); needs the user's confirmation
-because it departs from "plugins propose, the core executes through plan,
-snapshot, approval and rollback" for one narrow case. Phase: F6.
+Status: accepted (maintainer decision, 2026-11-03). Phase: F6.
 
 ## Context
 

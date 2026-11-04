@@ -92,7 +92,7 @@ the core), 0037 (no eBPF means no enforcement, and the UI says so).
   it now exits at once, which opens the network and lets systemd bring it
   back with the core's policy.
 
-## Deviations and open points (decisions needed)
+## Deviations and open points (decided 2026-11-03)
 
 - ADR-0036: the Ask chains are derived state reconciled by the core, not a
   plugin proposal through plan, approval and rollback; the mode change the

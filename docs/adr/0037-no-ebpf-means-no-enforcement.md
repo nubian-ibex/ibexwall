@@ -3,8 +3,7 @@
 
 # ADR-0037: Without eBPF there is no per-app enforcement, and the UI says so
 
-Status: proposed for F6 (autonomous mode); needs the user's decision
-because it narrows a spec deliverable ("fallback sem eBPF"). Phase: F6.
+Status: accepted (maintainer decision, 2026-11-03). Phase: F6.
 
 ## Context
 

@@ -1,0 +1,18 @@
+// SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// Members of ibexwall-assistants may read IbexWall's state, ask for a plan
+// and put a change in the proposal queue. Nothing more: applying, rolling
+// back, managing plugins and deciding a proposal are not listed here, so a
+// person must still authenticate for them. Add the user that runs an AI
+// client to the group; remove the user to take the access away.
+polkit.addRule(function(action, subject) {
+  var allowed = [
+    "com.ibexwall.read",
+    "com.ibexwall.plan",
+    "com.ibexwall.proposals.create"
+  ];
+  if (allowed.indexOf(action.id) >= 0 && subject.isInGroup("ibexwall-assistants")) {
+    return polkit.Result.YES;
+  }
+});

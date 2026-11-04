@@ -352,6 +352,25 @@ pub(crate) fn run_script(vm: &Vm, name: &str, script: &str) -> bool {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn the_assistants_rule_grants_only_read_plan_and_propose() {
+        let rule = include_str!("../../packaging/polkit/49-ibexwall-assistants.rules");
+        let granted: Vec<&str> = rule
+            .lines()
+            .filter_map(|l| l.trim().trim_end_matches(',').strip_prefix('"'))
+            .filter_map(|l| l.strip_suffix('"'))
+            .collect();
+        assert_eq!(
+            granted,
+            [
+                "com.ibexwall.read",
+                "com.ibexwall.plan",
+                "com.ibexwall.proposals.create"
+            ]
+        );
+        assert!(rule.contains("ibexwall-assistants"));
+    }
+
+    #[test]
     fn polkit_policy_declares_every_action_in_names() {
         let policy = include_str!("../../packaging/polkit/com.ibexwall.policy");
         for action in ibexwall_proto::names::polkit_actions() {

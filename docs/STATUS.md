@@ -3,7 +3,7 @@
 
 # STATUS
 
-Last updated: 2026-11-04 (F7 delivered, report ready for acceptance)
+Last updated: 2026-11-04 (F8 delivered, report ready for acceptance)
 
 ## Current phase
 
@@ -42,6 +42,18 @@ authenticating Cloudflare, Netnod, PTB and NTP.br. Open: pending firmware
 and HSI, a plugin monitor interface (camera and microphone events), GNOME
 user lock settings through the agent, telemetry control, OSV lookup, a unit
 of their own for each plugin (F10).
+
+**F8: AI assistant (MCP) and the proposal queue, delivered** (report:
+`docs/reports/F8-report.md`, awaiting acceptance; plan:
+`docs/plans/F8-assistant-mcp.md`; ADR-0039). `ibexwall-mcp` (stdio, no
+root, nine tools, no way to apply, approve or revert), the core's proposal
+queue (irreversible plans refused, approval re-plans and compares),
+`ListAudit`, `ibexctl proposals` and `ibexctl mcp config`, the Assistant
+screen. Every call is logged before it runs in a hash-chained file;
+`--phase f8` green on five distros (4 scenarios) with a scripted client
+(no language model), and an injection corpus in the suite. Open: manual
+runs with Claude Code, OpenCode and VS Code, a packaged polkit rule for the
+user that runs an assistant (F10), Streamable HTTP and OAuth (off by spec).
 
 ## What exists
 

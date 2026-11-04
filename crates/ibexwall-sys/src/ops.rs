@@ -110,6 +110,17 @@ pub fn write_directories(ops: &[Op]) -> Vec<String> {
                 }
                 continue;
             }
+            // `systemctl enable` and `disable` hand units that also ship a
+            // SysV script to `systemd-sysv-install` (update-rc.d on Debian
+            // and Ubuntu), and that client-side helper rewrites the rc
+            // symlinks itself. Only directories that exist are opened.
+            Op::SystemdUnit {
+                action: ibexwall_proto::UnitAction::Enable | ibexwall_proto::UnitAction::Disable,
+                ..
+            } => {
+                dirs.extend(sysv_rc_directories());
+                continue;
+            }
             // Likewise one override file per Flatpak application.
             Op::FlatpakOverride { app_id, .. } => match crate::flatpak::override_path(app_id) {
                 Some(path) => path,
@@ -125,6 +136,17 @@ pub fn write_directories(ops: &[Op]) -> Vec<String> {
         }
     }
     dirs.into_iter().collect()
+}
+
+/// The SysV runlevel directories that exist on this machine (Debian and
+/// Ubuntu): where `systemd-sysv-install` rewrites symlinks when a unit that
+/// also ships an init script is enabled or disabled.
+pub fn sysv_rc_directories() -> Vec<String> {
+    ["0", "1", "2", "3", "4", "5", "6", "S"]
+        .iter()
+        .map(|level| format!("/etc/rc{level}.d"))
+        .filter(|dir| Path::new(dir).is_dir())
+        .collect()
 }
 
 /// Executes one operation against the system bundle.

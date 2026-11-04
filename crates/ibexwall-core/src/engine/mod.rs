@@ -405,6 +405,10 @@ fn snapshot_write_directories(manifest: &SnapshotManifest) -> Vec<String> {
                     }
                 }
             }
+            // Putting a unit's enablement back may go through the SysV helper.
+            SnapshotEntry::Unit { .. } => {
+                dirs.extend(ibexwall_sys::ops::sysv_rc_directories());
+            }
             // ufw's reload takes the xtables lock under /run.
             SnapshotEntry::Firewall { backend, .. } => {
                 for path in ibexwall_sys::ops::firewall_write_paths(backend) {

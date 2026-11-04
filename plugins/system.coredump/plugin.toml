@@ -1,0 +1,37 @@
+id = "system.coredump"
+version = "0.1.0"
+api = 1
+category = "system"
+kinds = ["check", "control"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-coredump"
+default_enabled = true
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "Core dumps"
+pt-BR = "Core dumps"
+
+[description]
+en = "Checks whether crash dumps (which can hold passwords and keys) are stored, and turns storage off."
+pt-BR = "Verifica se os despejos de falha (que podem conter senhas e chaves) são guardados, e desliga o armazenamento."
+
+[privileges]
+write_paths = ["/etc/systemd/coredump.conf.d"]
+
+[sandbox]
+user = "dynamic"
+capabilities = []
+read_paths = ["/proc/sys/kernel", "/etc/systemd", "/usr/lib/systemd"]
+network = false
+
+[risk]
+affects = ["diagnostics"]
+reversible = "immediate"
+confirm_timeout = false
+may_affect = ["coredump-may-affect-debugging"]
+
+[ui]
+icon = "bug-off"
+order = 60

@@ -1,0 +1,44 @@
+id = "net.nts"
+version = "0.1.0"
+api = 1
+category = "network"
+kinds = ["check", "control"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-nts"
+default_enabled = true
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "Secure time (NTS)"
+pt-BR = "Hora segura (NTS)"
+
+[description]
+en = "Checks that chrony takes the time from servers it can authenticate (NTS), and adds them."
+pt-BR = "Verifica se o chrony obtém a hora de servidores que ele consegue autenticar (NTS), e os adiciona."
+
+[privileges]
+write_paths = [
+  "/etc/chrony.d",
+  "/etc/chrony/conf.d",
+  "/etc/chrony-ibexwall",
+  "/etc/systemd/system/chronyd.service.d",
+]
+units = ["chronyd.service", "chrony.service"]
+unit_actions = ["restart"]
+
+[sandbox]
+user = "dynamic"
+capabilities = []
+read_paths = ["/etc/chrony.conf", "/etc/chrony", "/etc/chrony.d", "/etc/chrony-ibexwall", "/usr/sbin/chronyd", "/usr/bin/chronyd", "/usr/lib/systemd/system", "/etc/systemd/system", "/run/chrony", "/etc/os-release"]
+network = false
+
+[risk]
+affects = ["time"]
+reversible = "immediate"
+confirm_timeout = false
+may_affect = ["nts-may-affect-firewall-4460", "nts-may-affect-clock"]
+
+[ui]
+icon = "clock"
+order = 40

@@ -1,0 +1,39 @@
+id = "endpoint.av"
+version = "0.1.0"
+api = 1
+category = "endpoint"
+kinds = ["check", "control"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-av"
+default_enabled = false
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "Antimalware"
+pt-BR = "Antimalware"
+
+[description]
+en = "Scans folders on demand or on a schedule with ClamAV and YARA, and reports what they find."
+pt-BR = "Varre pastas sob demanda ou em horário marcado com ClamAV e YARA, e relata o que encontram."
+
+[privileges]
+write_paths = ["/etc/systemd/system/ibexwall-av-scan.service", "/etc/systemd/system/ibexwall-av-scan.timer", "/etc/ibexwall/av", "/var/lib/ibexwall/av/.managed"]
+units = ["ibexwall-av-scan.service", "ibexwall-av-scan.timer"]
+unit_actions = ["start", "enable", "disable"]
+
+[sandbox]
+user = "dynamic"
+capabilities = []
+read_paths = ["/sys/fs/selinux", "/var/lib/ibexwall/av", "/etc/ibexwall/av", "/usr/bin", "/var/lib/clamav", "/usr/share/clamav", "/etc/systemd/system"]
+network = false
+
+[risk]
+affects = ["performance"]
+reversible = "immediate"
+confirm_timeout = false
+may_affect = ["av-may-affect-load"]
+
+[ui]
+icon = "bug"
+order = 91

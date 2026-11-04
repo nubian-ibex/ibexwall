@@ -1,0 +1,11 @@
+av-infected-title = A scanner flagged a file
+av-infected-summary = { $path } matched { $signature }. Do not open it; delete it or look at it in a safe place.
+av-more-title = And { $count } more
+av-more-summary = { $count } more files were flagged. Run the check with --json to see them all.
+av-nosignatures-title = ClamAV has no signature database
+av-nosignatures-summary = ClamAV is installed but has nothing to compare files with. Run freshclam (or your distribution's update timer) first.
+av-noscanner-title = No antimalware scanner is installed
+av-noscanner-summary = Install ClamAV (and YARA, for custom rules) from your distribution to scan files. IbexWall installs nothing by itself.
+av-may-affect-load = A scan reads many files and slows the computer while it runs.
+av-selinux-title = SELinux stops ClamAV from reading your files
+av-selinux-summary = A scan would run and see nothing. Allow it with: sudo setsebool -P antivirus_can_scan_system on

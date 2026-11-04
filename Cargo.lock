@@ -2291,6 +2291,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ibexwall-plugin-av"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "ibexwall-sys",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "ibexwall-plugin-camera-mic"
 version = "0.1.0"
 dependencies = [

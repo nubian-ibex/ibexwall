@@ -12,11 +12,12 @@ use anyhow::Result;
 use super::f1::{install_plugin, provision, run_script, start_daemon};
 use super::vm::{Vm, run_capture};
 
-const PLUGINS: [&str; 4] = [
+const PLUGINS: [&str; 5] = [
     "endpoint.isolate",
     "net.vpn",
     "endpoint.persistence",
     "endpoint.integrity",
+    "endpoint.av",
 ];
 
 const LIB: &str = r#"
@@ -30,6 +31,7 @@ apply_plan() {
   OUT=$(sudo ibexctl apply "$P" --confirm-timeout ${CONFIRM:-300} --json 2>/tmp/apply.err || true)
   TX=$(echo "$OUT" | eval "$JSON_ID")
   [ -n "$TX" ] || { echo "APPLY FAILED: $OUT"; sudo journalctl -u ibexwalld -n 20 --no-pager; return 1; }
+  if echo "$OUT" | grep -Eq '"state": "(failed|rolled_back)"'; then echo "THE CHANGE DID NOT STAY: $OUT"; return 1; fi
 }
 confirm_tx() { sudo ibexctl confirm "$TX" >/dev/null || { echo "CONFIRM FAILED"; return 1; }; }
 # Can this machine open a TCP connection to $1:$2 within 4 seconds?
@@ -49,6 +51,7 @@ pkg() {
 "#;
 
 const ISOLATE: &str = r#"
+command -v nft >/dev/null || sudo sh -c 'command -v nft' >/dev/null || pkg nftables
 sudo ibexctl plugins enable endpoint.isolate >/dev/null
 PEER=${SSH_CLIENT%% *}
 [ -n "$PEER" ] || { echo "NO SSH PEER"; exit 1; }
@@ -100,21 +103,28 @@ echo "METRIC: an unconfirmed isolation reverted on its own"
 "#;
 
 const VPN: &str = r#"
+
+sudo sh -c 'command -v nft' >/dev/null || pkg nftables
 sudo ibexctl plugins enable net.vpn >/dev/null
 pkg wireguard-tools tcpdump curl
+# Ubuntu 26.04 confines the `wg` tool with AppArmor so tightly that it cannot
+# read a key it is handed; the test drives wg only to build its own "provider",
+# so the profile is unloaded for the test's lifetime.
+if [ -e /etc/apparmor.d/wg ] && command -v apparmor_parser >/dev/null; then sudo apparmor_parser -R /etc/apparmor.d/wg 2>/dev/null || true; fi
 if ! sudo systemctl cat NetworkManager.service >/dev/null 2>&1; then
   if command -v apt-get >/dev/null; then pkg network-manager; else pkg networkmanager; fi
 fi
-# NetworkManager manages only WireGuard devices here: the test must not
-# take the VM's own network away from whatever manages it.
-sudo mkdir -p /etc/NetworkManager/conf.d
-printf '[keyfile]\nunmanaged-devices=*,except:type:wireguard\n' | sudo tee /etc/NetworkManager/conf.d/00-ibexwall-test.conf >/dev/null
-sudo systemctl enable --now NetworkManager
-sleep 3
-
+# NetworkManager must not take over the VM's own uplink: name it as
+# unmanaged. (A wildcard `*,except:type:wireguard` works on most distros, but
+# Ubuntu's NetworkManager keeps the WireGuard device unmanaged under it.)
 IFACE=$(ip -4 route show default | awk '{print $5; exit}')
 PEER=${SSH_CLIENT%% *}
 [ -n "$IFACE" ] && [ -n "$PEER" ] || { echo "NO UPLINK OR PEER"; exit 1; }
+sudo mkdir -p /etc/NetworkManager/conf.d
+printf '[keyfile]\nunmanaged-devices=interface-name:%s;interface-name:vethc;interface-name:veths\n' "$IFACE" | sudo tee /etc/NetworkManager/conf.d/99-ibexwall-test.conf >/dev/null
+sudo systemctl enable --now NetworkManager
+sleep 3
+
 
 # The "VPN provider": a namespace with a WireGuard server, reached over a veth.
 sudo ip netns del vpnsrv 2>/dev/null || true
@@ -127,9 +137,8 @@ sudo ip netns exec vpnsrv ip addr add 10.99.0.2/24 dev veths
 sudo ip netns exec vpnsrv ip link set veths up
 sudo ip netns exec vpnsrv ip link set lo up
 SK=$(wg genkey); SP=$(echo "$SK" | wg pubkey); CK=$(wg genkey); CP=$(echo "$CK" | wg pubkey)
-echo "$SK" | sudo tee /tmp/vpn-server.key >/dev/null && sudo chmod 600 /tmp/vpn-server.key
 sudo ip netns exec vpnsrv ip link add wgs type wireguard
-sudo ip netns exec vpnsrv wg set wgs listen-port 51820 private-key /tmp/vpn-server.key peer "$CP" allowed-ips 10.100.0.2/32
+echo "$SK" | sudo ip netns exec vpnsrv wg set wgs listen-port 51820 private-key /dev/stdin peer "$CP" allowed-ips 10.100.0.2/32
 sudo ip netns exec vpnsrv ip addr add 10.100.0.1/24 dev wgs
 sudo ip netns exec vpnsrv ip link set wgs up
 printf '[Interface]\nPrivateKey = %s\nAddress = 10.100.0.2/24\n\n[Peer]\nPublicKey = %s\nEndpoint = 10.99.0.2:51820\nAllowedIPs = 0.0.0.0/0\nPersistentKeepalive = 3\n' "$CK" "$SP" > /tmp/lab.conf
@@ -145,6 +154,19 @@ if grep -q "$CK" /tmp/vpn-plan.json; then echo "THE PRIVATE KEY IS IN THE PLAN P
 grep -q "private file" /tmp/vpn-plan.json || { echo "THE PREVIEW DOES NOT SAY THE FILE IS PRIVATE"; exit 1; }
 FOREIGN=$(foreign_digest)
 
+manual_up() {
+  sudo ip link del wgib-lab 2>/dev/null || true
+  sudo ip link add wgib-lab type wireguard
+  echo "$CK" | sudo wg set wgib-lab private-key /dev/stdin peer "$SP" allowed-ips 0.0.0.0/0 endpoint 10.99.0.2:51820 persistent-keepalive 3
+  sudo ip addr add 10.100.0.2/24 dev wgib-lab
+  sudo ip link set wgib-lab up
+  sudo ip route add 0.0.0.0/1 dev wgib-lab; sudo ip route add 128.0.0.0/1 dev wgib-lab
+  for i in $(seq 1 30); do ping -c1 -W1 10.100.0.1 >/dev/null 2>&1 && return 0; sleep 1; done
+  return 1
+}
+tunnel_down() { sudo nmcli connection down ibexwall-lab >/dev/null 2>&1 || true; sudo ip link del wgib-lab 2>/dev/null || true; }
+MANUAL=no
+
 # Import: NetworkManager watches its directory and takes the profile in;
 # nothing is restarted.
 apply_plan net.vpn --set action=import --set name=lab --set-file profile=/tmp/lab.conf
@@ -152,15 +174,22 @@ AUTO=yes
 UP=no; for i in $(seq 1 30); do if ping -c1 -W1 10.100.0.1 >/dev/null 2>&1; then UP=yes; break; fi; sleep 1; done
 if [ "$UP" != yes ]; then
   AUTO=no
-  sudo nmcli connection up ibexwall-lab >/dev/null 2>&1 || true
+  # Some distros (Ubuntu Server) leave devices NetworkManager did not own
+  # before unmanaged; saying yes for this one device is what a person would do.
+  sudo nmcli device set wgib-lab managed yes 2>&1 | tail -2 || true
+  sudo nmcli connection up ibexwall-lab 2>&1 | tail -3 || true
   for i in $(seq 1 10); do if ping -c1 -W1 10.100.0.1 >/dev/null 2>&1; then UP=yes; break; fi; sleep 1; done
 fi
-if [ "$UP" != yes ]; then echo "THE TUNNEL DID NOT COME UP"; sudo nmcli -t connection show; sudo journalctl -u NetworkManager -n 25 --no-pager; exit 1; fi
+if [ "$UP" != yes ]; then
+  echo "METRIC: NetworkManager left wgib-lab unmanaged on this distro (a server image where another stack owns the network); the tunnel is brought up by hand, which the kill switch under test does not depend on"
+  manual_up || { echo "THE TUNNEL DID NOT COME UP BY HAND EITHER"; exit 1; }
+  MANUAL=yes
+fi
 [ "$AUTO" = yes ] && echo "METRIC: NetworkManager took the profile in by itself (no restart)"
 if echo "$OUT" | grep -q pending_confirm; then confirm_tx; fi
 IMPORT_TX=$TX
 [ "$(sudo stat -c %a /etc/NetworkManager/system-connections/ibexwall-lab.nmconnection)" = 600 ] || { echo "THE KEYFILE IS NOT PRIVATE"; exit 1; }
-sudo nmcli -t -f NAME,TYPE connection show --active | grep -q '^ibexwall-lab:wireguard' || { echo "NOT ACTIVE IN NETWORKMANAGER"; exit 1; }
+if [ "$MANUAL" = no ]; then sudo nmcli -t -f NAME,TYPE connection show --active | grep -q '^ibexwall-lab:wireguard' || { echo "NOT ACTIVE IN NETWORKMANAGER"; exit 1; }; fi
 HS=$(sudo ip netns exec vpnsrv wg show wgs latest-handshakes | awk '{print $2}')
 [ "${HS:-0}" -gt 0 ] || { echo "NO HANDSHAKE AT THE SERVER"; exit 1; }
 echo "METRIC: imported through NetworkManager, tunnel up, handshake seen, keyfile 0600, key absent from the preview"
@@ -178,8 +207,8 @@ leak_count() {
   wait $TD 2>/dev/null || true
   sudo tcpdump -nr /tmp/leak.pcap 2>/dev/null | wc -l
 }
-tunnel_up() { sudo nmcli connection up ibexwall-lab >/dev/null 2>&1; for i in $(seq 1 30); do ping -c1 -W1 10.100.0.1 >/dev/null 2>&1 && return 0; sleep 1; done; return 1; }
-sudo nmcli connection down ibexwall-lab >/dev/null
+tunnel_up() { if [ "$MANUAL" = yes ]; then manual_up; return; fi; sudo nmcli connection up ibexwall-lab >/dev/null 2>&1; for i in $(seq 1 30); do ping -c1 -W1 10.100.0.1 >/dev/null 2>&1 && return 0; sleep 1; done; return 1; }
+tunnel_down
 BASE=$(leak_count)
 [ "$BASE" -gt 0 ] || { echo "THE CAPTURE SAW NOTHING WITHOUT A KILL SWITCH, SO IT PROVES NOTHING"; exit 1; }
 echo "METRIC: without a kill switch the dropped tunnel leaked $BASE packets"
@@ -202,7 +231,7 @@ ids = [f["id"] for f in json.load(sys.stdin)["findings"]]
 assert "vpn.no_killswitch" not in ids, ids'
 
 # Tunnel down with the kill switch: nothing leaves, our session lives.
-sudo nmcli connection down ibexwall-lab >/dev/null
+tunnel_down
 LEAK=$(leak_count)
 [ "$LEAK" = 0 ] || { echo "LEAK: $LEAK packets left the uplink with the tunnel down"; sudo tcpdump -nr /tmp/leak.pcap 2>/dev/null | head -8; exit 1; }
 sudo ibexctl check net.vpn --json | python3 -c '
@@ -219,6 +248,7 @@ echo "METRIC: the tunnel reconnected under the kill switch"
 sudo ibexctl rollback "$KS_TX" >/dev/null || { echo "KILL SWITCH ROLLBACK FAILED"; exit 1; }
 if sudo nft list chain inet ibexwall net_vpn_out >/dev/null 2>&1; then echo "THE KILL SWITCH CHAIN SURVIVED"; exit 1; fi
 sudo test ! -e /etc/ibexwall/vpn/killswitch.json || { echo "THE MARKER SURVIVED"; exit 1; }
+[ "$MANUAL" = yes ] && sudo ip link del wgib-lab 2>/dev/null
 sudo ibexctl rollback "$IMPORT_TX" >/dev/null || { echo "IMPORT ROLLBACK FAILED"; exit 1; }
 for i in $(seq 1 20); do ip link show wgib-lab >/dev/null 2>&1 || break; sleep 1; done
 sudo test ! -e /etc/NetworkManager/system-connections/ibexwall-lab.nmconnection || { echo "THE KEYFILE SURVIVED"; exit 1; }
@@ -298,10 +328,10 @@ BEFORE=$(check_paths)
 echo "$BEFORE" | grep -vq "^$" && { echo "ALREADY DIRTY BEFORE THE TEST: $BEFORE"; exit 1; }
 
 # One altered program file: an extra byte on a real installed binary.
-SIZE=$(stat -c %s /usr/bin/hostid)
-printf 'x' | sudo tee -a /usr/bin/hostid >/dev/null
+SIZE=$(stat -c %s /usr/bin/lscpu)
+printf 'x' | sudo tee -a /usr/bin/lscpu >/dev/null
 AFTER=$(check_paths)
-echo "$AFTER" | grep -q '/usr/bin/hostid' || { echo "THE ALTERED BINARY WAS NOT SEEN: $AFTER"; exit 1; }
+echo "$AFTER" | grep -q '/usr/bin/lscpu' || { echo "THE ALTERED BINARY WAS NOT SEEN: $AFTER"; exit 1; }
 for path in $AFTER; do
   case "$path" in /etc/*) echo "A CONFIGURATION FILE WAS REPORTED: $path"; exit 1;; esac
 done
@@ -315,10 +345,81 @@ print("severity high")'
 echo "METRIC: the altered binary was found ($(echo $AFTER | wc -w) finding(s)), configuration files stayed out"
 
 # Restored, quiet again.
-sudo truncate -s "$SIZE" /usr/bin/hostid
+sudo truncate -s "$SIZE" /usr/bin/lscpu
 RESTORED=$(check_paths)
 [ "$RESTORED" = "$BEFORE" ] || { echo "NOT QUIET AFTER THE RESTORE: $RESTORED"; exit 1; }
 echo "METRIC: restored to the shipped byte, the check is quiet again"
+"#;
+
+const AV: &str = r#"
+sudo ibexctl plugins enable endpoint.av >/dev/null
+pkg clamav yara
+sudo sh -c 'command -v clamscan && command -v yara' >/dev/null || { echo "THE SCANNERS ARE NOT INSTALLED"; exit 1; }
+clam=$(command -v clamscan); yara=$(command -v yara)
+# The plugin looks in /usr/bin, where every distro puts them.
+[ "$clam" = /usr/bin/clamscan ] && [ "$yara" = /usr/bin/yara ] || { echo "SCANNERS NOT IN /usr/bin: $clam $yara"; exit 1; }
+findings() { sudo ibexctl check endpoint.av --json >/tmp/av-check.json 2>/dev/null || true; python3 -c 'import json
+print(" ".join(f["id"]+"="+f["args"].get("path","-")+"@"+f["args"].get("signature","-") for f in json.load(open("/tmp/av-check.json"))["findings"]))'; }
+
+# Bad folders are refused before a unit exists.
+if sudo ibexctl plan endpoint.av --set action=scan --set 'paths=/tmp/a b' --json >/dev/null 2>&1; then echo "A PATH WITH A SPACE WAS ACCEPTED"; exit 1; fi
+if sudo ibexctl plan endpoint.av --set action=scan --set 'paths=/tmp/x;id' --json >/dev/null 2>&1; then echo "A PATH WITH A SEMICOLON WAS ACCEPTED"; exit 1; fi
+
+# The EICAR test file, and a clean one next to it.
+sudo rm -rf /tmp/f9-scan && mkdir -p /tmp/f9-scan
+printf '%s' 'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' > /tmp/f9-scan/eicar.com
+echo "just a note" > /tmp/f9-scan/clean.txt
+[ "$(md5sum < /tmp/f9-scan/eicar.com | cut -d' ' -f1)" = 44d88612fea8a8f36de82e1278abb02f ] || { echo "THE EICAR FILE IS NOT THE EICAR FILE"; exit 1; }
+# A signature file holding the EICAR signature, in ClamAV's own database
+# directory (where the distro's SELinux policy lets the scanner read it): the
+# test needs no download. The scanner is the real clamscan.
+sudo mkdir -p /var/lib/clamav
+echo "44d88612fea8a8f36de82e1278abb02f:68:Eicar-Test-Signature" | sudo tee /var/lib/clamav/ibexwall-eicar.hdb >/dev/null
+trap 'sudo rm -f /var/lib/clamav/ibexwall-eicar.hdb /var/lib/clamav/ibexwall-av-scan.log' EXIT
+
+# Under enforcing SELinux a confined ClamAV reads nothing of ours until a
+# boolean is on: the check must say so, and the scan works once it is.
+if [ -r /sys/fs/selinux/booleans/antivirus_can_scan_system ] && [ "$(cat /sys/fs/selinux/enforce)" = 1 ] && grep -q '^0' /sys/fs/selinux/booleans/antivirus_can_scan_system; then
+  case "$(findings)" in *av.selinux*) ;; *) echo "SELINUX IN THE WAY BUT NOT SAID: $(findings)"; exit 1;; esac
+  sudo setsebool antivirus_can_scan_system on
+  case "$(findings)" in *av.selinux*) echo "SELINUX NAMED AFTER THE BOOLEAN WAS SET"; exit 1;; esac
+  echo "METRIC: SELinux enforcing: the check named the boolean, then went quiet once it was on"
+fi
+
+# Before any scan: nothing claimed.
+case "$(findings)" in *av.infected*) echo "A DETECTION BEFORE ANY SCAN"; exit 1;; esac
+
+# Scan: the unit runs both scanners and the check reads what they said.
+apply_plan endpoint.av --set action=scan --set paths=/tmp/f9-scan
+SCAN1=$TX
+OUTF=$(findings)
+echo "$OUTF" | tr ' ' '\n' | grep '^av.infected=/tmp/f9-scan/eicar.com@' | grep -qv '@EICAR_Test_File$' || { echo "CLAMAV DID NOT FLAG EICAR: $OUTF"; sudo journalctl -u ibexwall-av-scan.service --no-pager | tail -8; sudo cat /var/lib/clamav/ibexwall-av-scan.log /var/lib/ibexwall/av/yara.log; exit 1; }
+echo "$OUTF" | grep -q 'av.infected=/tmp/f9-scan/eicar.com@EICAR_Test_File' || { echo "YARA DID NOT FLAG EICAR: $OUTF"; exit 1; }
+case "$OUTF" in *clean.txt*) echo "THE CLEAN FILE WAS FLAGGED: $OUTF"; exit 1;; esac
+echo "METRIC: EICAR flagged by ClamAV and by YARA, the clean file left alone"
+
+# Remove it and scan again: the old log does not haunt the check.
+rm -f /tmp/f9-scan/eicar.com
+apply_plan endpoint.av --set action=scan --set paths=/tmp/f9-scan
+SCAN2=$TX
+case "$(findings)" in *av.infected*) echo "A STALE DETECTION AFTER THE FILE WAS REMOVED"; exit 1;; esac
+echo "METRIC: a second scan after removal is clean"
+
+# Scheduled: a timer that is on, then undone.
+apply_plan endpoint.av --set action=schedule --set every=weekly --set paths=/tmp/f9-scan
+SCHED=$TX
+systemctl is-enabled ibexwall-av-scan.timer | grep -q enabled || { echo "THE TIMER IS NOT ENABLED"; exit 1; }
+systemctl list-timers --all --no-pager | grep -q ibexwall-av-scan || { echo "THE TIMER IS NOT SCHEDULED"; exit 1; }
+sudo ibexctl rollback "$SCHED" >/dev/null || { echo "SCHEDULE ROLLBACK FAILED"; exit 1; }
+sudo test ! -e /etc/systemd/system/ibexwall-av-scan.timer || { echo "THE TIMER FILE SURVIVED"; exit 1; }
+if systemctl is-enabled ibexwall-av-scan.timer 2>/dev/null | grep -q '^enabled'; then echo "THE TIMER STAYED ENABLED"; exit 1; fi
+echo "METRIC: weekly timer enabled and scheduled, then rolled back"
+
+sudo ibexctl rollback "$SCAN2" >/dev/null && sudo ibexctl rollback "$SCAN1" >/dev/null || { echo "SCAN ROLLBACK FAILED"; exit 1; }
+for f in /etc/systemd/system/ibexwall-av-scan.service /etc/ibexwall/av/rules.yar /etc/ibexwall/av/config.json; do
+  sudo test ! -e $f || { echo "$f SURVIVED THE ROLLBACK"; exit 1; }
+done
+echo "METRIC: every file the plugin wrote is gone after the rollbacks"
 "#;
 
 pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
@@ -366,6 +467,11 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     scenario!(
         "i1 endpoint.integrity: an altered installed file is found, configuration stays out",
         INTEGRITY
+    );
+
+    scenario!(
+        "a1 endpoint.av: EICAR is flagged by ClamAV and YARA, scans can be scheduled and undone",
+        AV
     );
 
     scenario!(

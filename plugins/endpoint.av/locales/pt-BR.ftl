@@ -1,0 +1,11 @@
+av-infected-title = Um scanner sinalizou um arquivo
+av-infected-summary = { $path } correspondeu a { $signature }. Não abra; apague ou examine em um lugar seguro.
+av-more-title = E mais { $count }
+av-more-summary = Mais { $count } arquivos foram sinalizados. Rode a verificação com --json para ver todos.
+av-nosignatures-title = O ClamAV não tem base de assinaturas
+av-nosignatures-summary = O ClamAV está instalado mas não tem com o que comparar os arquivos. Rode o freshclam (ou o timer de atualização da sua distribuição) antes.
+av-noscanner-title = Nenhum scanner antimalware instalado
+av-noscanner-summary = Instale o ClamAV (e o YARA, para regras próprias) pela sua distribuição para varrer arquivos. O IbexWall não instala nada sozinho.
+av-may-affect-load = Uma varredura lê muitos arquivos e deixa o computador mais lento enquanto roda.
+av-selinux-title = O SELinux impede o ClamAV de ler seus arquivos
+av-selinux-summary = Uma varredura rodaria e não veria nada. Permita com: sudo setsebool -P antivirus_can_scan_system on

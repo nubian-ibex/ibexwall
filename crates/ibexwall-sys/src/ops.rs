@@ -400,34 +400,32 @@ pub fn apply_snapshot_inverses(
                 ..
             } => {
                 let enabled: crate::Enabled = serde_json::from_str(enabled)?;
+                // Put back only what the transaction changed: touching the
+                // enablement of a unit that was merely restarted would fail
+                // on units whose enablement the init scripts own (Ubuntu's
+                // `ssh.service`, with its socket) and gains nothing.
+                let now = sys.systemd.snapshot(unit)?;
+                let enable_differs = now.enabled != enabled;
                 match enabled {
-                    crate::Enabled::Enabled => {
+                    crate::Enabled::Enabled if enable_differs => {
                         sys.systemd.apply(unit, UnitAction::Enable, false)?;
-                        if *active {
-                            sys.systemd.apply(unit, UnitAction::Start, false)?;
-                        } else {
-                            sys.systemd.apply(unit, UnitAction::Stop, false)?;
-                        }
                     }
-                    crate::Enabled::Disabled => {
+                    crate::Enabled::Disabled if enable_differs => {
                         sys.systemd.apply(unit, UnitAction::Disable, false)?;
-                        if *active {
-                            sys.systemd.apply(unit, UnitAction::Start, false)?;
-                        } else {
-                            sys.systemd.apply(unit, UnitAction::Stop, false)?;
-                        }
                     }
-                    crate::Enabled::Masked => {
+                    crate::Enabled::Masked if enable_differs => {
                         sys.systemd.apply(unit, UnitAction::Stop, false)?;
                         sys.systemd.apply(unit, UnitAction::Mask, false)?;
                     }
-                    crate::Enabled::Static | crate::Enabled::NotFound => {
-                        if *active {
-                            sys.systemd.apply(unit, UnitAction::Start, false)?;
-                        } else {
-                            sys.systemd.apply(unit, UnitAction::Stop, false)?;
-                        }
-                    }
+                    _ => {}
+                }
+                if now.active != *active {
+                    let action = if *active {
+                        UnitAction::Start
+                    } else {
+                        UnitAction::Stop
+                    };
+                    sys.systemd.apply(unit, action, false)?;
                 }
             }
             SnapshotEntry::Sysctl { key, prior, .. } => {

@@ -52,7 +52,7 @@ pub fn render(client: McpClient, with_proposals: bool) -> String {
     let propose = if with_proposals {
         "\"plan\", \"propose:*\""
     } else {
-        "# add \"plan\" and \"propose:system-*\" to let it propose changes"
+        "# add \"plan\" and \"propose:system.*\" to let it propose changes"
     };
     let mut out = format!(
         "Connect {name} to IbexWall\n\nPut this in {}:\n\n{snippet}\n",

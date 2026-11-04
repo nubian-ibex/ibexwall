@@ -24,6 +24,28 @@ pub struct AuditEntry {
     pub hash: String,
 }
 
+/// The newest `limit` entries, newest first (the chain's own columns, no
+/// hashes).
+pub fn tail(conn: &Connection, limit: usize) -> Result<Vec<AuditEntry>> {
+    let mut stmt = conn.prepare(
+        "SELECT seq, ts, actor, plugin, tx_id, ops_digest, result FROM audit_log
+         ORDER BY seq DESC LIMIT ?1",
+    )?;
+    let rows = stmt.query_map([limit as i64], |row| {
+        Ok(AuditEntry {
+            seq: row.get(0)?,
+            ts: row.get(1)?,
+            actor: row.get(2)?,
+            plugin: row.get(3)?,
+            transaction: row.get(4)?,
+            ops_digest: row.get(5)?,
+            result: row.get(6)?,
+            hash: String::new(),
+        })
+    })?;
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+}
+
 /// Appends one entry, computing and storing its chain hash.
 pub fn append(
     conn: &Connection,

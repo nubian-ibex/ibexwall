@@ -1390,6 +1390,19 @@ async fn a_proposal_waits_for_a_human_and_approval_applies_only_what_was_reviewe
         "a proposal is not an application"
     );
 
+    // The core's own audit chain names the client that proposed it.
+    let audit = client
+        .call("com.ibexwall.Core.ListAudit", json!({ "limit": 10 }))
+        .await
+        .unwrap();
+    assert!(
+        audit["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| { e["actor"] == "mcp:claude-code" && e["result"] == "proposal-created" })
+    );
+
     // A bad patch is refused at proposal time, so the queue never holds it.
     let bad = client
         .call(

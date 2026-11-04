@@ -47,7 +47,7 @@ impl Backend for Fake {
             }
             "ListProposals" => json!({ "proposals": [
                 { "id": "p1", "client": "claude-code" }, { "id": "p2", "client": "someone-else" }] }),
-            "History" => {
+            "ListAudit" => {
                 json!({ "entries": [{ "actor": "mcp:claude-code", "result": "proposal-created" }, { "actor": "user", "result": "apply-ok" }] })
             }
             "GetAppDestinations" => {
@@ -560,7 +560,7 @@ impl Backend for Hostile {
             "ListProposals" => {
                 json!({ "proposals": [{ "id": "p1", "client": "claude-code", "justification": p }] })
             }
-            "History" => json!({ "entries": [{ "actor": p, "result": p }] }),
+            "ListAudit" => json!({ "entries": [{ "actor": p, "result": p }] }),
             _ => json!({}),
         })
     }
@@ -614,7 +614,7 @@ fn the_injection_corpus_stays_data_and_never_reaches_the_core_as_a_write() {
                     "RecentEvents",
                     "GetAppDestinations",
                     "ListProposals",
-                    "History"
+                    "ListAudit"
                 ]
                 .contains(&method.as_str()),
                 "{method}"

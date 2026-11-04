@@ -48,6 +48,7 @@ method CreateProposal(plugin: string, patch: object, justification: string, clie
 method DecideProposal(id: string, decision: string, patch: ?object) -> (transaction: ?Transaction)
 
 # Added in v1 (additive): audit chain validation and event history.
+method ListAudit(limit: ?int) -> (entries: []HistoryEntry)
 method AuditVerify() -> (valid: bool, entries: int, reason: ?string)
 method RecentEvents(limit: ?int) -> (events: []Event)
 

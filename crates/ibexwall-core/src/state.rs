@@ -106,6 +106,19 @@ const MIGRATIONS: &[(&str, &str)] = &[
     ),
     ("0003_apps", ibexwall_apps::SCHEMA),
     ("0004_policy", ibexwall_apps::policy::POLICY_SCHEMA),
+    (
+        "0005_proposals",
+        "CREATE TABLE proposals (
+             id TEXT PRIMARY KEY,
+             client TEXT NOT NULL,
+             plugin TEXT NOT NULL,
+             json TEXT NOT NULL,
+             ops_digest TEXT NOT NULL,
+             status TEXT NOT NULL,
+             created_at INTEGER NOT NULL,
+             decided_at INTEGER
+         );",
+    ),
 ];
 
 impl State {

@@ -429,9 +429,17 @@ pub struct Proposal {
     pub client: String,
     pub plugin: String,
     pub plan_id: String,
+    /// What the client asked for (the plugin's own patch).
+    pub patch: Value,
+    /// The operations the plan would run, as the human will review them.
+    pub preview: Vec<OpPreview>,
+    pub may_affect_keys: Vec<String>,
+    /// Written by the AI: shown as generated, never as an instruction.
     pub justification: String,
     pub status: ProposalStatus,
     pub created_at: String,
+    #[serde(default)]
+    pub decided_at: Option<String>,
 }
 
 #[cfg(test)]

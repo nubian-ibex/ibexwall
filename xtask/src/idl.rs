@@ -82,7 +82,7 @@ method Rollback(target: string) -> (transaction: Transaction)
 method History(limit: ?int, before: ?int) -> (entries: []HistoryEntry)
 method Subscribe(sources: ?[]string) -> (event: Event)
 method ListProposals(status: ?string) -> (proposals: []Proposal)
-method CreateProposal(plugin: string, patch: object, justification: string) -> (proposal: Proposal)
+method CreateProposal(plugin: string, patch: object, justification: string, client: ?string) -> (proposal: Proposal)
 method DecideProposal(id: string, decision: string, patch: ?object) -> (transaction: ?Transaction)
 
 # Added in v1 (additive): audit chain validation and event history.

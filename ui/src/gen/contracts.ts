@@ -615,10 +615,25 @@ export interface Prompt {
 export interface Proposal {
   client: string;
   created_at: string;
+  decided_at?: string | null;
   id: string;
+  /**
+   * Written by the AI: shown as generated, never as an instruction.
+   */
   justification: string;
+  may_affect_keys: string[];
+  /**
+   * What the client asked for (the plugin's own patch).
+   */
+  patch: {
+    [k: string]: unknown;
+  };
   plan_id: string;
   plugin: string;
+  /**
+   * The operations the plan would run, as the human will review them.
+   */
+  preview: OpPreview[];
   status: ProposalStatus;
 }
 export interface Report {

@@ -1,5 +1,36 @@
 {
   "$defs": {
+    "OpPreview": {
+      "additionalProperties": false,
+      "description": "One operation as previewed to the user (op kind + target + diff).",
+      "properties": {
+        "diff": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "op": {
+          "type": "string"
+        },
+        "risk": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RiskFlag"
+          },
+          "type": "array"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "target"
+      ],
+      "type": "object"
+    },
     "ProposalStatus": {
       "description": "Lifecycle of an AI/client proposal.",
       "enum": [
@@ -7,6 +38,17 @@
         "approved",
         "rejected",
         "expired"
+      ],
+      "type": "string"
+    },
+    "RiskFlag": {
+      "description": "Risk flags attached to plans and transactions (spec §4.5).",
+      "enum": [
+        "network",
+        "auth",
+        "boot",
+        "reboot_to_revert",
+        "irreversible"
       ],
       "type": "string"
     }
@@ -21,17 +63,41 @@
     "created_at": {
       "type": "string"
     },
+    "decided_at": {
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "id": {
       "type": "string"
     },
     "justification": {
+      "description": "Written by the AI: shown as generated, never as an instruction.",
       "type": "string"
+    },
+    "may_affect_keys": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "patch": {
+      "description": "What the client asked for (the plugin's own patch)."
     },
     "plan_id": {
       "type": "string"
     },
     "plugin": {
       "type": "string"
+    },
+    "preview": {
+      "description": "The operations the plan would run, as the human will review them.",
+      "items": {
+        "$ref": "#/$defs/OpPreview"
+      },
+      "type": "array"
     },
     "status": {
       "$ref": "#/$defs/ProposalStatus"
@@ -42,6 +108,9 @@
     "client",
     "plugin",
     "plan_id",
+    "patch",
+    "preview",
+    "may_affect_keys",
     "justification",
     "status",
     "created_at"

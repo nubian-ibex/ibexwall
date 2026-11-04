@@ -1,0 +1,38 @@
+id = "system.accounts"
+version = "0.1.0"
+api = 1
+category = "system"
+kinds = ["check"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-accounts"
+default_enabled = true
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "Accounts"
+pt-BR = "Contas"
+
+[description]
+en = "Checks for accounts without a password, extra administrator accounts and sign-in lockout."
+pt-BR = "Procura contas sem senha, contas de administrador extras e bloqueio após tentativas de login."
+
+[privileges]
+# Read-only check: the core executes nothing on its behalf.
+
+[sandbox]
+user = "dynamic"
+# /etc/shadow is root-only; without this the check says "not assessed".
+capabilities = ["CAP_DAC_READ_SEARCH"]
+read_paths = ["/etc/passwd", "/etc/shadow", "/etc/security", "/etc/pam.d"]
+network = false
+
+[risk]
+affects = []
+reversible = "immediate"
+confirm_timeout = false
+may_affect = []
+
+[ui]
+icon = "users"
+order = 66

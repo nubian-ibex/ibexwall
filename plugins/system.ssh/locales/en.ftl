@@ -1,0 +1,11 @@
+plugin-system.ssh-summary = Settings of the SSH server.
+ssh-root-title = The SSH server lets root sign in with a password
+ssh-root-summary = PermitRootLogin is { $value }. Anyone who guesses the root password gets full control.
+ssh-empty-title = The SSH server accepts empty passwords
+ssh-empty-summary = PermitEmptyPasswords is yes: an account without a password can sign in over the network.
+ssh-x11-title = The SSH server forwards graphical sessions
+ssh-x11-summary = X11Forwarding is yes. A compromised server can reach the client's screen and keyboard.
+ssh-password-title = The SSH server accepts passwords
+ssh-password-summary = Password sign-in can be guessed over the network; keys cannot.
+ssh-may-affect-root = Signing in as root over SSH with a password stops working. Use a normal user and sudo, or a key.
+ssh-may-affect-password = With passwords off, only users with an authorized key can sign in. Check yours first or you can lock yourself out.

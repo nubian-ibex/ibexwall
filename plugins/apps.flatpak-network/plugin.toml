@@ -30,7 +30,7 @@ network = false
 affects = ["network"]
 reversible = "immediate"
 confirm_timeout = false
-may_affect = ["the app stops working if it needs the network", "updates and sign-in inside the app"]
+may_affect = ["flatpak-network-may-affect-needs-network", "flatpak-network-may-affect-updates"]
 
 [ui]
 icon = "box"

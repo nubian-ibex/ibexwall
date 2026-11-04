@@ -1,4 +1,3 @@
-plugin-system.audit-summary = Os avisos e sugestões da última auditoria do Lynis.
 audit-warning-title = Aviso do Lynis: { $text }
 audit-warning-summary = O teste { $test } do Lynis relatou um aviso. { $detail }
 audit-suggestion-title = Sugestão do Lynis: { $text }

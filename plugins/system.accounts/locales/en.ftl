@@ -1,4 +1,3 @@
-plugin-system.accounts-summary = Accounts without a password, extra administrators and sign-in lockout.
 accounts-empty-title = An account can sign in without a password
 accounts-empty-summary = The account { $user } has an empty password and a real shell.
 accounts-uid0-title = Another account has administrator rights

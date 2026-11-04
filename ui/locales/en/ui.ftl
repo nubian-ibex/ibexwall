@@ -358,3 +358,4 @@ prompt-scope-once = Only this time
 prompt-countdown = No answer in { $seconds } s, the connection goes through.
 prompt-more = { $count } more waiting
 prompt-failed = Could not send the answer. It may have expired.
+risk-reboot-to-revert = This cannot be undone until the computer restarts. Undoing the change in History will not bring it back.

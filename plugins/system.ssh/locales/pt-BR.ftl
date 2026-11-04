@@ -1,4 +1,3 @@
-plugin-system.ssh-summary = Configurações do servidor SSH.
 ssh-root-title = O servidor SSH deixa o root entrar com senha
 ssh-root-summary = PermitRootLogin está em { $value }. Quem adivinhar a senha de root controla tudo.
 ssh-empty-title = O servidor SSH aceita senhas vazias

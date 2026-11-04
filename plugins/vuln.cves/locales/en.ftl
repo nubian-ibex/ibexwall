@@ -1,4 +1,3 @@
-plugin-vuln.cves-summary = Security updates published for packages you have installed.
 cves-update-title = A security update is waiting for { $package }
 cves-update-summary = { $advisory } fixes { $package } ({ $severity }). Install it with your package manager.
 cves-more-title = More security updates are waiting

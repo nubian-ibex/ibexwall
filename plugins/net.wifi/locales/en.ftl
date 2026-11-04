@@ -1,4 +1,3 @@
-plugin-net.wifi-summary = Wi-Fi hardware address and remembered open networks.
 wifi-mac-title = Wi-Fi uses the real hardware address on every network
 wifi-mac-summary = NetworkManager keeps the card's real address when it connects (cloned-mac-address is { $value }), so every network you join can recognise this computer.
 wifi-open-title = An open Wi-Fi network is remembered

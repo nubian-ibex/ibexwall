@@ -1,4 +1,3 @@
-plugin-apps.flatpak-perms-summary = Flatpak apps with permissions that weaken the sandbox.
 flatpak-host-title = { $app } can read and change every file you can
 flatpak-host-summary = The Flatpak app { $app } was given { $permission }. Change it with Flatseal or `flatpak override`.
 flatpak-home-title = { $app } can read and change your whole home folder

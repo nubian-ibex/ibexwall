@@ -1,4 +1,3 @@
-plugin-system.updates-summary = Whether security updates install themselves.
 updates-auto-off-title = Updates are not installed automatically
 updates-auto-off-summary = Nothing on this computer installs security updates by itself ({ $tool }).
 updates-auto-missing-title = The automatic update tool is not installed

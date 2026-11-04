@@ -42,7 +42,7 @@ network = false
 affects = ["network"]
 reversible = "immediate"
 confirm_timeout = true
-may_affect = ["captive portals", "VPN clients that set their own DNS", "corporate split DNS"]
+may_affect = ["dns-may-affect-captive", "dns-may-affect-vpn", "dns-may-affect-split"]
 
 [ui]
 icon = "globe"

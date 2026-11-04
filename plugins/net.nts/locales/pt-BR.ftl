@@ -1,4 +1,3 @@
-plugin-net.nts-summary = Se o relógio é acertado por servidores que ele consegue autenticar.
 nts-missing-title = O relógio não é mantido por um cliente que autentica servidores
 nts-missing-summary = O chrony não está instalado. Sem ele a hora vem de NTP sem proteção ou de lugar nenhum, e qualquer um no caminho pode alterá-la. Instale o chrony e depois ligue isto.
 nts-off-title = O relógio recebe a hora de servidores que ele não consegue autenticar

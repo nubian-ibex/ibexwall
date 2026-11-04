@@ -1,5 +1,4 @@
 # system.posture messages (pt-BR). Keys are stable; never concatenate.
-plugin-system.posture-summary = O quanto este computador está protegido.
 posture-secure-boot-name = Secure Boot
 posture-secure-boot-title = Secure Boot está desativado
 posture-secure-boot-summary = Sem ele, um programa de boot adulterado poderia iniciar antes do sistema sem ser notado.

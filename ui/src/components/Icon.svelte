@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Bot from '@lucide/svelte/icons/bot';
   import Box from '@lucide/svelte/icons/box';
   import BrickWall from '@lucide/svelte/icons/brick-wall';
   import ClipboardList from '@lucide/svelte/icons/clipboard-list';
@@ -19,6 +20,7 @@
   import CircleQuestionMark from '@lucide/svelte/icons/circle-question-mark';
 
   const icons = {
+    bot: Bot,
     box: Box,
     'brick-wall': BrickWall,
     'clipboard-list': ClipboardList,

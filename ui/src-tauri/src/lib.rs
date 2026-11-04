@@ -82,6 +82,20 @@ async fn answer_prompt(id: String, decision: String, scope: String) -> Result<Va
 }
 
 #[tauri::command]
+async fn list_proposals(status: Option<String>) -> Result<Value, Value> {
+    core("ListProposals", json!({ "status": status }))
+        .await
+        .map_err(|e| err_text(&e))
+}
+
+#[tauri::command]
+async fn decide_proposal(id: String, decision: String) -> Result<Value, Value> {
+    core("DecideProposal", json!({ "id": id, "decision": decision }))
+        .await
+        .map_err(|e| err_text(&e))
+}
+
+#[tauri::command]
 async fn set_plugin_enabled(id: String, enabled: bool) -> Result<Value, Value> {
     core("SetPluginEnabled", json!({ "id": id, "enabled": enabled }))
         .await
@@ -231,6 +245,8 @@ pub fn run() {
             list_findings,
             run_checks,
             history,
+            list_proposals,
+            decide_proposal,
             set_plugin_enabled,
             get_manifest,
             plan_change,

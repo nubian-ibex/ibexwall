@@ -4,7 +4,15 @@ import { insideTauri, TauriTransport } from './tauri-transport';
 import { TransportError, type Transport } from './transport';
 
 export type Route =
-  'overview' | 'apps' | 'firewall' | 'dns' | 'plugins' | 'posture' | 'history' | 'settings';
+  | 'overview'
+  | 'apps'
+  | 'firewall'
+  | 'dns'
+  | 'plugins'
+  | 'posture'
+  | 'history'
+  | 'assistant'
+  | 'settings';
 
 type Load<T> =
   { status: 'loading' } | { status: 'ready'; data: T } | { status: 'error'; error: TransportError };

@@ -5,6 +5,7 @@
   import { applyTheme, savedTheme } from './lib/theme';
   import AppShell from './components/AppShell.svelte';
   import PromptDialog from './components/PromptDialog.svelte';
+  import Assistant from './screens/Assistant.svelte';
   import Apps from './screens/Apps.svelte';
   import Dns from './screens/Dns.svelte';
   import Firewall from './screens/Firewall.svelte';
@@ -40,6 +41,8 @@
     <Plugins />
   {:else if app.route === 'history'}
     <History />
+  {:else if app.route === 'assistant'}
+    <Assistant />
   {:else if app.route === 'settings'}
     <Settings />
   {/if}

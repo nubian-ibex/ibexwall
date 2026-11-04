@@ -73,17 +73,24 @@ impl RealRunner {
             .args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            // The verifier's complaints go to the daemon's journal: a tool
-            // that cannot run is a fact the person can see, not a silence.
-            .stderr(Stdio::inherit())
+            // pacman reports what it finds on stderr; the others use stdout.
+            // What the tools say beyond that is read like the rest and,
+            // being unparseable, ignored.
+            .stderr(Stdio::piped())
             .spawn()
             .ok()?;
         // Read while waiting, or a chatty verifier fills the pipe and both
         // sides wait forever.
         let mut stdout = child.stdout.take()?;
+        let mut stderr = child.stderr.take()?;
         let reader = std::thread::spawn(move || {
             let mut text = String::new();
             let _ = stdout.read_to_string(&mut text);
+            text
+        });
+        let err_reader = std::thread::spawn(move || {
+            let mut text = String::new();
+            let _ = stderr.read_to_string(&mut text);
             text
         });
         let deadline = started + limit;
@@ -94,7 +101,10 @@ impl RealRunner {
             }
             std::thread::sleep(Duration::from_millis(25));
         }
-        reader.join().ok()
+        let mut text = reader.join().ok()?;
+        text.push('\n');
+        text.push_str(&err_reader.join().ok()?);
+        Some(text)
     }
 }
 

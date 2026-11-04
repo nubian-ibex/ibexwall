@@ -1,0 +1,39 @@
+id = "device.usb"
+version = "0.1.0"
+api = 1
+category = "device"
+kinds = ["check", "control"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-usb"
+default_enabled = true
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "USB protection"
+pt-BR = "Proteção de USB"
+
+[description]
+en = "Checks that new USB devices are blocked until you allow them (USBGuard), and builds the allow list from what is plugged in now."
+pt-BR = "Verifica se novos dispositivos USB ficam bloqueados até você permitir (USBGuard), e monta a lista de permitidos com o que está conectado agora."
+
+[privileges]
+write_paths = ["/etc/usbguard/rules.d"]
+units = ["usbguard.service"]
+unit_actions = ["enable"]
+
+[sandbox]
+user = "dynamic"
+capabilities = []
+read_paths = ["/sys/bus/usb/devices", "/etc/usbguard", "/usr/sbin/usbguard-daemon", "/usr/bin/usbguard-daemon", "/etc/systemd/system", "/usr/lib/systemd/system"]
+network = false
+
+[risk]
+affects = ["usb"]
+reversible = "immediate"
+confirm_timeout = true
+may_affect = ["usb-may-affect-new-devices"]
+
+[ui]
+icon = "usb"
+order = 72

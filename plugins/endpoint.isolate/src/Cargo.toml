@@ -1,0 +1,24 @@
+[package]
+name = "ibexwall-plugin-isolate"
+description = "endpoint.isolate plugin: emergency mode, the network cut except an allow list"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "ibexwall-plugin-isolate"
+path = "main.rs"
+
+[dependencies]
+ibexwall-proto.workspace = true
+ibexwall-sdk.workspace = true
+ibexwall-sys.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true

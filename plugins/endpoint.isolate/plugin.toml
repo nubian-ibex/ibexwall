@@ -1,0 +1,38 @@
+id = "endpoint.isolate"
+version = "0.1.0"
+api = 1
+category = "endpoint"
+kinds = ["check", "control"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-isolate"
+default_enabled = false
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "Emergency mode"
+pt-BR = "Modo emergência"
+
+[description]
+en = "Cuts the network except for the addresses you name, and is undone from History."
+pt-BR = "Corta a rede, exceto os endereços que você indicar, e é desfeito pelo Histórico."
+
+[privileges]
+write_paths = ["/etc/ibexwall/isolate"]
+nft_prefix = "endpoint_isolate"
+
+[sandbox]
+user = "dynamic"
+capabilities = []
+read_paths = ["/etc/ibexwall/isolate"]
+network = false
+
+[risk]
+affects = ["network"]
+reversible = "immediate"
+confirm_timeout = true
+may_affect = ["isolate-may-affect-network", "isolate-may-affect-remote", "isolate-may-affect-updates"]
+
+[ui]
+icon = "shield-alert"
+order = 90

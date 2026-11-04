@@ -1,0 +1,40 @@
+id = "vuln.cves"
+version = "0.1.0"
+api = 1
+category = "vuln"
+kinds = ["check"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-cves"
+default_enabled = false
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "Known vulnerabilities"
+pt-BR = "Vulnerabilidades conhecidas"
+
+[description]
+en = "Lists the security updates your distribution has published for installed packages. Works offline from the package manager's own cache; nothing is sent anywhere."
+pt-BR = "Lista as atualizações de segurança que a sua distribuição publicou para os pacotes instalados. Funciona offline, pelo cache do próprio gerenciador de pacotes; nada é enviado a lugar nenhum."
+
+[privileges]
+# Read-only check: the core executes nothing on its behalf.
+
+[requires]
+commands = ["dnf5", "apt-get", "arch-audit"]
+
+[sandbox]
+user = "dynamic"
+capabilities = ["CAP_DAC_READ_SEARCH"]
+read_paths = ["/var/cache", "/var/lib", "/etc", "/usr"]
+network = false
+
+[risk]
+affects = []
+reversible = "immediate"
+confirm_timeout = false
+may_affect = []
+
+[ui]
+icon = "shield-alert"
+order = 76

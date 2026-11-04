@@ -2279,7 +2279,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "ibexwall-plugin-camera-mic"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "ibexwall-plugin-coredump"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "ibexwall-plugin-cves"
 version = "0.1.0"
 dependencies = [
  "ibexwall-proto",
@@ -2349,6 +2371,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ibexwall-plugin-flatpak-perms"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "ibexwall-plugin-mounts"
 version = "0.1.0"
 dependencies = [
@@ -2393,6 +2426,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ibexwall-plugin-session-lock"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "ibexwall-plugin-ssh"
 version = "0.1.0"
 dependencies = [
@@ -2415,7 +2459,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "ibexwall-plugin-telemetry"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "ibexwall-plugin-updates"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "ibexwall-plugin-usb"
 version = "0.1.0"
 dependencies = [
  "ibexwall-proto",

@@ -11,6 +11,7 @@ import type {
   PluginInfo,
   Posture,
   Prompt,
+  Proposal,
   Transaction,
 } from '../gen/contracts';
 import { TransportError, type AppsListing, type PromptScope, type Transport } from './transport';
@@ -128,6 +129,14 @@ export class TauriTransport implements Transport {
 
   rollback(target: string) {
     return unwrapped<Transaction>('rollback', 'transaction', { target });
+  }
+
+  listProposals(status?: Proposal['status']) {
+    return unwrapped<Proposal[]>('list_proposals', 'proposals', { status });
+  }
+
+  async decideProposal(id: string, decision: 'approve' | 'reject'): Promise<void> {
+    await invoke('decide_proposal', { id, decision });
   }
 
   history(): Promise<HistoryEntry[]> {

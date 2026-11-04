@@ -20,7 +20,7 @@ for (const theme of ['light', 'dark'] as const) {
 
       // Overview first, then the Apps and network screen (list, filters,
       // details) and the Secure DNS screen (a form with a flow).
-      for (const screen of ['overview', 'firewall', 'apps', 'dns']) {
+      for (const screen of ['overview', 'firewall', 'apps', 'dns', 'assistant']) {
         if (screen === 'firewall') {
           await page.getByRole('button', { name: /firewall/i }).click();
           await expect(
@@ -38,6 +38,12 @@ for (const theme of ['light', 'dark'] as const) {
           await page.getByRole('button', { name: /secure dns|dns seguro/i }).click();
           await expect(page.getByRole('radio').first()).toBeVisible();
         }
+        if (screen === 'assistant') {
+          await page.getByRole('button', { name: /assistant|assistente/i }).click();
+          await expect(
+            page.getByRole('button', { name: /approve and apply|aprovar e aplicar/i }),
+          ).toBeVisible();
+        }
         const results = await new AxeBuilder({ page })
           .withTags(['wcag2a', 'wcag2aa', 'wcag22aa'])
           .analyze();
@@ -54,7 +60,7 @@ test('keyboard navigation reaches every navigation item', async ({ page }) => {
   await page.goto('/?scenario=attention');
   const overview = page.getByRole('button', { name: 'Overview' });
   await overview.focus();
-  for (let step = 0; step < 8; step += 1) {
+  for (let step = 0; step < 9; step += 1) {
     await page.keyboard.press('Tab');
   }
   // After the nav, focus moves into the content: the "Check now" button.

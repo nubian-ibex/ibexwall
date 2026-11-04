@@ -15,6 +15,7 @@
     { route: 'posture', icon: 'shield-check', key: 'nav-posture' },
     { route: 'plugins', icon: 'clipboard-list', key: 'nav-plugins' },
     { route: 'history', icon: 'clock', key: 'nav-history' },
+    { route: 'assistant', icon: 'bot', key: 'nav-assistant' },
     { route: 'settings', icon: 'settings', key: 'nav-settings' },
   ];
 </script>

@@ -14,6 +14,7 @@ import type {
   PluginInfo,
   Posture,
   Prompt,
+  Proposal,
   Transaction,
 } from '../gen/contracts';
 
@@ -64,4 +65,8 @@ export interface Transport {
   confirm(transactionId: string): Promise<void>;
   rollback(target: string): Promise<Transaction>;
   history(limit?: number): Promise<HistoryEntry[]>;
+  /** Changes an AI assistant proposed, newest first. */
+  listProposals(status?: Proposal['status']): Promise<Proposal[]>;
+  /** Approving applies the reviewed plan; the core refuses it if the plan changed. */
+  decideProposal(id: string, decision: 'approve' | 'reject'): Promise<void>;
 }

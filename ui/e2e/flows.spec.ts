@@ -115,3 +115,12 @@ test('ask: the prompt window shows only the question', async ({ page }) => {
   await expect(page.getByRole('navigation')).toHaveCount(0);
   await expect(dialog.getByText(/no answer in \d+ s/i)).toBeVisible();
 });
+
+test('assistant: a suggestion is quoted as the AI’s text and can be rejected', async ({ page }) => {
+  await page.goto('/?scenario=attention');
+  await page.getByRole('button', { name: /assistant/i }).click();
+  await expect(page.getByText(/suggested by claude-code \(an ai\)/i)).toBeVisible();
+  await expect(page.getByText(/written by the ai, not checked/i)).toBeVisible();
+  await page.getByRole('button', { name: /^reject$/i }).click();
+  await expect(page.getByRole('button', { name: /approve and apply/i })).toHaveCount(0);
+});

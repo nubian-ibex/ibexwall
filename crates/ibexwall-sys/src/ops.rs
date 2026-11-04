@@ -46,10 +46,18 @@ pub enum SnapshotEntry {
         op_index: usize,
         chains: Vec<NftChainPrior>,
     },
-    /// A firewall manager whose files a firewall.adapter op changes: after\n    /// the files are restored it is told to re-read them.
+    /// A firewall manager whose files a firewall.adapter op changes:
+    /// after the files are restored it is told to re-read them.
     Firewall { op_index: usize, backend: String },
     /// Ops without a system inverse (exec).
     NoInverse { op_index: usize },
+    /// A symmetric exec the manifest declared: re-run in the rollback's
+    /// second pass, after the files are restored.
+    Reload {
+        op_index: usize,
+        #[serde(flatten)]
+        exec: ReloadExec,
+    },
 }
 
 /// A chain's definition before a transaction (`None`: it did not exist).
@@ -73,6 +81,14 @@ pub struct PriorFile {
 pub struct SnapshotManifest {
     pub tx: String,
     pub entries: Vec<SnapshotEntry>,
+}
+
+/// An allowlisted exec that is its own inverse, re-run by the rollback
+/// after the files are restored (a manager told to re-read its directory).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReloadExec {
+    pub path: String,
+    pub args: Vec<String>,
 }
 
 /// Errors from executing one operation (validation lives in the core).
@@ -462,6 +478,16 @@ pub fn apply_snapshot_inverses(
                     sys.nft.restore(&chain.name, chain.prior.as_ref())?;
                 }
             }
+            SnapshotEntry::Reload { exec, .. } => {
+                execute(
+                    &Op::Exec {
+                        path: exec.path.clone(),
+                        args: exec.args.clone(),
+                    },
+                    sys,
+                )
+                .with_context(|| format!("re-running {} {}", exec.path, exec.args.join(" ")))?;
+            }
             SnapshotEntry::Firewall { .. } | SnapshotEntry::NoInverse { .. } => {}
         }
     }
@@ -476,6 +502,18 @@ pub fn apply_snapshot_inverses(
                 restarted: true,
                 ..
             } => sys.systemd.apply(unit, UnitAction::Restart, false)?,
+            // After the restored files: the manager re-reads its directory
+            // and lets go of what the transaction created or removed.
+            SnapshotEntry::Reload { exec, .. } => {
+                execute(
+                    &Op::Exec {
+                        path: exec.path.clone(),
+                        args: exec.args.clone(),
+                    },
+                    sys,
+                )
+                .with_context(|| format!("re-running {} {}", exec.path, exec.args.join(" ")))?;
+            }
             // The restored files are on disk: make the manager read them.
             SnapshotEntry::Firewall { backend, .. } => {
                 if let Some(backend) = ibexwall_firewall::Backend::from_name(backend)

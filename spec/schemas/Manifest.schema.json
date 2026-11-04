@@ -26,6 +26,11 @@
         },
         "path": {
           "type": "string"
+        },
+        "symmetric": {
+          "default": false,
+          "description": "This exec is its own inverse: the rollback runs it again after the\nfiles are restored (a manager told to re-read its directory).",
+          "type": "boolean"
         }
       },
       "required": [

@@ -71,7 +71,13 @@ impl Engine {
 
     /// Captures prior state for every op under
     /// `<state>/snapshots/<tx>/`.
-    pub fn snapshot(&self, state: &State, tx: &str, ops: &[Op]) -> Result<SnapshotManifest> {
+    pub fn snapshot(
+        &self,
+        state: &State,
+        tx: &str,
+        ops: &[Op],
+        reload_execs: &[(String, Vec<String>)],
+    ) -> Result<SnapshotManifest> {
         let dir = state.snapshots_dir().join(tx);
         std::fs::create_dir_all(dir.join("files"))?;
         let mut entries = Vec::new();
@@ -234,6 +240,17 @@ impl Engine {
                     entries.push(SnapshotEntry::Nft {
                         op_index: index,
                         chains,
+                    });
+                }
+                Op::Exec { path, args }
+                    if reload_execs.iter().any(|(p, a)| p == path && a == args) =>
+                {
+                    entries.push(SnapshotEntry::Reload {
+                        op_index: index,
+                        exec: ibexwall_sys::ops::ReloadExec {
+                            path: path.clone(),
+                            args: args.clone(),
+                        },
                     });
                 }
                 _ => entries.push(SnapshotEntry::NoInverse { op_index: index }),
@@ -573,7 +590,7 @@ mod tests {
         let path = "/etc/sysctl.d/90-ibexwall-test.conf";
         rig.fs.seed(Path::new(path), b"old\n");
         let ops = vec![write(path, "new\n")];
-        rig.engine.snapshot(&rig.state, "tx1", &ops).unwrap();
+        rig.engine.snapshot(&rig.state, "tx1", &ops, &[]).unwrap();
         rig.engine.execute(None, &ops).unwrap();
         assert_eq!(rig.fs.read(Path::new(path)).unwrap(), b"new\n");
         rig.engine.rollback(&rig.state, "tx1").unwrap();
@@ -593,7 +610,7 @@ mod tests {
             args: vec!["--unshare=network".into()],
         };
         let ops = vec![block("org.example.Mine"), block("org.example.Fresh")];
-        rig.engine.snapshot(&rig.state, "txf", &ops).unwrap();
+        rig.engine.snapshot(&rig.state, "txf", &ops, &[]).unwrap();
         rig.engine.execute(None, &ops).unwrap();
         assert_eq!(
             rig.fs.read(Path::new(&mine)).unwrap(),
@@ -627,7 +644,7 @@ mod tests {
             "firewalld",
             serde_json::json!({"action": "allow_port", "port": 8080, "proto": "tcp"}),
         )];
-        rig.engine.snapshot(&rig.state, "txw1", &ops).unwrap();
+        rig.engine.snapshot(&rig.state, "txw1", &ops, &[]).unwrap();
         rig.engine.execute(None, &ops).unwrap();
         assert_eq!(
             rig.runner.calls(),
@@ -660,7 +677,7 @@ mod tests {
             "firewalld",
             serde_json::json!({"action": "set_default_zone", "name": "home"}),
         )];
-        rig.engine.snapshot(&rig.state, "txdz", &ops).unwrap();
+        rig.engine.snapshot(&rig.state, "txdz", &ops, &[]).unwrap();
         rig.engine.execute(None, &ops).unwrap();
         assert_eq!(
             rig.runner.calls(),
@@ -684,7 +701,7 @@ mod tests {
             "firewalld",
             serde_json::json!({"action": "allow_service", "name": "http"}),
         )];
-        rig.engine.snapshot(&rig.state, "txw2", &ops).unwrap();
+        rig.engine.snapshot(&rig.state, "txw2", &ops, &[]).unwrap();
         rig.engine.execute(None, &ops).unwrap();
         rig.fs.seed(Path::new(zone), b"<zone/>");
         rig.engine.rollback(&rig.state, "txw2").unwrap();
@@ -706,7 +723,7 @@ mod tests {
             "firewalld",
             serde_json::json!({"action": "remove_port", "port": 1, "proto": "udp"}),
         )];
-        let manifest = rig.engine.snapshot(&rig.state, "txw3", &ops).unwrap();
+        let manifest = rig.engine.snapshot(&rig.state, "txw3", &ops, &[]).unwrap();
         let paths: Vec<_> = manifest
             .entries
             .iter()
@@ -735,7 +752,7 @@ mod tests {
             "ufw",
             serde_json::json!({"action": "allow_port", "port": 22, "proto": "tcp"}),
         )];
-        let manifest = rig.engine.snapshot(&rig.state, "txu1", &ops).unwrap();
+        let manifest = rig.engine.snapshot(&rig.state, "txu1", &ops, &[]).unwrap();
         assert_eq!(
             ibexwall_sys::write_directories(&ops),
             vec!["/etc/ufw".to_string(), "/run/xtables.lock".to_string()]
@@ -834,7 +851,7 @@ mod tests {
         let rig = rig("fc", false);
         let path = "/etc/ibexwall-tests/new.conf";
         let ops = vec![write(path, "x\n")];
-        rig.engine.snapshot(&rig.state, "tx2", &ops).unwrap();
+        rig.engine.snapshot(&rig.state, "tx2", &ops, &[]).unwrap();
         rig.engine.execute(None, &ops).unwrap();
         assert!(rig.fs.exists(Path::new(path)));
         rig.engine.rollback(&rig.state, "tx2").unwrap();
@@ -847,7 +864,7 @@ mod tests {
         let path = "/etc/ibexwall-tests/keep.conf";
         rig.fs.seed(Path::new(path), b"keep\n");
         let ops = vec![Op::FileRemove { path: path.into() }];
-        rig.engine.snapshot(&rig.state, "tx3", &ops).unwrap();
+        rig.engine.snapshot(&rig.state, "tx3", &ops, &[]).unwrap();
         rig.engine.execute(None, &ops).unwrap();
         assert!(!rig.fs.exists(Path::new(path)));
         rig.engine.rollback(&rig.state, "tx3").unwrap();
@@ -860,7 +877,7 @@ mod tests {
         let path = "/etc/ibexwall-tests/t.conf";
         rig.fs.seed(Path::new(path), b"orig\n");
         let ops = vec![write(path, "new\n")];
-        rig.engine.snapshot(&rig.state, "tx4", &ops).unwrap();
+        rig.engine.snapshot(&rig.state, "tx4", &ops, &[]).unwrap();
         rig.engine.execute(None, &ops).unwrap();
         let blob = rig.state.snapshots_dir().join("tx4/files/000.bin");
         std::fs::write(&blob, b"evil\n").unwrap();
@@ -895,7 +912,7 @@ mod tests {
                 action: UnitAction::Restart,
                 now: None,
             }];
-            rig.engine.snapshot(&rig.state, "txu", &ops).unwrap();
+            rig.engine.snapshot(&rig.state, "txu", &ops, &[]).unwrap();
             rig.engine.execute(None, &ops).unwrap();
             rig.engine.rollback(&rig.state, "txu").unwrap();
             let after = rig.systemd.get("ibexwall-test.service");
@@ -927,7 +944,7 @@ mod tests {
             action: UnitAction::Restart,
             now: None,
         }];
-        rig.engine.snapshot(&rig.state, "txu2", &ops).unwrap();
+        rig.engine.snapshot(&rig.state, "txu2", &ops, &[]).unwrap();
         rig.engine.execute(None, &ops).unwrap();
         rig.engine.rollback(&rig.state, "txu2").unwrap();
         let log = rig.systemd.log.snapshot().join("\n");
@@ -944,7 +961,7 @@ mod tests {
             key: "kernel.kexec_load_disabled".into(),
             value: "1".into(),
         }];
-        rig.engine.snapshot(&rig.state, "txow", &ops).unwrap();
+        rig.engine.snapshot(&rig.state, "txow", &ops, &[]).unwrap();
         rig.engine.execute(None, &ops).unwrap();
         rig.engine.rollback(&rig.state, "txow").unwrap();
         // Nothing wrote the prior value back (the kernel would refuse).
@@ -966,7 +983,7 @@ mod tests {
     fn a_new_nft_chain_is_removed_by_rollback() {
         let rig = rig("nft1", true);
         let ops = vec![nft_guard(2)];
-        rig.engine.snapshot(&rig.state, "txn1", &ops).unwrap();
+        rig.engine.snapshot(&rig.state, "txn1", &ops, &[]).unwrap();
         rig.engine.execute(None, &ops).unwrap();
         assert!(rig.nft.has("dev_echo_guard"));
         rig.engine.rollback(&rig.state, "txn1").unwrap();
@@ -977,12 +994,14 @@ mod tests {
     fn an_existing_nft_chain_is_restored_as_it_was() {
         let rig = rig("nft2", true);
         let first = vec![nft_guard(1)];
-        rig.engine.snapshot(&rig.state, "txa", &first).unwrap();
+        rig.engine.snapshot(&rig.state, "txa", &first, &[]).unwrap();
         rig.engine.execute(None, &first).unwrap();
         let before = rig.nft.capture("dev_echo_guard").unwrap();
 
         let second = vec![nft_guard(5)];
-        rig.engine.snapshot(&rig.state, "txb", &second).unwrap();
+        rig.engine
+            .snapshot(&rig.state, "txb", &second, &[])
+            .unwrap();
         rig.engine.execute(None, &second).unwrap();
         assert_ne!(rig.nft.capture("dev_echo_guard").unwrap(), before);
         rig.engine.rollback(&rig.state, "txb").unwrap();
@@ -1022,7 +1041,7 @@ mod tests {
                 now: None,
             },
         ];
-        rig.engine.snapshot(&rig.state, "txr", &ops).unwrap();
+        rig.engine.snapshot(&rig.state, "txr", &ops, &[]).unwrap();
         rig.engine.execute(None, &ops).unwrap();
         let before = rig.systemd.log.len();
         rig.engine.rollback(&rig.state, "txr").unwrap();
@@ -1049,7 +1068,7 @@ mod tests {
             action: UnitAction::Restart,
             now: None,
         }];
-        rig.engine.snapshot(&rig.state, "txr2", &ops).unwrap();
+        rig.engine.snapshot(&rig.state, "txr2", &ops, &[]).unwrap();
         rig.engine.execute(None, &ops).unwrap();
         let before = rig.systemd.log.len();
         rig.engine.rollback(&rig.state, "txr2").unwrap();
@@ -1074,11 +1093,28 @@ mod tests {
                 value: "1".into(),
             },
         ];
-        rig.engine.snapshot(&rig.state, "txs", &ops).unwrap();
+        rig.engine.snapshot(&rig.state, "txs", &ops, &[]).unwrap();
         rig.engine.execute(None, &ops).unwrap();
         assert_eq!(rig.sysctl.get("vm.swappiness").unwrap(), "10");
         rig.engine.rollback(&rig.state, "txs").unwrap();
         assert_eq!(rig.sysctl.get("vm.swappiness").unwrap(), "60");
+    }
+
+    #[test]
+    fn a_symmetric_exec_is_re_run_by_the_rollback_after_the_files() {
+        let rig = rig("sym", false);
+        let ops = vec![Op::Exec {
+            path: "/usr/bin/true".into(),
+            args: vec![],
+        }];
+        let manifest = rig
+            .engine
+            .snapshot(&rig.state, "txs", &ops, &[("/usr/bin/true".into(), vec![])])
+            .unwrap();
+        assert!(matches!(manifest.entries[0], SnapshotEntry::Reload { .. }));
+        // The same exec without the manifest's word stays inverse-less.
+        let plain = rig.engine.snapshot(&rig.state, "txp", &ops, &[]).unwrap();
+        assert!(matches!(plain.entries[0], SnapshotEntry::NoInverse { .. }));
     }
 
     #[test]
@@ -1088,7 +1124,7 @@ mod tests {
             path: "/usr/bin/true".into(),
             args: vec![],
         }];
-        let manifest = rig.engine.snapshot(&rig.state, "txn", &ops).unwrap();
+        let manifest = rig.engine.snapshot(&rig.state, "txn", &ops, &[]).unwrap();
         assert!(matches!(
             manifest.entries[0],
             SnapshotEntry::NoInverse { .. }

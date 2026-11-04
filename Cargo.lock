@@ -2257,6 +2257,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "ibexwall-plugin-accounts"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "ibexwall-plugin-coredump"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "ibexwall-plugin-dns"
 version = "0.1.0"
 dependencies = [
@@ -2305,6 +2327,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ibexwall-plugin-mounts"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "ibexwall-plugin-ports"
 version = "0.1.0"
 dependencies = [
@@ -2322,6 +2355,17 @@ dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
  "proptest",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "ibexwall-plugin-ssh"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "serde",
  "serde_json",
  "tokio",
 ]

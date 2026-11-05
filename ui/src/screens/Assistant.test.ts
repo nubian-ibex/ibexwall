@@ -140,4 +140,25 @@ describe('Assistant: connect an AI', () => {
     expect(screen.getAllByText(/conectar uma ia/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/acessar o ibexwall de outro computador/i)).toBeVisible();
   });
+
+  it('makes a certificate from the screen, shows its fingerprint and never a key', async () => {
+    const transport = new FixtureTransport('attention');
+    const plan = vi.spyOn(transport, 'planChange');
+    await open(transport);
+    expect(
+      await screen.findByText('AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99'),
+    ).toBeVisible();
+    await fireEvent.input(screen.getByLabelText(/names or addresses/i), {
+      target: { value: 'mcp.home.example, 192.168.1.20' },
+    });
+    await fireEvent.click(screen.getByRole('button', { name: /replace the certificate/i }));
+    expect(screen.getByText(/never shown/i)).toBeVisible();
+    await fireEvent.click(screen.getAllByRole('button', { name: /simulate/i }).at(-1)!);
+    expect(plan).toHaveBeenLastCalledWith('system.assistant', {
+      action: 'tls',
+      hosts: ['mcp.home.example', '192.168.1.20'],
+      days: 365,
+      replace: true,
+    });
+  });
 });

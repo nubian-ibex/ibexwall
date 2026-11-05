@@ -84,9 +84,17 @@ pub trait Plugin: Send + Sync + 'static {
     }
 }
 
-/// Binds the plugin socket under `IBEXWALL_ROOT` (removing a stale one
-/// left by a killed predecessor) and serves until the process stops.
+/// Serves on the socket systemd passed in (`LISTEN_FDS`), or else binds the
+/// plugin socket under `IBEXWALL_ROOT` (removing a stale one left by a
+/// killed predecessor), and serves until the process stops.
 pub async fn serve<P: Plugin>(plugin: P) -> std::io::Result<()> {
+    // Started by a systemd socket unit (the packaged layout): the socket is
+    // already bound, owned and permissioned by systemd, so the plugin needs
+    // no write access to /run and the core needs no right over the units.
+    if let Some(std_listener) = listenfd::ListenFd::from_env().take_unix_listener(0)? {
+        std_listener.set_nonblocking(true)?;
+        return serve_on(UnixListener::from_std(std_listener)?, plugin).await;
+    }
     let socket = names::plugin_socket(plugin.id());
     if let Some(parent) = socket.parent() {
         std::fs::create_dir_all(parent)?;

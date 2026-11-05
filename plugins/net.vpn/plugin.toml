@@ -25,7 +25,7 @@ exec = [{ path = "/usr/bin/nmcli", args = ["connection", "reload"], symmetric = 
 [sandbox]
 user = "dynamic"
 capabilities = []
-read_paths = ["/etc/ibexwall/vpn", "/etc/ibexwall/dns", "/usr/lib/systemd/system", "/lib/systemd/system", "/etc/systemd/system", "/usr/bin"]
+read_paths = ["/etc/ibexwall/vpn", "/etc/ibexwall/dns", "/usr/lib/NetworkManager/VPN", "/usr/lib64/NetworkManager/VPN", "/etc/NetworkManager/VPN", "/usr/lib/systemd/system", "/lib/systemd/system", "/etc/systemd/system", "/usr/bin"]
 network = false
 
 [risk]

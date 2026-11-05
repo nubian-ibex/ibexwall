@@ -23,6 +23,8 @@
 //! are not imported yet (ADR-0040); the kill switch works for any tunnel
 //! interface and server the person names.
 
+mod openvpn;
+
 use std::collections::BTreeMap;
 
 use ibexwall_proto::{
@@ -101,7 +103,7 @@ struct Config {
     /// `import` or `killswitch`.
     action: String,
     name: String,
-    /// The text of a `wg-quick` profile.
+    /// The text of a `wg-quick` or `.ovpn` profile.
     profile: String,
     #[serde(deserialize_with = "many")]
     interfaces: Vec<String>,
@@ -435,7 +437,7 @@ fn plan(sandbox: &Sandbox, config: &Config) -> Result<Vec<Op>, PluginError> {
         "killswitch" => plan_killswitch(sandbox, config),
         _ => Err(PluginError::invalid(
             "action",
-            "action is `import` (a WireGuard profile) or `killswitch`",
+            "action is `import` (a WireGuard or OpenVPN profile) or `killswitch`",
         )),
     }
 }
@@ -450,7 +452,28 @@ fn networkmanager_present(sandbox: &Sandbox) -> bool {
     .any(|p| sandbox.exists(p))
 }
 
+/// NetworkManager's OpenVPN plugin, which a `.ovpn` import needs.
+fn openvpn_plugin_present(sandbox: &Sandbox) -> bool {
+    [
+        "/usr/lib/NetworkManager/VPN/nm-openvpn-service.name",
+        "/usr/lib64/NetworkManager/VPN/nm-openvpn-service.name",
+        "/etc/NetworkManager/VPN/nm-openvpn-service.name",
+    ]
+    .iter()
+    .any(|p| sandbox.exists(p))
+}
+
 fn plan_import(sandbox: &Sandbox, config: &Config) -> Result<Vec<Op>, PluginError> {
+    // WireGuard profiles have an [Interface]; anything else is read as OpenVPN.
+    if !config.profile.contains("[Interface]") {
+        if !config.profile.contains("remote") {
+            return Err(PluginError::invalid(
+                "profile",
+                "neither a WireGuard profile (an [Interface] section) nor an OpenVPN profile (`client`, `remote`)",
+            ));
+        }
+        return plan_import_openvpn(sandbox, config);
+    }
     if !valid_name(&config.name) {
         return Err(PluginError::invalid(
             "name",
@@ -501,6 +524,81 @@ fn plan_import(sandbox: &Sandbox, config: &Config) -> Result<Vec<Op>, PluginErro
             args: vec!["connection".into(), "reload".into()],
         },
     ])
+}
+
+fn plan_import_openvpn(sandbox: &Sandbox, config: &Config) -> Result<Vec<Op>, PluginError> {
+    if !valid_name(&config.name) {
+        return Err(PluginError::invalid(
+            "name",
+            "1 to 10 characters: lowercase letters, digits and `-`",
+        ));
+    }
+    if !networkmanager_present(sandbox) || !sandbox.exists("/usr/bin/nmcli") {
+        return Err(PluginError::invalid(
+            "action",
+            "NetworkManager is not installed; IbexWall installs no software",
+        ));
+    }
+    if !openvpn_plugin_present(sandbox) {
+        return Err(PluginError::invalid(
+            "action",
+            "NetworkManager's OpenVPN plugin is not installed; IbexWall installs no software",
+        ));
+    }
+    let profile =
+        openvpn::parse(&config.profile).map_err(|e| PluginError::invalid("profile", e))?;
+    let dir = format!("/etc/ibexwall/vpn/openvpn/{}", config.name);
+    let file = |name: &str, content: &str, mode: &str| Op::FileWrite {
+        path: format!("{dir}/{name}"),
+        content: content.to_string(),
+        mode: mode.into(),
+        owner: "root".into(),
+        group: "root".into(),
+    };
+    let mut ops = vec![file("ca.pem", &profile.ca, "0644")];
+    if let (Some(cert), Some(key)) = (&profile.cert, &profile.key) {
+        ops.push(file("cert.pem", cert, "0644"));
+        ops.push(file("key.pem", key, "0600"));
+    }
+    if let Some(t) = &profile.tls_crypt {
+        ops.push(file("tls-crypt.key", t, "0600"));
+    }
+    if let Some(t) = &profile.tls_auth {
+        ops.push(file("ta.key", t, "0600"));
+    }
+    let keyfile = format!(
+        "# Managed by IbexWall (net.vpn).\n[connection]\nid=ibexwall-{name}\nuuid={}\ntype=vpn\nautoconnect=false\n\n[vpn]\n{}\n[ipv4]\nmethod=auto\n\n[ipv6]\nmethod=auto\n",
+        uuid_for(&config.name),
+        openvpn::keyfile_data(&profile, &dir),
+        name = config.name
+    );
+    let record = json!({
+        "name": config.name,
+        "kind": "openvpn",
+        "interface": "tun",
+        "endpoints": profile.remotes.iter().map(|r| format!("{}:{}", r.host, r.port)).collect::<Vec<_>>(),
+        "dns": false,
+        "full_tunnel": null,
+    });
+    ops.push(Op::FileWrite {
+        path: format!("{NM_DIR}/ibexwall-{}.nmconnection", config.name),
+        content: keyfile,
+        mode: "0600".into(),
+        owner: "root".into(),
+        group: "root".into(),
+    });
+    ops.push(Op::FileWrite {
+        path: format!("{PROFILE_DIR}/{}.json", config.name),
+        content: format!("{record}\n"),
+        mode: "0644".into(),
+        owner: "root".into(),
+        group: "root".into(),
+    });
+    ops.push(Op::Exec {
+        path: "/usr/bin/nmcli".into(),
+        args: vec!["connection".into(), "reload".into()],
+    });
+    Ok(ops)
 }
 
 /// Server addresses of every imported profile.
@@ -869,6 +967,122 @@ mod tests {
         assert!(plan(&sandbox, &cfg(json!({}))).is_err());
         std::fs::remove_dir_all(root).unwrap();
         std::fs::remove_dir_all(bare).unwrap();
+    }
+
+    const OVPN_PLUGIN: (&str, &str) = ("/usr/lib/NetworkManager/VPN/nm-openvpn-service.name", "");
+
+    fn ovpn() -> String {
+        let ca =
+            "-----BEGIN CERTIFICATE-----\nMIIBszCCAVmgAwIBAgIUQm9ndXM=\n-----END CERTIFICATE-----";
+        let key = "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg\n-----END PRIVATE KEY-----";
+        let crypt = "-----BEGIN OpenVPN Static key V1-----\n0123456789abcdef\n-----END OpenVPN Static key V1-----";
+        format!(
+            "client\ndev tun\nproto udp\nremote 10.99.0.2 1194\nremote-cert-tls server\ncipher AES-256-GCM\n<ca>\n{ca}\n</ca>\n<cert>\n{ca}\n</cert>\n<key>\n{key}\n</key>\n<tls-crypt>\n{crypt}\n</tls-crypt>\n"
+        )
+    }
+
+    #[test]
+    fn an_openvpn_profile_becomes_owned_files_a_keyfile_and_a_record_with_keys_private() {
+        let (root, sandbox) = tree(&[NM[0], NM[1], OVPN_PLUGIN]);
+        let ops = plan(
+            &sandbox,
+            &cfg(json!({ "action": "import", "name": "lab", "profile": ovpn() })),
+        )
+        .unwrap();
+        let written: Vec<(&str, &str)> = ops
+            .iter()
+            .filter_map(|o| match o {
+                Op::FileWrite { path, mode, .. } => Some((path.as_str(), mode.as_str())),
+                _ => None,
+            })
+            .collect();
+        for (path, mode) in [
+            ("/etc/ibexwall/vpn/openvpn/lab/ca.pem", "0644"),
+            ("/etc/ibexwall/vpn/openvpn/lab/cert.pem", "0644"),
+            ("/etc/ibexwall/vpn/openvpn/lab/key.pem", "0600"),
+            ("/etc/ibexwall/vpn/openvpn/lab/tls-crypt.key", "0600"),
+            (
+                "/etc/NetworkManager/system-connections/ibexwall-lab.nmconnection",
+                "0600",
+            ),
+            ("/etc/ibexwall/vpn/profiles/lab.json", "0644"),
+        ] {
+            assert!(
+                written.contains(&(path, mode)),
+                "{path} {mode}: {written:?}"
+            );
+        }
+        let keyfile = ops
+            .iter()
+            .find_map(|o| match o {
+                Op::FileWrite { path, content, .. } if path.ends_with(".nmconnection") => {
+                    Some(content.clone())
+                }
+                _ => None,
+            })
+            .unwrap();
+        assert!(
+            keyfile.contains("type=vpn")
+                && keyfile.contains("remote=10.99.0.2:1194:udp")
+                && keyfile.contains("autoconnect=false")
+        );
+        assert!(
+            !keyfile.contains("PRIVATE KEY"),
+            "the keyfile holds paths, not keys"
+        );
+        assert!(matches!(ops.last(), Some(Op::Exec { path, .. }) if path == "/usr/bin/nmcli"));
+        // The record is what the kill switch reads: the server, no secret.
+        let record = ops
+            .iter()
+            .find_map(|o| match o {
+                Op::FileWrite { path, content, .. } if path.ends_with("lab.json") => {
+                    Some(content.clone())
+                }
+                _ => None,
+            })
+            .unwrap();
+        assert!(
+            record.contains("10.99.0.2:1194")
+                && record.contains("openvpn")
+                && !record.contains("BEGIN")
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn openvpn_needs_the_networkmanager_plugin_and_refuses_hostile_profiles() {
+        let (root, sandbox) = tree(&NM);
+        let error = plan(
+            &sandbox,
+            &cfg(json!({ "action": "import", "name": "lab", "profile": ovpn() })),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("OpenVPN plugin"), "{error}");
+        let (root2, with_plugin) = tree(&[NM[0], NM[1], OVPN_PLUGIN]);
+        for bad in [
+            ovpn().replace("client\n", "client\nup /tmp/x.sh\n"),
+            ovpn().replace("cipher AES-256-GCM", "cipher BF-CBC"),
+            "just some text".to_string(),
+        ] {
+            assert!(
+                plan(
+                    &with_plugin,
+                    &cfg(json!({ "action": "import", "name": "lab", "profile": bad }))
+                )
+                .is_err()
+            );
+        }
+        // A server by name cannot be allowed by the kill switch; by address it can.
+        let named = ovpn().replace("10.99.0.2", "vpn.example.net");
+        let ops = plan(
+            &with_plugin,
+            &cfg(json!({ "action": "import", "name": "lab", "profile": named })),
+        )
+        .unwrap();
+        assert!(ops.len() > 3);
+        for r in [root, root2] {
+            std::fs::remove_dir_all(r).unwrap();
+        }
     }
 
     fn chain_of(ops: &[Op]) -> Chain {

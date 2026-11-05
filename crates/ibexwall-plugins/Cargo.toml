@@ -39,6 +39,7 @@ ibexwall-plugin-ports = { path = "../../plugins/system.ports/src", version = "0.
 ibexwall-plugin-posture = { path = "../../plugins/system.posture/src", version = "0.1.0" }
 ibexwall-plugin-session-lock = { path = "../../plugins/system.session-lock/src", version = "0.1.0" }
 ibexwall-plugin-ssh = { path = "../../plugins/system.ssh/src", version = "0.1.0" }
+ibexwall-plugin-assistant = { path = "../../plugins/system.assistant/src", version = "0.1.0" }
 ibexwall-plugin-sysctl = { path = "../../plugins/system.sysctl/src", version = "0.1.0" }
 ibexwall-plugin-updates = { path = "../../plugins/system.updates/src", version = "0.1.0" }
 ibexwall-plugin-cves = { path = "../../plugins/vuln.cves/src", version = "0.1.0" }

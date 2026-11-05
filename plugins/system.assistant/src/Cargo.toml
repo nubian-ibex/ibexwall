@@ -1,0 +1,25 @@
+[package]
+name = "ibexwall-plugin-assistant"
+description = "system.assistant plugin: the MCP server's access settings (clients, HTTPS transport, tokens)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "ibexwall_plugin_assistant"
+path = "main.rs"
+
+[dependencies]
+ibexwall-proto.workspace = true
+ibexwall-sdk.workspace = true
+ibexwall-token.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+toml_edit.workspace = true

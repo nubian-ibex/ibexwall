@@ -1,0 +1,37 @@
+id = "system.assistant"
+version = "0.1.0"
+api = 1
+category = "system"
+kinds = ["check", "control"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-assistant"
+default_enabled = true
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "AI assistants"
+pt-BR = "Assistentes de IA"
+
+[description]
+en = "What an AI assistant may read, plan or propose, and the access tokens for assistants on other machines."
+pt-BR = "O que um assistente de IA pode ler, planejar ou propor, e as chaves de acesso para assistentes em outras máquinas."
+
+[privileges]
+write_paths = ["/etc/ibexwall/mcp.toml"]
+
+[sandbox]
+user = "dynamic"
+capabilities = ["CAP_DAC_READ_SEARCH"]
+read_paths = ["/etc/ibexwall/mcp.toml", "/etc/ibexwall/mcp"]
+network = false
+
+[risk]
+affects = ["assistants"]
+reversible = "immediate"
+confirm_timeout = false
+may_affect = ["assistant-may-affect-remote"]
+
+[ui]
+icon = "bot"
+order = 80

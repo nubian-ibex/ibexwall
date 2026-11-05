@@ -129,6 +129,7 @@ sleep 3
 # The "VPN provider": a namespace with a WireGuard server, reached over a veth.
 sudo ip netns del vpnsrv 2>/dev/null || true
 sudo ip link del vethc 2>/dev/null || true
+sudo ip link del ibxbr0 2>/dev/null || true
 sudo ip netns add vpnsrv
 sudo ip link add vethc type veth peer name veths
 sudo ip link set veths netns vpnsrv
@@ -422,6 +423,112 @@ done
 echo "METRIC: every file the plugin wrote is gone after the rollbacks"
 "#;
 
+const OPENVPN: &str = r#"
+sudo sh -c 'command -v nft' >/dev/null || pkg nftables
+if command -v dnf >/dev/null; then pkg openvpn NetworkManager-openvpn tcpdump curl openssl
+elif command -v apt-get >/dev/null; then pkg openvpn network-manager-openvpn tcpdump curl openssl
+else pkg openvpn networkmanager-openvpn tcpdump curl openssl; fi
+if ! systemctl is-active --quiet NetworkManager; then sudo systemctl enable --now NetworkManager; fi
+sudo systemctl restart NetworkManager; sleep 3
+sudo ibexctl plugins enable net.vpn >/dev/null
+IFACE=$(ip -4 route show default | awk '{print $5; exit}')
+PEER=${SSH_CLIENT%% *}
+
+# A tiny PKI, and an OpenVPN "provider" in a namespace.
+rm -rf /tmp/pki && mkdir /tmp/pki && cd /tmp/pki
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -keyout ca.key -out ca.crt -subj /CN=ibx-ca -days 2 2>/dev/null
+for n in server client; do
+  openssl req -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -keyout $n.key -out $n.csr -subj /CN=$n 2>/dev/null
+  if [ $n = server ]; then EKU=serverAuth; else EKU=clientAuth; fi
+  printf 'basicConstraints=CA:FALSE\nkeyUsage=digitalSignature,keyAgreement\nextendedKeyUsage=%s\n' $EKU > $n.ext
+  openssl x509 -req -in $n.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out $n.crt -days 2 -extfile $n.ext 2>/dev/null
+done
+OVPN=$(sudo sh -c 'command -v openvpn')
+$OVPN --genkey tls-crypt tc.key 2>/dev/null || $OVPN --genkey --secret tc.key
+sudo ip netns del vpnsrv 2>/dev/null || true; sudo ip link del vethc 2>/dev/null || true
+sudo ip netns add vpnsrv
+sudo ip link add vethc type veth peer name veths
+sudo ip link set veths netns vpnsrv
+# NetworkManager's VPN rides on a connection NetworkManager owns, and routes
+# the VPN server through that connection's gateway. The VM's real uplink stays
+# out of NetworkManager's hands (it would cut our own session), so a bridge
+# stands in as the uplink: the provider namespace hangs off it and is its
+# gateway.
+printf '[keyfile]\nunmanaged-devices=interface-name:%s\n' "$IFACE" | sudo tee /etc/NetworkManager/conf.d/99-ibexwall-test.conf >/dev/null
+sudo nmcli general reload conf
+sudo nmcli connection delete ibxup >/dev/null 2>&1 || true
+sudo nmcli connection add type bridge ifname ibxbr0 con-name ibxup bridge.stp no ipv4.method manual ipv4.addresses 10.99.0.1/24 ipv4.gateway 10.99.0.2 ipv4.route-metric 2000 ipv4.dad-timeout 0 ipv6.method ignore >/dev/null
+sudo ip link set vethc master ibxbr0
+sudo ip link set vethc up
+sudo ip netns exec vpnsrv ip addr add 10.99.0.2/24 dev veths
+sudo ip netns exec vpnsrv ip link set veths up; sudo ip netns exec vpnsrv ip link set lo up
+for i in $(seq 1 20); do sudo nmcli -t -f DEVICE,STATE device | grep -q '^ibxbr0:connected' && break; sudo nmcli connection up ibxup >/dev/null 2>&1 || true; sleep 1; done
+sudo nmcli -t -f DEVICE,STATE device | grep -q '^ibxbr0:connected' || { echo "THE UPLINK BRIDGE IS NOT CONNECTED: $(sudo nmcli -t -f DEVICE,STATE device | tr '\n' ' ')"; exit 1; }
+sudo ip netns exec vpnsrv $OVPN --daemon ibxovpn --log /tmp/ovpn-server.log --dev tun --proto udp --local 10.99.0.2 --port 1194 --server 10.200.0.0 255.255.255.0 --topology subnet --ca ca.crt --cert server.crt --key server.key --dh none --tls-crypt tc.key --cipher AES-256-GCM --data-ciphers AES-256-GCM --keepalive 2 10 --persist-key --persist-tun
+sleep 3
+{
+  printf 'client\ndev tun\nproto udp\nremote 10.99.0.2 1194\nnobind\npersist-key\nremote-cert-tls server\ncipher AES-256-GCM\ndata-ciphers AES-256-GCM\nverb 3\n'
+  for b in ca cert key; do f=$b.crt; [ $b = key ] && f=client.key; [ $b = ca ] && f=ca.crt; [ $b = cert ] && f=client.crt; printf '<%s>\n' $b; cat $f; printf '</%s>\n' $b; done
+  printf '<tls-crypt>\n'; cat tc.key; printf '</tls-crypt>\n'
+} > /tmp/lab.ovpn
+
+# Refusals: a script directive and a file reference.
+sed 's/^client$/client\nup \/tmp\/x.sh/' /tmp/lab.ovpn > /tmp/bad1.ovpn
+if sudo ibexctl plan net.vpn --set action=import --set name=bad --set-file profile=/tmp/bad1.ovpn --json >/dev/null 2>&1; then echo "AN up SCRIPT WAS ACCEPTED"; exit 1; fi
+sed 's/^remote-cert-tls server$/remote-cert-tls server\nca \/etc\/ca.crt/' /tmp/lab.ovpn > /tmp/bad2.ovpn
+if sudo ibexctl plan net.vpn --set action=import --set name=bad --set-file profile=/tmp/bad2.ovpn --json >/dev/null 2>&1; then echo "A FILE REFERENCE WAS ACCEPTED"; exit 1; fi
+sudo ibexctl plan net.vpn --set action=import --set name=lab --set-file profile=/tmp/lab.ovpn --json > /tmp/ovpn-plan.json || { echo "THE PROFILE WAS REFUSED:"; cat /tmp/ovpn-plan.json; exit 1; }
+if grep -q "BEGIN PRIVATE KEY\|BEGIN EC PRIVATE KEY" /tmp/ovpn-plan.json; then echo "A PRIVATE KEY IS IN THE PREVIEW"; exit 1; fi
+FOREIGN=$(foreign_digest)
+
+apply_plan net.vpn --set action=import --set name=lab --set-file profile=/tmp/lab.ovpn
+if echo "$OUT" | grep -q pending_confirm; then confirm_tx; fi
+IMPORT_TX=$TX
+sleep 2
+sudo nmcli -g vpn.service-type connection show ibexwall-lab | grep -q org.freedesktop.NetworkManager.openvpn || { echo "NETWORKMANAGER DID NOT TAKE THE PROFILE"; sudo nmcli connection show | head; exit 1; }
+[ "$(sudo stat -c %a /etc/ibexwall/vpn/openvpn/lab/key.pem)" = 600 ] || { echo "THE KEY FILE IS NOT PRIVATE"; exit 1; }
+echo "METRIC: an OpenVPN profile imported: NetworkManager shows type vpn / openvpn, files 0600, key absent from the preview, up and file directives refused"
+
+tunnel_down() { sudo nmcli connection down ibexwall-lab >/dev/null 2>&1 || true; }
+tunnel_up() { sudo nmcli connection up ibexwall-lab >/tmp/ovpn-up.txt 2>&1 || return 1; for i in $(seq 1 25); do ping -c1 -W1 10.200.0.1 >/dev/null 2>&1 && return 0; sleep 1; done; return 1; }
+leak_count() {
+  sudo rm -f /tmp/leak2.pcap
+  sudo timeout 14 tcpdump -n -i "$IFACE" -w /tmp/leak2.pcap "ip and not host $PEER and not (udp and (port 67 or port 68))" >/dev/null 2>&1 &
+  TD=$!
+  sleep 2
+  timeout 4 curl -s -m 3 http://1.1.1.1 >/dev/null 2>&1 || true
+  timeout 4 ping -c2 -W1 8.8.8.8 >/dev/null 2>&1 || true
+  timeout 4 getent hosts example.org >/dev/null 2>&1 || true
+  wait $TD 2>/dev/null || true
+  sudo tcpdump -nr /tmp/leak2.pcap 2>/dev/null | wc -l
+}
+{
+  tunnel_up || { echo "THE OPENVPN TUNNEL DID NOT COME UP"; cat /tmp/ovpn-up.txt; sudo journalctl -u NetworkManager -n 8 --no-pager | tail -6; sudo tail -8 /tmp/ovpn-server.log; sudo journalctl -u NetworkManager --no-pager | grep -E "nm-openvpn" | tail -14; exit 1; }
+  echo "METRIC: the OpenVPN tunnel came up through NetworkManager and carries traffic"
+  # The kill switch knows the server from the imported record, and protects a tun device.
+  apply_plan net.vpn --set action=killswitch --set allow=$PEER
+  if echo "$OUT" | grep -q pending_confirm; then confirm_tx; fi
+  KS_TX=$TX
+  ping -c2 -W2 10.200.0.1 >/dev/null || { echo "THE TUNNEL STOPPED WORKING UNDER THE KILL SWITCH"; exit 1; }
+  tunnel_down
+  LEAK=$(leak_count)
+  [ "$LEAK" = 0 ] || { echo "LEAK: $LEAK packets left the uplink with the OpenVPN tunnel down"; sudo tcpdump -nr /tmp/leak2.pcap 2>/dev/null | head -6; exit 1; }
+  tunnel_up || { echo "THE OPENVPN TUNNEL COULD NOT RECONNECT UNDER THE KILL SWITCH"; cat /tmp/ovpn-up.txt; exit 1; }
+  echo "METRIC: with the kill switch and the OpenVPN tunnel down, 0 packets left the uplink, and it reconnected"
+  tunnel_down
+  sudo ibexctl rollback "$KS_TX" >/dev/null || { echo "KILL SWITCH ROLLBACK FAILED"; exit 1; }
+}
+sudo ibexctl rollback "$IMPORT_TX" >/dev/null || { echo "ROLLBACK FAILED"; exit 1; }
+sleep 2
+sudo test ! -e /etc/ibexwall/vpn/openvpn/lab/key.pem || { echo "THE KEY SURVIVED THE ROLLBACK"; exit 1; }
+if sudo nmcli connection show ibexwall-lab >/dev/null 2>&1; then echo "THE PROFILE SURVIVED THE ROLLBACK"; exit 1; fi
+[ "$(foreign_digest)" = "$FOREIGN" ] || { echo "ANOTHER TABLE CHANGED"; exit 1; }
+sudo pkill -x openvpn 2>/dev/null || true
+sudo nmcli connection delete ibxup >/dev/null 2>&1 || true
+sudo ip netns del vpnsrv; sudo ip link del vethc 2>/dev/null || true; sudo ip link del ibxbr0 2>/dev/null || true
+echo "METRIC: rolled back: files, NetworkManager's profile gone, foreign tables identical"
+"#;
+
 pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     println!("== f9: build ==");
     let mut args = vec!["build".to_string(), "--release".to_string()];
@@ -477,6 +584,11 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     scenario!(
         "v1 net.vpn: a WireGuard profile comes up through NetworkManager, and a dropped tunnel leaks nothing under the kill switch",
         VPN
+    );
+
+    scenario!(
+        "v2 net.vpn: an OpenVPN profile (a documented subset) is imported, carries traffic and is rolled back",
+        OPENVPN
     );
 
     if failures == 0 {

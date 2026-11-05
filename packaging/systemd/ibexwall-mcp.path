@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+[Unit]
+Description=Restart the IbexWall MCP server when its access settings change
+
+[Path]
+# A removed key must stop working at once, not at the next restart.
+PathChanged=/etc/ibexwall/mcp.toml
+Unit=ibexwall-mcp-reload.service
+
+[Install]
+WantedBy=multi-user.target

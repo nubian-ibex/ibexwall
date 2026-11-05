@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+[Unit]
+Description=Restart the IbexWall MCP server for new access settings
+
+[Service]
+Type=oneshot
+# try-restart: nothing happens when the server is not running.
+ExecStart=/usr/bin/systemctl try-restart ibexwall-mcp.service

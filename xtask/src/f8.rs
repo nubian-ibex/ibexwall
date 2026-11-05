@@ -71,6 +71,7 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     crate::devkey::run()?;
     provision(vm, workspace, install)?;
     install_plugin(vm, workspace, "system.sysctl")?;
+    install_plugin(vm, workspace, "system.assistant")?;
     install_binary(
         vm,
         &workspace.join("target/release/ibexwall-mcp"),
@@ -100,6 +101,22 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
         include_str!("../../packaging/systemd/ibexwall-mcp.service"),
         "sudo tee /etc/systemd/system/ibexwall-mcp.service >/dev/null",
     )?;
+    for (text, name) in [
+        (
+            include_str!("../../packaging/systemd/ibexwall-mcp.path"),
+            "ibexwall-mcp.path",
+        ),
+        (
+            include_str!("../../packaging/systemd/ibexwall-mcp-reload.service"),
+            "ibexwall-mcp-reload.service",
+        ),
+    ] {
+        pipe_data(
+            vm,
+            text,
+            &format!("sudo tee /etc/systemd/system/{name} >/dev/null"),
+        )?;
+    }
     start_daemon(vm)?;
 
     let mut failures = 0;
@@ -343,6 +360,76 @@ echo "METRIC: $(systemd-analyze security ibexwall-mcp.service --no-pager 2>&1 | 
 
 sudo systemctl stop ibexwall-mcp.service
 sudo cp /tmp/h5-mcp.toml.orig /etc/ibexwall/mcp.toml
+"#,
+            lib = lib
+        )
+    );
+
+    scenario!(
+        "h6 connect an AI through the plugin: a preset, a key, remote access on, the key removed",
+        &format!(
+            r#"{lib}
+command -v curl >/dev/null || {{ if command -v dnf >/dev/null; then sudo dnf install -y -q curl; elif command -v apt-get >/dev/null; then sudo apt-get update -qq; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl; else sudo pacman -Sy --noconfirm --needed curl; fi; }}
+sudo ibexctl plugins enable system.assistant >/dev/null
+sudo systemd-sysusers /usr/lib/sysusers.d/ibexwall.conf
+sudo cp /etc/ibexwall/mcp.toml /tmp/h6-orig.toml
+if ! sudo test -f /etc/ibexwall/mcp/tls.crt; then sudo mkdir -p /etc/ibexwall/mcp; sudo ibexwall-mcp tls-init --host localhost --host 127.0.0.1 --out /etc/ibexwall/mcp >/dev/null; fi
+sudo chown root:ibexwall-mcp /etc/ibexwall/mcp/tls.key && sudo chmod 640 /etc/ibexwall/mcp/tls.key
+sudo systemctl daemon-reload
+sudo systemctl enable --now ibexwall-mcp.path >/dev/null 2>&1
+
+planapply() {{
+  P=$(sudo ibexctl plan system.assistant "$@" --json 2>/tmp/h6-plan.err | python3 -c 'import json,sys;d=json.JSONDecoder().raw_decode(sys.stdin.read())[0];print(d["plan"]["id"])') || {{ echo "PLAN REFUSED: $(cat /tmp/h6-plan.err)"; return 1; }}
+  sudo ibexctl apply "$P" --json >/tmp/h6-apply.json 2>&1 || {{ echo "APPLY FAILED:"; python3 -c "import json;print(json.JSONDecoder().raw_decode(open(\"/tmp/h6-apply.json\").read())[0][\"parameters\"][\"reason\"])" 2>&1 | tail -12; sudo journalctl --no-pager -n 6 -t ibexwall-exec 2>/dev/null | cut -c1-300; sudo journalctl --no-pager -u 'ibexwall-exec-*' -n 6 2>/dev/null | cut -c1-300; return 1; }}
+}}
+
+# Remote access needs a key first, and says so.
+if sudo ibexctl plan system.assistant --set action=http --set enabled=true --set listen=127.0.0.1:8765 --json >/dev/null 2>&1; then echo "REMOTE ACCESS WAS PLANNED WITH NO KEY"; exit 1; fi
+
+# A preset: read and plan, never propose.
+planapply --set action=client --set client=h6-agent --set preset=plan || exit 1
+[ "$(sudo stat -c '%a %G' /etc/ibexwall/mcp.toml)" = "640 ibexwall-assistants" ] || {{ echo "THE FILE IS NOT PRIVATE: $(sudo stat -c '%a %G' /etc/ibexwall/mcp.toml)"; exit 1; }}
+sudo grep -q 'h6-agent' /etc/ibexwall/mcp.toml
+sudo cat /etc/ibexwall/mcp.toml | python3 -c '
+import sys, tomllib
+c = {{x["name"]: x["scopes"] for x in tomllib.loads(sys.stdin.read())["client"]}}
+s = c["h6-agent"]
+assert "plan" in s and not any(x.startswith("propose") for x in s), s
+' || {{ echo "THE PLAN PRESET IS WRONG"; exit 1; }}
+
+# A key: made here, only its hash planned.
+sudo ibexctl mcp token --name h6key --preset plan --id h6key1 --json >/tmp/h6-token.json || {{ echo "TOKEN CREATE FAILED"; cat /tmp/h6-token.json; exit 1; }}
+TOKEN=$(python3 -c 'import json;print(json.JSONDecoder().raw_decode(open("/tmp/h6-token.json").read())[0]["token"])')
+P=$(python3 -c 'import json;print(json.JSONDecoder().raw_decode(open("/tmp/h6-token.json").read())[0]["plan"]["id"])')
+if sudo ibexctl plan system.assistant --set action=token_add --set id=bad --set name=x --set client=x --set preset=read --set hash=plainsecret --json >/dev/null 2>&1; then echo "A PLAIN SECRET WAS ACCEPTED AS A HASH"; exit 1; fi
+sudo ibexctl apply "$P" --json >/dev/null || {{ echo "APPLY OF THE TOKEN FAILED"; exit 1; }}
+SECRET=${{TOKEN#ibx_h6key1_}}
+sudo grep -q 'id = "h6key1"' /etc/ibexwall/mcp.toml
+sudo grep -q 'argon2id' /etc/ibexwall/mcp.toml
+if sudo grep -q "$SECRET" /etc/ibexwall/mcp.toml; then echo "THE SECRET IS IN THE CONFIG"; exit 1; fi
+if sudo journalctl -u ibexwalld --no-pager | grep -q "$SECRET"; then echo "THE SECRET IS IN THE DAEMON LOG"; exit 1; fi
+if sudo grep -rq "$SECRET" /var/lib/ibexwall 2>/dev/null; then echo "THE SECRET IS IN THE STATE"; exit 1; fi
+echo "METRIC: a preset and a key were planned, applied, 0640 for the assistants group; the secret is in no file or log"
+
+# Remote access on: the server answers to the key.
+planapply --set action=http --set enabled=true --set listen=127.0.0.1:8765 || exit 1
+sudo systemctl restart ibexwall-mcp.service
+CA="--cacert /etc/ibexwall/mcp/tls.crt"
+for i in $(seq 1 20); do curl -s $CA -o /dev/null https://localhost:8765/mcp && break; sleep 1; done
+code() {{ curl -s $CA -o /dev/null -w '%{{http_code}}' -H "Authorization: Bearer $1" -H 'Content-Type: application/json' -H 'Accept: application/json' -d '{{"jsonrpc":"2.0","id":1,"method":"ping"}}' https://localhost:8765/mcp; }}
+[ "$(code "$TOKEN")" = 200 ] || {{ echo "THE KEY WAS NOT ACCEPTED: $(code "$TOKEN")"; sudo journalctl -u ibexwall-mcp -n 8 --no-pager; exit 1; }}
+echo "METRIC: remote access on through the plan, and the new key is accepted"
+
+# The key removed: it stops working without a manual restart.
+planapply --set action=token_revoke --set id=h6key1 || exit 1
+sudo grep -q 'h6key1' /etc/ibexwall/mcp.toml && {{ echo "THE KEY IS STILL IN THE CONFIG"; exit 1; }}
+STOPPED=no
+for i in $(seq 1 20); do [ "$(code "$TOKEN")" != 200 ] && STOPPED=yes && break; sleep 1; done
+[ "$STOPPED" = yes ] || {{ echo "A REMOVED KEY STILL WORKS"; exit 1; }}
+echo "METRIC: the removed key stopped working on its own (the path unit restarted the server)"
+
+sudo systemctl stop ibexwall-mcp.service ibexwall-mcp.path 2>/dev/null || true
+sudo cp /tmp/h6-orig.toml /etc/ibexwall/mcp.toml
 "#,
             lib = lib
         )

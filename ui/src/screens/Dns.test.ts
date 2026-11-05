@@ -111,6 +111,35 @@ describe('Dns screen', () => {
   });
 });
 
+describe('Dns screen: your own servers', () => {
+  beforeEach(() => i18n.set('en'));
+
+  it('tells the person what the network offers and fills it in on a click', async () => {
+    app.useTransport(new FixtureTransport('attention'));
+    render(Dns);
+    await app.refresh();
+    expect(await screen.findByText(/your network offers dns servers/i)).toBeVisible();
+    await fireEvent.click(screen.getByRole('button', { name: 'Use 192.168.1.1' }));
+    expect(screen.getByLabelText(/first server/i)).toHaveValue('192.168.1.1');
+    // A second click becomes the secondary: the failover.
+    await fireEvent.click(screen.getByRole('button', { name: 'Use 10.8.0.1' }));
+    expect(screen.getByLabelText(/second server/i)).toHaveValue('10.8.0.1');
+    expect(screen.getByText(/the first server answers/i)).toBeVisible();
+  });
+
+  it('refuses unencrypted DNS to a public address and holds back the review', async () => {
+    app.useTransport(new FixtureTransport('attention'));
+    render(Dns);
+    await app.refresh();
+    await fireEvent.click(await screen.findByLabelText(/use my own servers/i));
+    await fireEvent.input(screen.getByLabelText(/first server/i), { target: { value: '8.8.8.8' } });
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /only allowed for addresses on your own network/i,
+    );
+    expect(screen.getByText(/fix the points above/i)).toBeVisible();
+  });
+});
+
 describe('dns choices', () => {
   it('builds the patch the plugin expects and keeps the transport valid', () => {
     expect(dnsPatch(DNS_DEFAULTS)).toEqual({

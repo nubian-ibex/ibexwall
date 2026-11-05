@@ -87,6 +87,12 @@ const FINDINGS: Finding[] = [
   }),
 ];
 
+const DNS_NOTES: Finding[] = [
+  finding('dns.network_servers', 'net.dns', 'info', 'dns-network-servers', {
+    servers: '192.168.1.1, 10.8.0.1',
+  }),
+];
+
 const PLUGINS: PluginInfo[] = [
   {
     id: 'system.posture',
@@ -392,6 +398,9 @@ export class FixtureTransport implements Transport {
 
   listFindings(plugin?: string) {
     return this.gate(() => {
+      // What the DNS screen says about the network; kept out of the general
+      // list so it does not count as something to fix.
+      if (plugin === 'net.dns') return this.scenario === 'attention' ? DNS_NOTES : [];
       if (this.scenario === 'empty' || this.scenario === 'protected') return [];
       return plugin ? FINDINGS.filter((f) => f.plugin === plugin) : FINDINGS;
     });

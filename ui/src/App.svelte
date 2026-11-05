@@ -8,6 +8,7 @@
   import Assistant from './screens/Assistant.svelte';
   import Apps from './screens/Apps.svelte';
   import Dns from './screens/Dns.svelte';
+  import Hardening from './screens/Hardening.svelte';
   import Firewall from './screens/Firewall.svelte';
   import History from './screens/History.svelte';
   import Overview from './screens/Overview.svelte';
@@ -37,6 +38,8 @@
     <Dns />
   {:else if app.route === 'posture'}
     <Posture />
+  {:else if app.route === 'hardening'}
+    <Hardening />
   {:else if app.route === 'plugins'}
     <Plugins />
   {:else if app.route === 'history'}

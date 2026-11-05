@@ -8,7 +8,7 @@ alongside F10 (packaging stays M4 onward) and follows the order the maintainer
 chose: 1 connect an assistant, 2 detection with pre-filled settings, 3 the
 Hardening catalog and the new tool plugins.
 
-Status: part 1 (connect an assistant) done 2026-11-05, with the presets only; parts 2 and 3 are next.
+Status: part 1 (connect an assistant, certificate included) and part 2 (detection: DNS, time, firewall) done 2026-11-05; ssh, sysctl and MAC pre-fill are left; part 3 (Hardening) is next.
 
 ## Rules that do not change
 

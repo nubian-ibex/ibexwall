@@ -8,9 +8,14 @@ repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 root=${IBEXWALL_DEV_ROOT:-${XDG_STATE_HOME:-$HOME/.local/state}/ibexwall-dev-root}
 export IBEXWALL_ROOT="$root"
 
+# The desktop binary must carry the built frontend (a plain debug build
+# looks for the Vite dev server instead and shows "connection refused"):
+#   (cd ui && pnpm build) && cargo build -p ibexwall-core -p ibexwall-cli \
+#     -p ibexwall-plugin-posture -p ibexwall-plugin-ports -p ibexwall-plugin-dns
+#   cargo build --manifest-path ui/src-tauri/Cargo.toml --features custom-protocol
 for bin in ibexwalld ibexwall-desktop; do
     [ -x "$repo/target/debug/$bin" ] || {
-        echo "missing $repo/target/debug/$bin; build it first" >&2
+        echo "missing $repo/target/debug/$bin; build it first (see the top of this script)" >&2
         exit 1
     }
 done

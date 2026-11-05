@@ -15,6 +15,11 @@ workspace = true
 name = "ibexwall_desktop"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# Serve the built frontend (ui/dist) from the binary instead of the Vite dev
+# server; `tauri build` turns this on, and so does scripts/dev-sandbox.sh.
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

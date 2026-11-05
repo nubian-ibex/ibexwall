@@ -6,15 +6,15 @@
 //! core maps that to the file the browser's own documentation defines.
 //!
 //! Paths verified from each vendor's documentation, 2026-11-02:
-//! - Firefox: https://mozilla.github.io/policy-templates/ (system-wide
+//! - Firefox: <https://mozilla.github.io/policy-templates/> (system-wide
 //!   `/etc/firefox/policies/policies.json`, policy `DNSOverHTTPS`).
-//! - Chromium family: https://www.chromium.org/administrators/linux-quick-start/
+//! - Chromium family: <https://www.chromium.org/administrators/linux-quick-start/>
 //!   (`<policy dir>/policies/managed/*.json`, policy `DnsOverHttpsMode`;
 //!   Chrome `/etc/opt/chrome`, Chromium `/etc/chromium`, Ubuntu's package
 //!   `/etc/chromium-browser`).
-//! - Brave: https://support.brave.app/hc/en-us/articles/360039248271
+//! - Brave: <https://support.brave.app/hc/en-us/articles/360039248271>
 //!   (`/etc/brave/policies/managed/`).
-//! - Edge: https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies
+//! - Edge: <https://learn.microsoft.com/en-us/deployedge/microsoft-edge-policies>
 //!   (`/etc/opt/edge/policies/managed/`, policy `DnsOverHttpsMode`).
 
 use serde_json::Value;

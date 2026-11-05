@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! SQLite state (spec §4.4): WAL mode, versioned migrations, and the
-//! tables F1 needs. The chained audit log lives in [`audit`].
+//! tables F1 needs. The chained audit log lives in `audit`.
 //! `Connection` is `Send` but not `Sync`, so it sits behind a mutex
 //! (single writer; the engine runs one transaction at a time anyway).
 

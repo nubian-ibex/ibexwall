@@ -1,5 +1,5 @@
-# Base CI: fmt, clippy, tests, license check, contract drift and commit
-# hygiene. No VM jobs at F0: hosted runners expose no nested KVM
+# Base CI: fmt, clippy, docs, tests, coverage report, the UI checks, license
+# check, contract drift and commit hygiene. No VM jobs at F0: hosted runners expose no nested KVM
 # (ADR-0023); `cargo xtask vm-test` is the local verification path.
 name: ci
 
@@ -40,6 +40,41 @@ jobs:
       - run: cargo deny check
       - name: contracts must not drift
         run: cargo run -q -p xtask -- schemas --check
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo doc --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  coverage:
+    # A report, not a gate: it shows where the tests do not reach.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: taiki-e/install-action@899b013517f9e7774591216672bf75a46bb9a481 # v2.9.4
+        with:
+          tool: cargo-llvm-cov,cargo-nextest
+      - run: rustup component add llvm-tools-preview
+      - run: cargo llvm-cov nextest --workspace --exclude xtask --summary-only
+
+  ui:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
 
   commits:
     runs-on: ubuntu-latest

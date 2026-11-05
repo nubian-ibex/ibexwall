@@ -105,19 +105,19 @@ pub mod log {
 
     impl OpLog {
         pub fn push(&self, entry: String) {
-            self.entries.lock().unwrap().push(entry);
+            self.entries.lock().expect("lock poisoned").push(entry);
         }
 
         pub fn snapshot(&self) -> Vec<String> {
-            self.entries.lock().unwrap().clone()
+            self.entries.lock().expect("lock poisoned").clone()
         }
 
         pub fn is_empty(&self) -> bool {
-            self.entries.lock().unwrap().is_empty()
+            self.entries.lock().expect("lock poisoned").is_empty()
         }
 
         pub fn len(&self) -> usize {
-            self.entries.lock().unwrap().len()
+            self.entries.lock().expect("lock poisoned").len()
         }
     }
 }

@@ -286,9 +286,10 @@ fn meets(entry: &Entry, current: &str) -> bool {
         return true;
     }
     entry.at_least
-        && current.parse::<i64>().is_ok()
-        && entry.value.parse::<i64>().is_ok()
-        && current.parse::<i64>().unwrap() >= entry.value.parse::<i64>().unwrap()
+        && matches!(
+            (current.parse::<i64>(), entry.value.parse::<i64>()),
+            (Ok(now), Ok(wanted)) if now >= wanted
+        )
 }
 
 /// True when the kernel already holds this key stricter than the

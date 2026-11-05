@@ -552,7 +552,10 @@ impl FakeNft {
     }
 
     pub fn has(&self, chain: &str) -> bool {
-        self.chains.lock().unwrap().contains_key(chain)
+        self.chains
+            .lock()
+            .expect("lock poisoned")
+            .contains_key(chain)
     }
 }
 
@@ -561,7 +564,7 @@ impl Nft for FakeNft {
         fragment.validate()?;
         self.log
             .push(format!("apply {}", fragment.chain_names().join(",")));
-        let mut chains = self.chains.lock().unwrap();
+        let mut chains = self.chains.lock().expect("lock poisoned");
         for chain in &fragment.chains {
             chains.insert(chain.name.clone(), json!({ "rules": chain.rules.len() }));
         }
@@ -569,17 +572,28 @@ impl Nft for FakeNft {
     }
 
     fn capture(&self, chain: &str) -> Result<Option<Value>> {
-        Ok(self.chains.lock().unwrap().get(chain).cloned())
+        Ok(self
+            .chains
+            .lock()
+            .expect("lock poisoned")
+            .get(chain)
+            .cloned())
     }
 
     fn chains(&self) -> Result<Vec<String>> {
-        Ok(self.chains.lock().unwrap().keys().cloned().collect())
+        Ok(self
+            .chains
+            .lock()
+            .expect("lock poisoned")
+            .keys()
+            .cloned()
+            .collect())
     }
 
     fn restore(&self, chain: &str, prior: Option<&Value>) -> Result<()> {
         self.log
             .push(format!("restore {chain} prior={}", prior.is_some()));
-        let mut chains = self.chains.lock().unwrap();
+        let mut chains = self.chains.lock().expect("lock poisoned");
         match prior {
             Some(prior) => chains.insert(chain.to_string(), prior.clone()),
             None => chains.remove(chain),

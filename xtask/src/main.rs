@@ -3,6 +3,9 @@
 
 //! Developer tasks: `cargo xtask <command>`.
 
+// Developer tooling, not shipped: a failed unwrap here is a clear stop.
+#![allow(clippy::unwrap_used)]
+
 mod devkey;
 mod ebpf;
 mod egress;

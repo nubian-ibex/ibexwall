@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#![allow(clippy::unwrap_used)]
+
 //! End-to-end test: a real daemon + the real dev.echo plugin over
 //! varlink under a sandbox root, with a fake polkit. This is the
 //! unprivileged rehearsal of the F1 acceptance criteria; the VM suite

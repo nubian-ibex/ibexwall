@@ -220,13 +220,16 @@ impl FakeSystemd {
     }
 
     pub fn seed(&self, unit: &str, snapshot: UnitSnapshot) {
-        self.units.lock().unwrap().insert(unit.into(), snapshot);
+        self.units
+            .lock()
+            .expect("lock poisoned")
+            .insert(unit.into(), snapshot);
     }
 
     pub fn get(&self, unit: &str) -> UnitSnapshot {
         self.units
             .lock()
-            .unwrap()
+            .expect("lock poisoned")
             .get(unit)
             .copied()
             .unwrap_or_default()
@@ -250,7 +253,7 @@ impl Systemd for FakeSystemd {
 
     fn apply(&self, unit: &str, action: UnitAction, now: bool) -> anyhow::Result<()> {
         self.log.push(format!("{action:?} {unit} now={now}"));
-        let mut units = self.units.lock().unwrap();
+        let mut units = self.units.lock().expect("lock poisoned");
         let snapshot = units.entry(unit.into()).or_default();
         match action {
             UnitAction::Start => snapshot.active = true,

@@ -42,17 +42,17 @@ impl FakeClock {
     }
 
     pub fn advance(&self, seconds: i64) {
-        *self.now.lock().unwrap() += seconds;
+        *self.now.lock().expect("lock poisoned") += seconds;
     }
 
     pub fn set(&self, unix: i64) {
-        *self.now.lock().unwrap() = unix;
+        *self.now.lock().expect("lock poisoned") = unix;
     }
 }
 
 impl Clock for FakeClock {
     fn unix_now(&self) -> i64 {
-        *self.now.lock().unwrap()
+        *self.now.lock().expect("lock poisoned")
     }
 }
 

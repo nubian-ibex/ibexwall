@@ -154,7 +154,10 @@ impl Supervisor {
             .stdin(Stdio::null())
             .spawn()
             .with_context(|| format!("spawning {}", bin.display()))?;
-        self.processes.lock().unwrap().insert(id.into(), child);
+        self.processes
+            .lock()
+            .expect("lock poisoned")
+            .insert(id.into(), child);
 
         // Wait for the socket to accept connections.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
@@ -316,7 +319,12 @@ pub fn generate_unit(manifest: &Manifest) -> String {
 
 impl Drop for Supervisor {
     fn drop(&mut self) {
-        for child in self.processes.get_mut().unwrap().values_mut() {
+        for child in self
+            .processes
+            .get_mut()
+            .expect("lock poisoned")
+            .values_mut()
+        {
             let _ = child.kill();
         }
     }

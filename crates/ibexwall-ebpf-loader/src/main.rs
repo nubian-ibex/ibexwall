@@ -619,13 +619,13 @@ fn amain() -> Result<()> {
                 ip6,
                 exe: [0; ibexwall_net_common::EXE_LEN],
             };
-            let mut guard = describer.lock().unwrap();
+            let mut guard = describer.lock().expect("lock poisoned");
             let (enricher, cgroups) = &mut *guard;
             let sighting = resolve(event, cgroups);
             let mut line = describe(&sighting, enricher);
             line["ask_id"] = id.into();
             let message = serde_json::json!({ "ask": line }).to_string();
-            to_core.lock().unwrap().send(&message);
+            to_core.lock().expect("lock poisoned").send(&message);
         });
         match started {
             Ok(ask) => {
@@ -656,19 +656,19 @@ fn amain() -> Result<()> {
             }
         }
     });
-    let reader = sink.lock().unwrap().reader();
+    let reader = sink.lock().expect("lock poisoned").reader();
     if let Some(reader) = reader {
         let handle = std::sync::Arc::clone(&ask_handle);
         std::thread::spawn(move || read_core(reader, policies, handle));
     }
     if let Some(reason) = degraded {
         sink.lock()
-            .unwrap()
+            .expect("lock poisoned")
             .send(&serde_json::json!({ "meta": "degraded", "reason": reason }).to_string());
     }
     run(ebpf, &mut cgroups, &mut |sighting| {
         let line = describe(&sighting, &mut enricher).to_string();
-        sink.lock().unwrap().send(&line);
+        sink.lock().expect("lock poisoned").send(&line);
     })
 }
 

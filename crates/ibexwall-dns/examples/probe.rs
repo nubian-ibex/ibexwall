@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#![allow(clippy::unwrap_used)]
+
 //! Spike S3-a probe: resolves a name over each encrypted transport against
 //! one real provider and prints latency. Usage:
 //! `cargo run -p ibexwall-dns --example probe -- <ip> <server_name> [name]`

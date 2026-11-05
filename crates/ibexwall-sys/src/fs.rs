@@ -220,7 +220,7 @@ impl FakeFs {
     }
 
     pub fn seed(&self, path: &Path, content: &[u8]) {
-        self.files.lock().unwrap().insert(
+        self.files.lock().expect("lock poisoned").insert(
             path.to_path_buf(),
             FakeFile {
                 content: content.to_vec(),
@@ -236,13 +236,13 @@ impl FakeFs {
 
 impl Fs for FakeFs {
     fn exists(&self, path: &Path) -> bool {
-        self.files.lock().unwrap().contains_key(path)
+        self.files.lock().expect("lock poisoned").contains_key(path)
     }
 
     fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
         self.files
             .lock()
-            .unwrap()
+            .expect("lock poisoned")
             .get(path)
             .map(|f| f.content.clone())
             .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))
@@ -251,7 +251,7 @@ impl Fs for FakeFs {
     fn metadata(&self, path: &Path) -> io::Result<FileMeta> {
         self.files
             .lock()
-            .unwrap()
+            .expect("lock poisoned")
             .get(path)
             .map(|f| f.meta)
             .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))
@@ -265,7 +265,7 @@ impl Fs for FakeFs {
         owner: Option<(u32, u32)>,
     ) -> io::Result<()> {
         self.log.push(format!("write {}", path.display()));
-        let mut files = self.files.lock().unwrap();
+        let mut files = self.files.lock().expect("lock poisoned");
         let mut meta = files.get(path).map(|f| f.meta).unwrap_or(FileMeta {
             mode: 0o644,
             uid: 0,
@@ -288,7 +288,7 @@ impl Fs for FakeFs {
 
     fn remove(&self, path: &Path) -> io::Result<()> {
         self.log.push(format!("remove {}", path.display()));
-        self.files.lock().unwrap().remove(path);
+        self.files.lock().expect("lock poisoned").remove(path);
         Ok(())
     }
 

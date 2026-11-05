@@ -259,7 +259,11 @@ mod tests {
 
     impl Fetcher for Fake {
         fn fetch(&self, _url: &str, _max: usize) -> Result<Vec<u8>, ListError> {
-            self.body.lock().unwrap().clone().map_err(ListError::Fetch)
+            self.body
+                .lock()
+                .expect("lock poisoned")
+                .clone()
+                .map_err(ListError::Fetch)
         }
     }
 

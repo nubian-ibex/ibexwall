@@ -792,7 +792,7 @@ mod tests {
     #[test]
     fn a_failing_tool_stops_the_op_and_names_it() {
         let rig = rig("fwf", true);
-        *rig.runner.fail_on.lock().unwrap() = Some("--add-port".into());
+        *rig.runner.fail_on.lock().expect("lock poisoned") = Some("--add-port".into());
         let ops = vec![fw(
             "firewalld",
             serde_json::json!({"action": "allow_port", "port": 9, "proto": "tcp"}),

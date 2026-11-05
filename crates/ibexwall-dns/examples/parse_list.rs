@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#![allow(clippy::unwrap_used)]
+
 //! Parses a list file with the production parser and prints the counts.
 //! Usage: `cargo run -p ibexwall-dns --example parse_list -- <file>`
 

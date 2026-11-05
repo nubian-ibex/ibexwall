@@ -261,7 +261,10 @@ pub(crate) fn install_plugin(vm: &Vm, workspace: &Path, id: &str) -> Result<()> 
         // The official plugins are one multicall binary (ADR-0041), reached
         // through a link named after the plugin. Written beside and renamed
         // into place: a running plugin cannot be overwritten (ETXTBSY).
-        let shared = "/usr/lib/ibexwall/ibexwall-plugins";
+        // /usr/libexec carries the bin_t label on Fedora, which is what lets
+        // systemd transition the process out of init_t.
+        let shared = "/usr/libexec/ibexwall/ibexwall-plugins";
+        vm.ssh("sudo mkdir -p /usr/libexec/ibexwall")?;
         pipe_file(
             vm,
             &workspace.join("target/release/ibexwall-plugins"),
@@ -280,7 +283,28 @@ pub(crate) fn install_plugin(vm: &Vm, workspace: &Path, id: &str) -> Result<()> 
         vm,
         &dir.join("plugin.toml.sig"),
         &format!("sudo tee {target}/plugin.toml.sig >/dev/null"),
-    )
+    )?;
+    // Its own sandbox: the socket unit starts the plugin when the core first
+    // connects, as an installed package would.
+    let (_, units) = crate::plugin_units::all(workspace)?
+        .into_iter()
+        .find(|(plugin, _)| plugin == id)
+        .with_context(|| format!("no manifest for {id}"))?;
+    for (suffix, text) in [("service", &units.service), ("socket", &units.socket)] {
+        pipe_data(
+            vm,
+            text,
+            &format!(
+                "sudo tee /etc/systemd/system/{}.{suffix} >/dev/null",
+                units.name
+            ),
+        )?;
+    }
+    vm.ssh(&format!(
+        "sudo systemctl daemon-reload && sudo systemctl enable --now {}.socket",
+        units.name
+    ))?;
+    Ok(())
 }
 
 pub(crate) fn start_daemon(vm: &Vm) -> Result<()> {

@@ -112,6 +112,18 @@ pub fn write_directories(ops: &[Op]) -> Vec<String> {
     for op in ops {
         let path: String = match op {
             Op::FileWrite { path, .. } | Op::FileRemove { path } => path.clone(),
+            Op::TlsKeyPair {
+                cert_path,
+                key_path,
+                ..
+            } => {
+                for path in [cert_path, key_path] {
+                    if let Some(parent) = Path::new(path).parent() {
+                        dirs.insert(parent.to_string_lossy().into_owned());
+                    }
+                }
+                continue;
+            }
             // The browser policy executor writes one known file per
             // browser; its directory must be writable in the unit too.
             Op::BrowserPolicy { browser, .. } => match crate::browser::target(browser) {
@@ -203,6 +215,40 @@ pub fn execute(op: &Op, sys: &crate::SysBundle) -> Result<()> {
             sys.fs
                 .remove(Path::new(path))
                 .map_err(anyhow::Error::from)?;
+            Ok(())
+        }
+        Op::TlsKeyPair {
+            cert_path,
+            key_path,
+            hosts,
+            days,
+            key_group,
+        } => {
+            let gid = resolve_group(key_group)?;
+            let pair = crate::tls::generate(hosts, *days, sys.clock.unix_now())?;
+            let as_root = crate::current_uid() == 0;
+            if let Some(parent) = Path::new(key_path).parent() {
+                sys.fs.create_dir_all(parent).map_err(anyhow::Error::from)?;
+            }
+            // The key first, readable by its group only; the certificate is public.
+            sys.fs
+                .write_atomic(
+                    Path::new(key_path),
+                    pair.key_pem.as_bytes(),
+                    0o640,
+                    as_root.then_some((0, gid)),
+                )
+                .map_err(anyhow::Error::from)
+                .with_context(|| format!("writing {key_path}"))?;
+            sys.fs
+                .write_atomic(
+                    Path::new(cert_path),
+                    pair.cert_pem.as_bytes(),
+                    0o644,
+                    as_root.then_some((0, 0)),
+                )
+                .map_err(anyhow::Error::from)
+                .with_context(|| format!("writing {cert_path}"))?;
             Ok(())
         }
         Op::SystemdUnit { unit, action, now } => {
@@ -382,6 +428,11 @@ fn resolve_user(owner: &str) -> Result<u32> {
 /// given by name: the assistants' group reads the MCP access settings. Any
 /// other name is refused, so an op cannot hand a file to a group of its choice.
 const NAMED_GROUPS: &[&str] = &["ibexwall-assistants", "ibexwall-mcp"];
+
+/// `root`, a numeric gid or one of IbexWall's own groups.
+pub fn group_allowed(group: &str) -> bool {
+    group == "root" || NAMED_GROUPS.contains(&group) || group.parse::<u32>().is_ok()
+}
 
 fn gid_in(group_file: &str, name: &str) -> Option<u32> {
     group_file.lines().find_map(|line| {
@@ -644,6 +695,38 @@ mod tests {
         );
         // An invalid id contributes nothing.
         assert!(write_directories(&[block("nope")]).is_empty());
+    }
+
+    #[test]
+    fn a_tls_pair_is_written_with_a_private_key_and_a_public_certificate() {
+        use std::os::unix::fs::PermissionsExt;
+        let (root, sys) = sandbox("tls");
+        let op = Op::TlsKeyPair {
+            cert_path: "/mcp/tls.crt".into(),
+            key_path: "/mcp/tls.key".into(),
+            hosts: vec!["mcp.example".into()],
+            days: 30,
+            key_group: "root".into(),
+        };
+        execute(&op, &sys).unwrap();
+        let mode = |p: &str| {
+            std::fs::metadata(root.join(p))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777
+        };
+        assert_eq!((mode("mcp/tls.key"), mode("mcp/tls.crt")), (0o640, 0o644));
+        let key = std::fs::read_to_string(root.join("mcp/tls.key")).unwrap();
+        assert!(key.contains("PRIVATE KEY"));
+        // Two runs make two different keys.
+        execute(&op, &sys).unwrap();
+        assert_ne!(
+            key,
+            std::fs::read_to_string(root.join("mcp/tls.key")).unwrap()
+        );
+        assert_eq!(write_directories(&[op]).len(), 1);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

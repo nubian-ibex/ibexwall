@@ -107,6 +107,21 @@ pub enum Op {
     /// reversible (flagged in the plan).
     #[serde(rename = "package.install")]
     PackageInstall { package: String },
+    /// Make a self-signed certificate and its private key at the given
+    /// paths (inside `write_paths`). The key is made when the plan is
+    /// applied and never appears in the plan, so no preview, log or proposal
+    /// can hold it. Rollback removes both files, or restores the old ones.
+    #[serde(rename = "tls.keypair")]
+    TlsKeyPair {
+        cert_path: String,
+        key_path: String,
+        /// Names or addresses clients will use.
+        hosts: Vec<String>,
+        days: u32,
+        /// Group that may read the key (mode 0640): `root` or one of
+        /// IbexWall's own groups.
+        key_group: String,
+    },
     /// Run an allowlisted binary with fixed argv; no shell.
     #[serde(rename = "exec")]
     Exec { path: String, args: Vec<String> },

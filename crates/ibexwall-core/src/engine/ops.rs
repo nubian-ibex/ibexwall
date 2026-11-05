@@ -60,6 +60,41 @@ fn validate_one(op: &Op, manifest: &Manifest) -> Result<(), OpError> {
             }
             Ok(())
         }
+        Op::TlsKeyPair {
+            cert_path,
+            key_path,
+            hosts,
+            days,
+            key_group,
+        } => {
+            for path in [cert_path, key_path] {
+                if !path_under_any(path, &manifest.privileges.write_paths) {
+                    return Err(OpError::PathNotWritable { path: path.clone() });
+                }
+            }
+            if hosts.is_empty()
+                || hosts.len() > 8
+                || !hosts.iter().all(|h| ibexwall_sys::tls::valid_host(h))
+            {
+                return Err(OpError::Invalid {
+                    field: "hosts",
+                    reason: "one to eight names or addresses".into(),
+                });
+            }
+            if !(1..=825).contains(days) {
+                return Err(OpError::Invalid {
+                    field: "days",
+                    reason: "1 to 825".into(),
+                });
+            }
+            if !ibexwall_sys::ops::group_allowed(key_group) {
+                return Err(OpError::Invalid {
+                    field: "key_group",
+                    reason: format!("`{key_group}` is not root or one of IbexWall's groups"),
+                });
+            }
+            Ok(())
+        }
         Op::SystemdUnit { unit, action, .. } => {
             if !manifest.privileges.units.iter().any(|u| u == unit) {
                 return Err(OpError::UnitNotAllowed { unit: unit.clone() });
@@ -344,6 +379,39 @@ reversible = "immediate"
         .unwrap();
         manifest.validate().unwrap();
         manifest
+    }
+
+    #[test]
+    fn a_tls_pair_is_checked_for_paths_hosts_days_and_group() {
+        let manifest = manifest();
+        let pair = |cert: &str, hosts: &[&str], days: u32, group: &str| {
+            [Op::TlsKeyPair {
+                cert_path: cert.into(),
+                key_path: "/etc/sysctl.d/key.pem".into(),
+                hosts: hosts.iter().map(|h| h.to_string()).collect(),
+                days,
+                key_group: group.into(),
+            }]
+        };
+        let cert = "/etc/sysctl.d/cert.pem";
+        assert!(
+            validate(
+                &pair(cert, &["mcp.example", "10.0.0.5"], 365, "root"),
+                &manifest
+            )
+            .is_ok()
+        );
+        assert!(validate(&pair(cert, &["a"], 365, "ibexwall-mcp"), &manifest).is_ok());
+        for bad in [
+            pair("/etc/passwd", &["a"], 365, "root"),
+            pair(cert, &[], 365, "root"),
+            pair(cert, &["x;y"], 365, "root"),
+            pair(cert, &["a"], 0, "root"),
+            pair(cert, &["a"], 9999, "root"),
+            pair(cert, &["a"], 365, "wheel"),
+        ] {
+            assert!(validate(&bad, &manifest).is_err(), "{bad:?}");
+        }
     }
 
     #[test]

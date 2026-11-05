@@ -158,6 +158,41 @@ impl Engine {
                         prior,
                     });
                 }
+                Op::TlsKeyPair {
+                    cert_path,
+                    key_path,
+                    ..
+                } => {
+                    // Both files, so a rollback puts back the old pair or
+                    // leaves none.
+                    for (n, path) in [cert_path, key_path].into_iter().enumerate() {
+                        let prior = match self.sys.fs.read(Path::new(path)) {
+                            Ok(content) => {
+                                let meta = self.sys.fs.metadata(Path::new(path))?;
+                                let blob = format!("{index:03}-{n}.bin");
+                                std::fs::write(dir.join("files").join(&blob), &content)?;
+                                Some(PriorFile {
+                                    sha256: hex::encode(sha2::Sha256::digest(&content)),
+                                    blob,
+                                    mode: meta.mode,
+                                    uid: meta.uid,
+                                    gid: meta.gid,
+                                })
+                            }
+                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                            Err(e) => {
+                                return Err(
+                                    anyhow::Error::new(e).context(format!("snapshotting {path}"))
+                                );
+                            }
+                        };
+                        entries.push(SnapshotEntry::File {
+                            op_index: index,
+                            path: path.clone(),
+                            prior,
+                        });
+                    }
+                }
                 Op::FirewallAdapter { backend, action } => {
                     // The manager rewrites its own files: capture them, and
                     // note that rollback must tell it to re-read them.
@@ -450,6 +485,7 @@ fn op_name(op: &Op) -> &'static str {
     match op {
         Op::FileWrite { .. } => "file.write",
         Op::FileRemove { .. } => "file.remove",
+        Op::TlsKeyPair { .. } => "tls.keypair",
         Op::SystemdUnit { .. } => "systemd.unit",
         Op::SysctlSet { .. } => "sysctl.set",
         Op::NftFragment { .. } => "nft.fragment",
@@ -467,6 +503,7 @@ fn op_name(op: &Op) -> &'static str {
 fn op_target(op: &Op) -> String {
     match op {
         Op::FileWrite { path, .. } | Op::FileRemove { path } => path.clone(),
+        Op::TlsKeyPair { cert_path, .. } => cert_path.clone(),
         Op::SystemdUnit { unit, action, .. } => format!("{action:?} {unit}"),
         Op::SysctlSet { key, value } => format!("{key} = {value}"),
         Op::NftFragment { fragment } => ibexwall_sys::ops::parse_fragment(fragment)
@@ -504,6 +541,11 @@ fn op_diff(op: &Op, index: usize) -> Option<String> {
                 .join("\n"),
         ),
         Op::FileRemove { .. } => Some(format!("-{index:03}: file removed")),
+        // The key does not exist yet, and when it does it is shown nowhere.
+        Op::TlsKeyPair { hosts, days, .. } => Some(format!(
+            "+(a new certificate for {} valid {days} days, and its private key, made when this is applied and never shown)",
+            hosts.join(", ")
+        )),
         _ => None,
     }
 }

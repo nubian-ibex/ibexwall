@@ -21,6 +21,8 @@
 //! That the servers really authenticate (`chronyc -N authdata`) is proved
 //! on a real machine in the F7 VM phase, not guessed here.
 
+mod detect;
+
 use std::collections::BTreeMap;
 
 use ibexwall_proto::{
@@ -183,6 +185,8 @@ pub fn evaluate(sandbox: &Sandbox, detected_at: &str) -> CheckReport {
             }
         }
     };
+    // After the problems, so they keep their place: what is found today.
+    findings.push(detect::time(sandbox, detected_at));
     CheckReport {
         results: vec![CheckResult {
             id: "nts.authenticated_time".into(),

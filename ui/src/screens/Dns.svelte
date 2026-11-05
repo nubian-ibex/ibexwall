@@ -6,6 +6,7 @@
     DNS_LISTS,
     DNS_PROVIDERS,
     dnsPatch,
+    ownProblems,
     transportFor,
     type DnsChoice,
     type DnsProviderId,
@@ -14,12 +15,32 @@
   import ChangeFlow from '../components/ChangeFlow.svelte';
   import { relativeTime } from '../lib/time';
   import StateMessage from '../components/StateMessage.svelte';
-  import type { DnsStatus } from '../gen/contracts';
+  import type { DnsStatus, Finding } from '../gen/contracts';
   import Switch from '../components/Switch.svelte';
 
   let choice = $state<DnsChoice>({ ...DNS_DEFAULTS });
   let busy = $state(false);
   let counters = $state<DnsStatus | null>(null);
+  let notes = $state<Finding[]>([]);
+
+  // What the network offers and what goes out unencrypted, said plainly.
+  $effect(() => {
+    if (plugin) void app.transport.listFindings('net.dns').then((all) => (notes = all));
+  });
+  const networkServers = $derived(
+    (notes.find((f) => f.id === 'dns.network_servers')?.args?.servers ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+  const plainServers = $derived(notes.find((f) => f.id === 'dns.plain_upstream')?.args?.servers);
+  const problems = $derived(ownProblems(choice.own));
+
+  function useNetworkServer(address: string) {
+    choice.own.enabled = true;
+    if (!choice.own.primary) choice.own.primary = address;
+    else choice.own.secondary = address;
+  }
 
   $effect(() => {
     if (plugin?.enabled) void app.transport.getDnsStatus().then((value) => (counters = value));
@@ -152,6 +173,103 @@
     </label>
   </section>
 
+  <section class="card" aria-labelledby="dns-own">
+    <h2 id="dns-own">{t('dns-own-title')}</h2>
+    <p class="muted">{t('dns-own-body')}</p>
+
+    {#if networkServers.length > 0}
+      <div class="note" role="note">
+        <strong>{t('dns-network-title')}</strong>
+        <p class="muted">{t('dns-network-body')}</p>
+        <ul class="servers">
+          {#each networkServers as address (address)}
+            <li>
+              <code>{address}</code>
+              <button type="button" class="link" onclick={() => useNetworkServer(address)}>
+                {t('dns-network-use', { address })}
+              </button>
+            </li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
+    {#if plainServers}
+      <p class="warn" role="status">{t('dns-plain-warning', { servers: plainServers })}</p>
+    {/if}
+
+    <label class="check">
+      <input type="checkbox" bind:checked={choice.own.enabled} />
+      <span><strong>{t('dns-own-enable')}</strong></span>
+    </label>
+
+    {#if choice.own.enabled}
+      <div class="row">
+        <label class="field">
+          <span>{t('dns-own-primary')}</span>
+          <input
+            type="text"
+            bind:value={choice.own.primary}
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </label>
+        <label class="field">
+          <span>{t('dns-own-transport')}</span>
+          <select bind:value={choice.own.primaryTransport}>
+            <option value="plain">{t('dns-own-plain')}</option>
+            <option value="tls">{t('dns-own-tls')}</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
+        <label class="field">
+          <span>{t('dns-own-secondary')}</span>
+          <input
+            type="text"
+            bind:value={choice.own.secondary}
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </label>
+        <label class="field">
+          <span>{t('dns-own-transport')}</span>
+          <select bind:value={choice.own.secondaryTransport}>
+            <option value="plain">{t('dns-own-plain')}</option>
+            <option value="tls">{t('dns-own-tls')}</option>
+          </select>
+        </label>
+      </div>
+      {#if choice.own.primaryTransport === 'tls' || choice.own.secondaryTransport === 'tls'}
+        <label class="field">
+          <span>{t('dns-own-name')}</span>
+          <input type="text" bind:value={choice.own.serverName} autocomplete="off" />
+        </label>
+      {/if}
+      <p class="muted">{t('dns-own-order')}</p>
+
+      <h3>{t('dns-own-split-title')}</h3>
+      <p class="muted">{t('dns-own-split-body')}</p>
+      <div class="row">
+        <label class="field">
+          <span>{t('dns-own-domains')}</span>
+          <input type="text" bind:value={choice.own.domains} autocomplete="off" />
+        </label>
+        <label class="field">
+          <span>{t('dns-own-route')}</span>
+          <input type="text" bind:value={choice.own.routeServer} autocomplete="off" />
+        </label>
+      </div>
+
+      {#if problems.length > 0}
+        <ul class="problems" role="alert">
+          {#each problems as key (key)}
+            <li>{t(key)}</li>
+          {/each}
+        </ul>
+      {/if}
+    {/if}
+  </section>
+
   {#if counters}
     <section class="card" aria-labelledby="dns-counters">
       <h2 id="dns-counters">{t('dns-counters-title')}</h2>
@@ -186,11 +304,53 @@
 
   <section class="card">
     <p class="muted">{t('dns-review-note')}</p>
-    <ChangeFlow plugin="net.dns" patch={dnsPatch(choice)} />
+    {#if problems.length === 0}
+      <ChangeFlow plugin="net.dns" patch={dnsPatch(choice)} />
+    {:else}
+      <p class="muted">{t('dns-own-fix-first')}</p>
+    {/if}
   </section>
 {/if}
 
 <style>
+  .row {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: var(--space-4);
+  }
+  .note {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: var(--space-4);
+    margin: var(--space-3) 0;
+  }
+  .servers {
+    list-style: none;
+    margin: var(--space-2) 0 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-2);
+  }
+  .link {
+    background: none;
+    border: 0;
+    color: var(--accent);
+    cursor: pointer;
+    text-decoration: underline;
+    min-height: var(--target);
+  }
+  .warn,
+  .problems {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: var(--space-3) var(--space-4);
+    margin: var(--space-3) 0;
+  }
+  .problems {
+    list-style: none;
+  }
   .page-head {
     margin-bottom: var(--space-6);
   }

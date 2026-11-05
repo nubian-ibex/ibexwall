@@ -100,6 +100,9 @@ const DNS_NOTES: Finding[] = [
 ];
 
 const ASSISTANT_NOTES: Finding[] = [
+  finding('assistant.tls', 'system.assistant', 'info', 'assistant-tls', {
+    fingerprint: 'AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99',
+  }),
   finding('assistant.http', 'system.assistant', 'info', 'assistant-http', {
     enabled: 'true',
     listen: '127.0.0.1:8765',

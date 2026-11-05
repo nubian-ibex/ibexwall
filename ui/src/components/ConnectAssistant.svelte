@@ -11,6 +11,7 @@
     remoteUrl,
     snippet,
     type ClientId,
+    splitHosts,
     type Preset,
     type RemoteState,
   } from '../lib/assistant';
@@ -20,7 +21,14 @@
 
   let client = $state<ClientId>('claude-code');
   let preset = $state<Preset>('read');
-  let remote = $state<RemoteState>({ enabled: false, listen: '127.0.0.1:8765', tokens: [] });
+  let remote = $state<RemoteState>({
+    enabled: false,
+    listen: '127.0.0.1:8765',
+    fingerprint: '',
+    tokens: [],
+  });
+  let hosts = $state('');
+  let makingCert = $state(false);
   let listen = $state('0.0.0.0:8765');
 
   let tokenName = $state('');
@@ -180,6 +188,35 @@
         <ChangeFlow plugin="system.assistant" patch={made.patch} />
       {/key}
     </div>
+  {/if}
+
+  <h3>{t('remote-cert-title')}</h3>
+  <p class="muted">{t('remote-cert-body')}</p>
+  {#if remote.fingerprint}
+    <p>{t('remote-cert-fingerprint')}</p>
+    <pre class="code">{remote.fingerprint}</pre>
+  {/if}
+  <label class="field">
+    <span>{t('remote-cert-hosts')}</span>
+    <input type="text" bind:value={hosts} autocomplete="off" spellcheck="false" />
+  </label>
+  <p class="muted">{t('remote-cert-hosts-help')}</p>
+  <Button onclick={() => (makingCert = !makingCert)}
+    >{remote.fingerprint ? t('remote-cert-replace') : t('remote-cert-make')}</Button
+  >
+  {#if makingCert}
+    <p class="muted">{t('remote-cert-never-shown')}</p>
+    {#key `${hosts}-${remote.fingerprint}`}
+      <ChangeFlow
+        plugin="system.assistant"
+        patch={{
+          action: 'tls',
+          hosts: splitHosts(hosts),
+          days: 365,
+          replace: remote.fingerprint !== '',
+        }}
+      />
+    {/key}
   {/if}
 
   <h3>{t('remote-switch-title')}</h3>

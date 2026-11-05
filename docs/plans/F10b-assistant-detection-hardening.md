@@ -8,7 +8,7 @@ alongside F10 (packaging stays M4 onward) and follows the order the maintainer
 chose: 1 connect an assistant, 2 detection with pre-filled settings, 3 the
 Hardening catalog and the new tool plugins.
 
-Status: part 1 (connect an assistant, certificate included) and part 2 (detection: DNS, time, firewall) done 2026-11-05; ssh, sysctl and MAC pre-fill are left; part 3 (Hardening) is next.
+Status: parts 1 and 2 done 2026-11-05. Part 3: the Hardening catalog, screen and the system.hardening and system.modules plugins are done (26 items, five distros); the rkhunter and chkrootkit, OpenSCAP and local-exposure (nmap) plugins and the ssh, sysctl and MAC pre-fill are next.
 
 ## Rules that do not change
 
@@ -103,3 +103,24 @@ forbidden field (browsing, DNS, files) appears in a report.
 1, then 2, then 3, each ending with the battery and the five-distro phases
 green and signed commits. Out of scope: OAuth, editing client scopes freely in
 the UI, scanning other hosts, installing any tool.
+
+## Part 3 as built
+
+The catalog is `catalog/hardening.json`. The `system.hardening` plugin and the
+interface both read that one file, so what the screen offers and what the
+machine is judged against cannot drift. Each item carries a bilingual title and
+summary in our own words, what it can break, its sources (guide, section, link),
+a probe (sysctl values, module groups or a mount option) and the change that
+applies it through the plugin that owns it (`system.sysctl`, `system.modules`,
+`system.mounts`). Tests keep the catalog honest: every item is sourced and
+translated, a risky item states what it breaks, no high-risk item is pre-ticked,
+every patch is accepted by its plugin and matches its probe.
+
+Sources used so far: the Linux Hardening Guide (madaidans) sections 2.2, 2.5.2
+and 17, the Linux kernel documentation, and ANSSI-BP-028 as a general reference.
+KSPP and CIS were not used: the KSPP page could not be fetched when the catalog
+was written, and CIS text is licensed (ids and links only, when added). The
+madaidans page shows no licence, so nothing is copied from it.
+
+The explanation pages on the site are linked once the domain is set
+(`ui/src/lib/site.ts`).

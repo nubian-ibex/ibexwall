@@ -25,7 +25,7 @@ nft_prefix = "net_firewall"
 [sandbox]
 user = "dynamic"
 capabilities = ["CAP_DAC_READ_SEARCH"]
-read_paths = ["/etc/firewalld", "/usr/lib/firewalld", "/etc/ufw", "/etc/ibexwall/firewall", "/run/systemd/units", "/proc/net"]
+read_paths = ["/etc/firewalld", "/usr/lib/firewalld", "/etc/ufw", "/etc/ibexwall/firewall", "/run/systemd/units", "/proc/net", "/etc/os-release", "/usr/sbin", "/usr/bin"]
 network = false
 
 [risk]

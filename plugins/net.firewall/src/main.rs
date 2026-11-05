@@ -15,6 +15,8 @@
 //! is `8080/tcp`, tcp when no protocol is given), `enable_basic`,
 //! `allow_listening`, `mdns`.
 
+mod survey;
+
 use std::collections::BTreeSet;
 
 use ibexwall_firewall::detect::{self, Reader};
@@ -127,7 +129,7 @@ impl Plugin for Firewall {
     async fn check(&self, _config: Value) -> Result<CheckReport, PluginError> {
         Ok(CheckReport {
             results: vec![],
-            findings: vec![],
+            findings: vec![survey::firewall(&Sandbox::system(), "1970-01-01T00:00:00Z")],
         })
     }
 

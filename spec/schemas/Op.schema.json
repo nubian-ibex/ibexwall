@@ -274,6 +274,46 @@
       "type": "object"
     },
     {
+      "description": "Make a self-signed certificate and its private key at the given\npaths (inside `write_paths`). The key is made when the plan is\napplied and never appears in the plan, so no preview, log or proposal\ncan hold it. Rollback removes both files, or restores the old ones.",
+      "properties": {
+        "cert_path": {
+          "type": "string"
+        },
+        "days": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "hosts": {
+          "description": "Names or addresses clients will use.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "key_group": {
+          "description": "Group that may read the key (mode 0640): `root` or one of\nIbexWall's own groups.",
+          "type": "string"
+        },
+        "key_path": {
+          "type": "string"
+        },
+        "op": {
+          "const": "tls.keypair",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "cert_path",
+        "key_path",
+        "hosts",
+        "days",
+        "key_group"
+      ],
+      "type": "object"
+    },
+    {
       "description": "Run an allowlisted binary with fixed argv; no shell.",
       "properties": {
         "args": {

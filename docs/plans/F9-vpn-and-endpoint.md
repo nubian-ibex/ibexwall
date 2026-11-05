@@ -8,8 +8,7 @@ scenario on real machines, and the four acceptance checks of the phase:
 a dropped tunnel leaks nothing (`tcpdump`), the EICAR test file is detected,
 persistence cases are detected, and isolation reverts completely.
 
-Status: in progress (autonomous mode, the maintainer said "siga com o F9"
-on 2026-11-04).
+Status: delivered 2026-11-04 (report: `docs/reports/F9-report.md`).
 
 ## Milestones
 

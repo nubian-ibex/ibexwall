@@ -17,6 +17,7 @@ import type {
   Proposal,
   Transaction,
 } from '../gen/contracts';
+import { CATALOG } from './hardening';
 import {
   TransportError,
   type AppsListing,
@@ -107,6 +108,23 @@ const DNS_NOTES: Finding[] = [
     servers: '192.168.1.1, 10.8.0.1',
   }),
 ];
+
+// Two settings in place, one that cannot be told, the rest not applied.
+function hardeningNote(): Finding {
+  const all = CATALOG.items.map((i) => i.id);
+  const applied = ['kernel.kptr-restrict', 'fs.protected-files'];
+  const unknown = ['kernel.sysrq'];
+  return {
+    ...finding('hardening.state', 'system.hardening', 'info', 'hardening-state', {
+      applied: applied.join(','),
+      unknown: unknown.join(','),
+      open: all.filter((id) => !applied.includes(id) && !unknown.includes(id)).join(','),
+      applied_count: String(applied.length),
+      total: String(all.length),
+    }),
+    summary_key: 'hardening-state-summary',
+  };
+}
 
 const ASSISTANT_NOTES: Finding[] = [
   finding('assistant.tls', 'system.assistant', 'info', 'assistant-tls', {
@@ -366,6 +384,7 @@ const PROPOSALS = (): Proposal[] => [
 ];
 
 export class FixtureTransport implements Transport {
+  private plans = 0;
   /** Modes chosen during this session, by app key. */
   private readonly modes = new Map<string, string>();
   private prompts: Prompt[];
@@ -434,6 +453,7 @@ export class FixtureTransport implements Transport {
       // list so it does not count as something to fix.
       if (plugin === 'net.dns') return this.scenario === 'attention' ? DNS_NOTES : [];
       if (plugin === 'system.assistant') return ASSISTANT_NOTES;
+      if (plugin === 'system.hardening') return [hardeningNote()];
       if (this.scenario === 'empty' || this.scenario === 'protected') return [];
       return plugin ? FINDINGS.filter((f) => f.plugin === plugin) : FINDINGS;
     });
@@ -545,7 +565,8 @@ export class FixtureTransport implements Transport {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   planChange(plugin: string, _patch?: Record<string, unknown>) {
     return this.gate((): Plan => ({
-      id: 'plan-fixture-1',
+      // Distinct per plan, as the core's are: a screen may show several.
+      id: `plan-fixture-${++this.plans}`,
       plugin,
       ops: [
         {

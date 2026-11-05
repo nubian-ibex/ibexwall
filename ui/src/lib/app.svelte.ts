@@ -12,6 +12,7 @@ export type Route =
   | 'posture'
   | 'history'
   | 'assistant'
+  | 'hardening'
   | 'settings';
 
 type Load<T> =

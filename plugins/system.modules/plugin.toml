@@ -1,0 +1,37 @@
+id = "system.modules"
+version = "0.1.0"
+api = 1
+category = "system"
+kinds = ["check", "control"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-modules"
+default_enabled = true
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "Kernel modules"
+pt-BR = "Módulos do kernel"
+
+[description]
+en = "Stops groups of rarely needed kernel modules from being loaded, which shrinks what an attacker can reach through the kernel."
+pt-BR = "Impede que grupos de módulos do kernel raramente necessários sejam carregados, o que reduz o que um atacante alcança pelo kernel."
+
+[privileges]
+write_paths = ["/etc/modprobe.d"]
+
+[sandbox]
+user = "dynamic"
+capabilities = []
+read_paths = ["/etc/modprobe.d", "/usr/lib/modprobe.d", "/proc/modules"]
+network = false
+
+[risk]
+affects = ["kernel"]
+reversible = "immediate"
+confirm_timeout = false
+may_affect = ["modules-may-affect-loaded"]
+
+[ui]
+icon = "puzzle"
+order = 25

@@ -314,7 +314,7 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
             let value = client
                 .call("com.ibexwall.Core.GetInfo", serde_json::json!({}))
                 .await?;
-            emit(value, json);
+            show(&value, json, render_status);
             Ok(Finish::Done)
         }
         Command::Plugins { action } => plugins(client, action, json).await,
@@ -327,7 +327,7 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
             let params = serde_json::json!({ "plugin": plugin });
             let value = client.call("com.ibexwall.Core.RunChecks", params).await?;
             let count = value["findings"].as_array().map(Vec::len).unwrap_or(0);
-            emit(value, json);
+            show(&value, json, render_findings);
             Ok(if count > 0 {
                 Finish::Findings(count)
             } else {
@@ -339,7 +339,7 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
             let value = client
                 .call("com.ibexwall.Core.ListFindings", params)
                 .await?;
-            emit(value, json);
+            show(&value, json, render_findings);
             Ok(Finish::Done)
         }
         Command::Plan {
@@ -438,7 +438,7 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
             let value = client
                 .call("com.ibexwall.Core.History", serde_json::json!({}))
                 .await?;
-            emit(value, json);
+            show(&value, json, render_history);
             Ok(Finish::Done)
         }
         Command::Audit {
@@ -481,7 +481,7 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
                 let value = client
                     .call("com.ibexwall.Core.RecentEvents", serde_json::json!({}))
                     .await?;
-                emit(value, json);
+                show(&value, json, render_events);
                 return Ok(Finish::Done);
             }
             let mut stream = client
@@ -505,7 +505,7 @@ async fn plugins(
             let value = client
                 .call("com.ibexwall.Core.ListPlugins", serde_json::json!({}))
                 .await?;
-            emit(value, json);
+            show(&value, json, render_plugins);
             Ok(Finish::Done)
         }
         PluginsAction::Info { id } => {
@@ -940,7 +940,12 @@ fn clean(text: &str) -> String {
 }
 
 fn text(value: &serde_json::Value) -> String {
-    clean(value.as_str().unwrap_or("-"))
+    match value {
+        serde_json::Value::String(s) => clean(s),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::Bool(b) => b.to_string(),
+        _ => "-".into(),
+    }
 }
 
 fn render_apps(value: &serde_json::Value) -> String {
@@ -1020,6 +1025,106 @@ fn render_app_info(app: &serde_json::Value, destinations: &serde_json::Value) ->
     out
 }
 
+/// JSON for scripts, a short readable rendering for people.
+fn show(value: &serde_json::Value, json: bool, render: fn(&serde_json::Value) -> String) {
+    if json {
+        emit(value.clone(), true);
+    } else {
+        print!("{}", render(value));
+    }
+}
+
+fn render_status(value: &serde_json::Value) -> String {
+    let info = &value["info"];
+    let mut out = format!(
+        "ibexwalld {} (api {}) on {}, kernel {}\n",
+        text(&info["version"]),
+        text(&info["api"]),
+        text(&info["distro"]),
+        text(&info["kernel"]),
+    );
+    let degraded = info["degraded"].as_array().cloned().unwrap_or_default();
+    if degraded.is_empty() {
+        out.push_str("nothing degraded\n");
+    } else {
+        out.push_str(&format!(
+            "degraded: {}\n",
+            degraded.iter().map(text).collect::<Vec<_>>().join(", ")
+        ));
+    }
+    out
+}
+
+fn render_plugins(value: &serde_json::Value) -> String {
+    let all = value["plugins"].as_array().cloned().unwrap_or_default();
+    let mut out = format!(
+        "{:<24}  {:<8}  {:<8}  {}\n",
+        "ID", "STATE", "STATUS", "NAME"
+    );
+    for p in &all {
+        let state = if p["enabled"] == true { "on" } else { "off" };
+        out.push_str(&format!(
+            "{:<24}  {:<8}  {:<8}  {}\n",
+            text(&p["id"]),
+            state,
+            text(&p["status"]),
+            text(&p["name"]),
+        ));
+    }
+    out
+}
+
+fn render_findings(value: &serde_json::Value) -> String {
+    let all = value["findings"].as_array().cloned().unwrap_or_default();
+    if all.is_empty() {
+        return "no findings\n".into();
+    }
+    let mut out = format!("{:<9}  {:<28}  {}\n", "SEVERITY", "ID", "PLUGIN");
+    for f in &all {
+        out.push_str(&format!(
+            "{:<9}  {:<28}  {}\n",
+            text(&f["severity"]),
+            text(&f["id"]),
+            text(&f["plugin"]),
+        ));
+    }
+    out
+}
+
+fn render_history(value: &serde_json::Value) -> String {
+    let all = value["entries"].as_array().cloned().unwrap_or_default();
+    if all.is_empty() {
+        return "no changes yet\n".into();
+    }
+    let mut out = format!("{:<26}  {:<22}  {}\n", "TRANSACTION", "PLUGIN", "RESULT");
+    for e in &all {
+        out.push_str(&format!(
+            "{:<26}  {:<22}  {}\n",
+            text(&e["transaction"]),
+            text(&e["plugin"]),
+            text(&e["result"]),
+        ));
+    }
+    out
+}
+
+fn render_events(value: &serde_json::Value) -> String {
+    let all = value["events"].as_array().cloned().unwrap_or_default();
+    if all.is_empty() {
+        return "no events yet\n".into();
+    }
+    let mut out = String::new();
+    for e in &all {
+        out.push_str(&format!(
+            "{}  {:<10}  {}\n",
+            text(&e["ts"]),
+            text(&e["source"]),
+            text(&e["kind"]),
+        ));
+    }
+    out
+}
+
 fn emit(value: serde_json::Value, json: bool) {
     if json {
         println!(
@@ -1060,6 +1165,41 @@ fn default_socket() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_read_commands_print_something_a_person_can_read() {
+        use serde_json::json;
+        let status = render_status(
+            &json!({ "info": { "version": "0.1.0", "api": 1, "distro": "fedora", "kernel": "7.2", "degraded": [] } }),
+        );
+        assert_eq!(
+            status,
+            "ibexwalld 0.1.0 (api 1) on fedora, kernel 7.2\nnothing degraded\n"
+        );
+        let plugins = render_plugins(
+            &json!({ "plugins": [{ "id": "net.dns", "enabled": false, "status": "ok", "name": "Secure DNS" }] }),
+        );
+        assert!(
+            plugins.contains("net.dns")
+                && plugins.contains("off")
+                && plugins.contains("Secure DNS")
+        );
+        assert_eq!(render_findings(&json!({ "findings": [] })), "no findings\n");
+        let findings = render_findings(
+            &json!({ "findings": [{ "severity": "high", "id": "x.y", "plugin": "p" }] }),
+        );
+        assert!(findings.contains("high") && findings.contains("x.y"));
+        assert_eq!(
+            render_history(&json!({ "entries": [] })),
+            "no changes yet\n"
+        );
+        assert_eq!(render_events(&json!({ "events": [] })), "no events yet\n");
+        // Text from outside never carries a terminal escape.
+        let hostile = render_findings(
+            &json!({ "findings": [{ "severity": "low", "id": "\u{1b}[2J", "plugin": "p" }] }),
+        );
+        assert!(!hostile.contains('\u{1b}'));
+    }
     use super::*;
     use serde_json::json;
 

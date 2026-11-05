@@ -11,7 +11,7 @@ checklist. Spec phase F10; the maintainer said "siga para a F10" on
 
 Status: in progress (autonomous mode). M2 done 2026-11-05: 26 official plugins in
 one `ibexwall-plugins` binary (9.2 MiB stripped, from 58 MiB over 31), phases
-f1 to f9 green on Fedora; the other four distros are still to be rerun.
+f1 to f9 green on all five distros.
 
 ## What I can and cannot do alone
 

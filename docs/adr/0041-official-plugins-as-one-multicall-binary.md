@@ -3,7 +3,8 @@
 
 # ADR-0041: Official plugins ship as one multicall binary
 
-Status: proposed (2026-11-04); the maintainer decides. Phase: F10.
+Status: accepted 2026-11-05 (the maintainer: multicall for the official plugins).
+Phase: F10.
 
 ## Context
 
@@ -24,7 +25,7 @@ sandbox, and the manifest names one binary. Packages should be small.
 3. One long-running process hosting all plugins as threads or tasks. Smallest
    and fastest, and it breaks the isolation the contract promises.
 
-## Decision (recommended)
+## Decision
 
 Option 2. The security boundary is the process and its unit, not the file
 on disk; a multicall binary gives up neither. What it gives up is the ability

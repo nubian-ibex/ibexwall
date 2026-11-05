@@ -83,6 +83,8 @@ change() {{
   if echo "$OUT" | grep -q pending_confirm; then sudo ibexctl confirm "$TX" >/dev/null || {{ echo "CONFIRM FAILED"; return 1; }}; fi
 }}
 findings() {{ sudo ibexctl check "$1" --json 2>/dev/null | python3 -c 'import json,sys; print(" ".join(f["id"] for f in json.load(sys.stdin)["findings"]))'; }}
+# The things to fix: the "we found" notes (detect.*) are information.
+problems() {{ findings "$1" | tr ' ' '\n' | grep -v '^detect\.' | tr '\n' ' ' | sed 's/ *$//'; }}
 "#,
         JSON_ID = JSON_ID
     );
@@ -399,6 +401,30 @@ command -v fwupdmgr >/dev/null && echo "METRIC: fwupd happens to be installed" |
     );
 
     scenario!(
+        "m4z net.nts says what keeps the clock, and never installs anything",
+        r#"
+sudo ibexctl plugins enable net.nts >/dev/null
+sudo ibexctl check net.nts --json >/tmp/detect-time.json 2>&1 || true
+python3 - <<'PYEOF'
+import json
+d = json.JSONDecoder().raw_decode(open("/tmp/detect-time.json").read())[0]
+notes = [x for x in d["findings"] if x["id"] == "detect.time"]
+assert len(notes) == 1, [x["id"] for x in d["findings"]]
+n = notes[0]
+assert n["severity"] == "info", n
+case = n["args"]["case"]
+assert case in ("chrony-plain", "chrony-nts", "chrony-unreadable", "timesyncd", "ntpd", "none"), n["args"]
+if case.startswith("chrony-p"):
+    assert "cloudflare" in n["args"]["patch"], n["args"]
+elif case in ("timesyncd", "ntpd", "none"):
+    assert n["args"]["install"].startswith("sudo "), n["args"]
+    assert "patch" not in n["args"]
+print("METRIC: detect.time says", case)
+PYEOF
+"#
+    );
+
+    scenario!(
         "m4a net.nts: NTS servers are added, chrony really authenticates them, and rollback removes them",
         &format!(
             r#"{lib}
@@ -422,7 +448,7 @@ if sudo grep -rqE '^(server|pool).* nts' $CONF /etc/chrony.d /etc/chrony/conf.d 
   # Ubuntu 26.04 already ships NTS sources: the check must pass, and there
   # is nothing for the plugin to change.
   echo "METRIC: the distro already ships an NTS source"
-  [ -z "$(findings net.nts)" ] || {{ echo "FINDING ON A DISTRO THAT ALREADY USES NTS: $(findings net.nts)"; exit 1; }}
+  [ -z "$(problems net.nts)" ] || {{ echo "FINDING ON A DISTRO THAT ALREADY USES NTS: $(problems net.nts)"; exit 1; }}
   OUT=$(sudo chronyc -N authdata 2>/dev/null | awk '$2=="NTS" {{print $1}}' | tr '\n' ' ')
   echo "METRIC: distro NTS sources seen by chrony: $OUT"
   exit 0
@@ -434,7 +460,7 @@ D=$(ls /etc/chrony.d/70-ibexwall-nts.conf /etc/chrony/conf.d/70-ibexwall-nts.con
 sudo grep -q 'server time.cloudflare.com iburst nts' $D
 echo "METRIC: adapter used: $D"
 sudo systemctl cat $UNIT | grep -E '^ExecStart' | tail -1 | sed 's/^/METRIC: running: /' >&2 || true
-[ -z "$(findings net.nts)" ] || {{ echo "FINDING SURVIVED THE CHANGE"; exit 1; }}
+[ -z "$(problems net.nts)" ] || {{ echo "FINDING SURVIVED THE CHANGE"; exit 1; }}
 # The proof: chrony itself reports authenticated NTS associations.
 OK=""
 for i in $(seq 1 60); do

@@ -378,12 +378,32 @@ fn resolve_user(owner: &str) -> Result<u32> {
     }
 }
 
+/// Groups IbexWall itself creates (packaging/sysusers.d) that a file may be
+/// given by name: the assistants' group reads the MCP access settings. Any
+/// other name is refused, so an op cannot hand a file to a group of its choice.
+const NAMED_GROUPS: &[&str] = &["ibexwall-assistants", "ibexwall-mcp"];
+
+fn gid_in(group_file: &str, name: &str) -> Option<u32> {
+    group_file.lines().find_map(|line| {
+        let mut fields = line.split(':');
+        (fields.next()? == name).then_some(())?;
+        fields.nth(1)?.parse().ok()
+    })
+}
+
 fn resolve_group(group: &str) -> Result<u32> {
     match group {
         "root" => Ok(0),
+        named if NAMED_GROUPS.contains(&named) => {
+            let file = std::fs::read_to_string("/etc/group").unwrap_or_default();
+            Ok(gid_in(&file, named).ok_or_else(|| OpError::Invalid {
+                field: "group",
+                reason: format!("`{named}` does not exist on this machine"),
+            })?)
+        }
         numeric => Ok(numeric.parse::<u32>().map_err(|_| OpError::Invalid {
             field: "group",
-            reason: format!("`{group}`: only `root` or a numeric gid in F1"),
+            reason: format!("`{group}`: `root`, one of IbexWall's own groups, or a numeric gid"),
         })?),
     }
 }
@@ -536,6 +556,19 @@ pub fn ops_digest(ops: &[Op]) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_root_numbers_and_ibexwalls_own_groups_can_own_a_file() {
+        let groups = "root:x:0:\nibexwall-assistants:x:981:ana,bob\nwheel:x:10:\n";
+        assert_eq!(gid_in(groups, "ibexwall-assistants"), Some(981));
+        assert_eq!(gid_in(groups, "ibexwall-mcp"), None);
+        assert_eq!(resolve_group("root").unwrap(), 0);
+        assert_eq!(resolve_group("42").unwrap(), 42);
+        // A named group outside the list is refused, whatever exists on disk.
+        for refused in ["wheel", "shadow", "sudo", "ibexwall-assistants2", ""] {
+            assert!(resolve_group(refused).is_err(), "{refused}");
+        }
+    }
+
     use super::*;
 
     fn sandbox(name: &str) -> (std::path::PathBuf, crate::SysBundle) {

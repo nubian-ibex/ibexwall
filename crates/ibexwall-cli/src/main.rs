@@ -172,6 +172,9 @@ enum McpAction {
         /// Show the stanza with change proposals allowed.
         #[arg(long)]
         with_proposals: bool,
+        /// Reach `ibexwall-mcp --http` on another machine (https only).
+        #[arg(long, value_name = "https://HOST:PORT/mcp")]
+        url: Option<String>,
     },
 }
 
@@ -232,13 +235,24 @@ fn main() {
 async fn run(cli: Cli) -> i32 {
     // Printing a configuration needs no daemon.
     if let Command::Mcp {
-        action: McpAction::Config {
-            client,
-            with_proposals,
-        },
+        action:
+            McpAction::Config {
+                client,
+                with_proposals,
+                url,
+            },
     } = &cli.command
     {
-        print!("{}", mcp_config::render(*client, *with_proposals));
+        if let Some(address) = url
+            && let Err(reason) = mcp_config::check_url(address)
+        {
+            eprintln!("ibexctl: {reason}");
+            return EXIT_ERROR;
+        }
+        print!(
+            "{}",
+            mcp_config::render_for(*client, *with_proposals, url.as_deref())
+        );
         return 0;
     }
     let socket = names::core_socket();

@@ -95,6 +95,11 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
         CLIENT,
         "sudo tee /tmp/f8-mcp.py >/dev/null && sudo chmod 644 /tmp/f8-mcp.py",
     )?;
+    pipe_data(
+        vm,
+        include_str!("../../packaging/systemd/ibexwall-mcp.service"),
+        "sudo tee /etc/systemd/system/ibexwall-mcp.service >/dev/null",
+    )?;
     start_daemon(vm)?;
 
     let mut failures = 0;
@@ -258,6 +263,88 @@ assert p and p[0]["status"] == "pending", p
 sudo ibexctl proposals reject "$P" >/dev/null
 echo "METRIC: hostile justification stayed pending text, escapes refused"
 "#
+        )
+    );
+
+    scenario!(
+        "h5 the HTTPS transport: TLS only, a token per client, the same scopes and the same log",
+        &format!(
+            r#"{lib}
+command -v curl >/dev/null || {{ if command -v dnf >/dev/null; then sudo dnf install -y -q curl; elif command -v apt-get >/dev/null; then sudo apt-get update -qq; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl; else sudo pacman -Sy --noconfirm --needed curl; fi; }}
+sudo mkdir -p /etc/ibexwall/mcp
+sudo ibexwall-mcp tls-init --host localhost --host 127.0.0.1 --out /etc/ibexwall/mcp >/tmp/h5-tls.txt
+grep -q "SHA-256 fingerprint" /tmp/h5-tls.txt
+sudo chown root:ibexwall-mcp /etc/ibexwall/mcp/tls.key && sudo chmod 640 /etc/ibexwall/mcp/tls.key
+sudo ibexwall-mcp token create --name h5 --client f8-agent --id h5tok > /tmp/h5-token.txt
+printf 'correct-horse-battery-staple-9' | sudo ibexwall-mcp token create --name mine --client f8-agent --id mine --secret-stdin > /tmp/h5-mine.txt
+sudo ibexwall-mcp token create --name old --client f8-agent --id oldtok --expires 2020-01-01 > /tmp/h5-old.txt
+python3 - <<'PYEOF'
+import re
+blocks, tokens = [], {{}}
+for name in ("token", "mine", "old"):
+    text = open(f"/tmp/h5-{{name}}.txt").read()
+    tokens[name] = re.search(r"^\s+(ibx_\S+)$", text, re.M).group(1)
+    blocks.append(re.search(r"\[\[token\]\].*?(?:\n\n|\Z)", text, re.S).group(0).strip())
+assert tokens["mine"] == "ibx_mine_correct-horse-battery-staple-9", tokens["mine"]
+orig = open("/etc/ibexwall/mcp.toml").read()
+open("/tmp/h5-mcp.toml", "w").write(orig + '\n[http]\nenabled = true\nlisten = "127.0.0.1:8765"\n\n' + "\n\n".join(blocks) + "\n")
+open("/tmp/h5-env", "w").write("".join(f"{{k.upper()}}={{v}}\n" for k, v in tokens.items()))
+PYEOF
+. /tmp/h5-env
+sudo cp /etc/ibexwall/mcp.toml /tmp/h5-mcp.toml.orig
+sudo cp /tmp/h5-mcp.toml /etc/ibexwall/mcp.toml
+# Only hashes reach the config; the secret does not.
+if sudo grep -q "${{TOKEN#ibx_h5tok_}}" /etc/ibexwall/mcp.toml; then echo "THE TOKEN SECRET IS IN THE CONFIG"; exit 1; fi
+sudo grep -q 'argon2id' /etc/ibexwall/mcp.toml
+
+# The packaged unit and user, as shipped.
+sudo systemd-sysusers /usr/lib/sysusers.d/ibexwall.conf
+sudo systemctl daemon-reload
+sudo systemctl start ibexwall-mcp.service
+for i in $(seq 1 20); do curl -s --cacert /etc/ibexwall/mcp/tls.crt -o /dev/null https://localhost:8765/mcp && break; sleep 1; done
+systemctl is-active --quiet ibexwall-mcp.service || {{ sudo journalctl -u ibexwall-mcp -n 15 --no-pager; echo "THE UNIT DID NOT START"; exit 1; }}
+CA="--cacert /etc/ibexwall/mcp/tls.crt"
+rpc() {{ curl -s $CA -w '\n%{{http_code}}' -H "Authorization: Bearer $1" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d "$2" https://localhost:8765/mcp; }}
+
+# A token reaches the same tools, under its client's scopes.
+OUT=$(rpc "$TOKEN" '{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"protocolVersion":"2025-06-18"}}}}')
+echo "$OUT" | tail -1 | grep -q 200 || {{ echo "INITIALIZE FAILED: $OUT"; exit 1; }}
+echo "$OUT" | grep -q ibexwall-mcp
+OUT=$(rpc "$TOKEN" '{{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{{"name":"get_posture"}}}}')
+echo "$OUT" | grep -q '"isError":false' || {{ echo "get_posture FAILED: $OUT"; exit 1; }}
+OUT=$(rpc "$TOKEN" '{{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{{"name":"query_events","arguments":{{"source":"dns"}}}}}}')
+echo "$OUT" | grep -q '"isError":true' || {{ echo "A SCOPE WAS NOT ENFORCED OVER HTTP: $OUT"; exit 1; }}
+OUT=$(rpc "$MINE" '{{"jsonrpc":"2.0","id":4,"method":"ping"}}')
+echo "$OUT" | tail -1 | grep -q 200 || {{ echo "A CHOSEN SECRET DID NOT WORK: $OUT"; exit 1; }}
+echo "METRIC: a generated and a chosen token reach the tools, and a scope the client lacks is refused"
+
+# Everyone else is turned away.
+[ "$(rpc "$TOKEN"x '{{"jsonrpc":"2.0","id":5,"method":"ping"}}' | tail -1)" = 401 ] || {{ echo "A WRONG TOKEN WAS ACCEPTED"; exit 1; }}
+[ "$(rpc "$OLD" '{{"jsonrpc":"2.0","id":5,"method":"ping"}}' | tail -1)" = 401 ] || {{ echo "AN EXPIRED TOKEN WAS ACCEPTED"; exit 1; }}
+[ "$(curl -s $CA -o /dev/null -w '%{{http_code}}' -H 'Content-Type: application/json' -d '{{}}' https://localhost:8765/mcp)" = 401 ] || {{ echo "NO TOKEN WAS ACCEPTED"; exit 1; }}
+[ "$(curl -s $CA -o /dev/null -w '%{{http_code}}' -H "Authorization: Bearer $TOKEN" -H 'Origin: https://evil.example' -H 'Content-Type: application/json' -d '{{}}' https://localhost:8765/mcp)" = 403 ] || {{ echo "A FOREIGN ORIGIN WAS ACCEPTED"; exit 1; }}
+[ "$(curl -s $CA -o /dev/null -w '%{{http_code}}' -H "Authorization: Bearer $TOKEN" https://localhost:8765/mcp)" = 405 ] || {{ echo "GET WAS ACCEPTED"; exit 1; }}
+
+# TLS only: no plain HTTP, and the certificate is checked.
+if curl -s -m 5 -o /dev/null http://localhost:8765/mcp; then echo "PLAIN HTTP ANSWERED"; exit 1; fi
+if curl -s -m 5 -o /dev/null https://localhost:8765/mcp; then echo "AN UNTRUSTED CERTIFICATE WAS ACCEPTED"; exit 1; fi
+if ! curl -s -m 5 -k -o /dev/null -w '%{{http_code}}' -X POST -H 'Content-Type: application/json' -d '{{}}' https://localhost:8765/mcp | grep -q 401; then echo "TLS WITH -k SHOULD REACH THE DOOR"; exit 1; fi
+echo "METRIC: wrong, expired, missing tokens and a foreign origin refused; plain HTTP and an unverified certificate do not work"
+
+# The same log, with the token named, and no secret in it.
+sudo ibexwall-mcp --state-dir /var/lib/ibexwall-mcp --verify-log >/dev/null || {{ echo "THE HTTP LOG CHAIN IS BROKEN"; exit 1; }}
+sudo grep -q '"via":"http:h5tok"' /var/lib/ibexwall-mcp/mcp-audit.jsonl || {{ echo "THE TOKEN IS NOT NAMED IN THE LOG"; exit 1; }}
+for secret in "${{TOKEN#ibx_h5tok_}}" "correct-horse-battery-staple-9"; do
+  if sudo grep -q "$secret" /var/lib/ibexwall-mcp/mcp-audit.jsonl; then echo "A SECRET IS IN THE LOG"; exit 1; fi
+  if sudo journalctl -u ibexwall-mcp --no-pager | grep -q "$secret"; then echo "A SECRET IS IN THE JOURNAL"; exit 1; fi
+done
+echo "METRIC: the log names the token (http:h5tok), verifies, and holds no secret; the journal neither"
+echo "METRIC: $(systemd-analyze security ibexwall-mcp.service --no-pager 2>&1 | tail -1)"
+
+sudo systemctl stop ibexwall-mcp.service
+sudo cp /tmp/h5-mcp.toml.orig /etc/ibexwall/mcp.toml
+"#,
+            lib = lib
         )
     );
 

@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+[Unit]
+Description=IbexWall MCP server over HTTPS (AI assistants on other machines)
+Documentation=man:ibexwall-mcp(8)
+After=network.target ibexwalld.socket
+# Off until the person has written [http] enabled = true and a token.
+ConditionPathExists=/etc/ibexwall/mcp.toml
+
+[Service]
+Type=simple
+User=ibexwall-mcp
+# Reaches the core through the same polkit rule as any assistant: read,
+# plan and propose, never apply.
+SupplementaryGroups=ibexwall-assistants
+ExecStart=/usr/bin/ibexwall-mcp --http --state-dir %S/ibexwall-mcp
+StateDirectory=ibexwall-mcp
+StateDirectoryMode=0700
+Restart=on-failure
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

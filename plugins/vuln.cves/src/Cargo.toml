@@ -11,8 +11,8 @@ publish = false
 [lints]
 workspace = true
 
-[[bin]]
-name = "ibexwall-plugin-cves"
+[lib]
+name = "ibexwall_plugin_cves"
 path = "main.rs"
 
 [dependencies]

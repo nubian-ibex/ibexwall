@@ -11,8 +11,8 @@ publish = false
 [lints]
 workspace = true
 
-[[bin]]
-name = "ibexwall-plugin-coredump"
+[lib]
+name = "ibexwall_plugin_coredump"
 path = "main.rs"
 
 [dependencies]

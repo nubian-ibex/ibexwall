@@ -26,7 +26,9 @@ use serde_json::Value;
 const MAX_FINDINGS: usize = 50;
 const LIMIT: Duration = Duration::from_secs(90);
 
-fn main() {
+/// The plugin's entry point: the multicall binary calls it, and a plugin runs
+/// as its own process (ADR-0041).
+pub fn run() {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()

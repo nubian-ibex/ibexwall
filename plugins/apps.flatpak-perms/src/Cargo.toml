@@ -11,8 +11,8 @@ publish = false
 [lints]
 workspace = true
 
-[[bin]]
-name = "ibexwall-plugin-flatpak-perms"
+[lib]
+name = "ibexwall_plugin_flatpak_perms"
 path = "main.rs"
 
 [dependencies]

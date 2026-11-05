@@ -11,8 +11,8 @@ publish = false
 [lints]
 workspace = true
 
-[[bin]]
-name = "ibexwall-plugin-flatpak-network"
+[lib]
+name = "ibexwall_plugin_flatpak_network"
 path = "main.rs"
 
 [dependencies]

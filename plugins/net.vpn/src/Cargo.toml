@@ -11,8 +11,8 @@ publish = false
 [lints]
 workspace = true
 
-[[bin]]
-name = "ibexwall-plugin-vpn"
+[lib]
+name = "ibexwall_plugin_vpn"
 path = "main.rs"
 
 [dependencies]

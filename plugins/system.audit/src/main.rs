@@ -21,7 +21,9 @@ const REPORT: &str = "/var/log/lynis-report.dat";
 /// Most suggestions shown; the rest are counted, not listed.
 const MAX_SUGGESTIONS: usize = 25;
 
-fn main() {
+/// The plugin's entry point: the multicall binary calls it, and a plugin runs
+/// as its own process (ADR-0041).
+pub fn run() {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()

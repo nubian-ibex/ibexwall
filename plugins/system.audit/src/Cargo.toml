@@ -11,8 +11,8 @@ publish = false
 [lints]
 workspace = true
 
-[[bin]]
-name = "ibexwall-plugin-audit"
+[lib]
+name = "ibexwall_plugin_audit"
 path = "main.rs"
 
 [dependencies]

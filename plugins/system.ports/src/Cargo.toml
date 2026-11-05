@@ -11,8 +11,8 @@ publish = false
 [lints]
 workspace = true
 
-[[bin]]
-name = "ibexwall-plugin-ports"
+[lib]
+name = "ibexwall_plugin_ports"
 path = "main.rs"
 
 [dependencies]

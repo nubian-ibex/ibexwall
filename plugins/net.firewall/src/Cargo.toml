@@ -11,8 +11,8 @@ publish = false
 [lints]
 workspace = true
 
-[[bin]]
-name = "ibexwall-plugin-firewall"
+[lib]
+name = "ibexwall_plugin_firewall"
 path = "main.rs"
 
 [dependencies]

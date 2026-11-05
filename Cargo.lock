@@ -2674,6 +2674,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "ibexwall-plugins"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-plugin-accounts",
+ "ibexwall-plugin-audit",
+ "ibexwall-plugin-av",
+ "ibexwall-plugin-camera-mic",
+ "ibexwall-plugin-coredump",
+ "ibexwall-plugin-cves",
+ "ibexwall-plugin-dns",
+ "ibexwall-plugin-firewall",
+ "ibexwall-plugin-firmware",
+ "ibexwall-plugin-flatpak-network",
+ "ibexwall-plugin-flatpak-perms",
+ "ibexwall-plugin-integrity",
+ "ibexwall-plugin-isolate",
+ "ibexwall-plugin-mounts",
+ "ibexwall-plugin-nts",
+ "ibexwall-plugin-persistence",
+ "ibexwall-plugin-ports",
+ "ibexwall-plugin-posture",
+ "ibexwall-plugin-session-lock",
+ "ibexwall-plugin-ssh",
+ "ibexwall-plugin-sysctl",
+ "ibexwall-plugin-telemetry",
+ "ibexwall-plugin-updates",
+ "ibexwall-plugin-usb",
+ "ibexwall-plugin-vpn",
+ "ibexwall-plugin-wifi",
+]
+
+[[package]]
 name = "ibexwall-proto"
 version = "0.1.0"
 dependencies = [

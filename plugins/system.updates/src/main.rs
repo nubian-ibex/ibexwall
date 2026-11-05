@@ -24,7 +24,9 @@ const DNF_DROP_IN: &str = "/etc/dnf/dnf5-plugins/automatic.d/70-ibexwall.conf";
 const DNF_TIMER: &str = "dnf5-automatic.timer";
 const APT_TIMER: &str = "apt-daily-upgrade.timer";
 
-fn main() {
+/// The plugin's entry point: the multicall binary calls it, and a plugin runs
+/// as its own process (ADR-0041).
+pub fn run() {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()

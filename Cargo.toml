@@ -70,3 +70,10 @@ unsafe_code = "forbid"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
+# Packages ship stripped, LTO-linked binaries (F10 M2). panic=abort is left
+# off on purpose: with unwinding, a panic in one tokio task ends that task,
+# not the whole daemon; it would save little size for that risk.
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1

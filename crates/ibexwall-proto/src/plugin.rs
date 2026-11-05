@@ -102,6 +102,11 @@ pub struct Sandbox {
     pub capabilities: Vec<String>,
     #[serde(default)]
     pub read_paths: Vec<String>,
+    /// Where the tools this plugin runs keep their own state (a package
+    /// manager's cache and database): the only places its sandbox can write.
+    /// The plugin itself changes nothing on the system; the core does.
+    #[serde(default)]
+    pub state_paths: Vec<String>,
     #[serde(default)]
     pub network: bool,
 }

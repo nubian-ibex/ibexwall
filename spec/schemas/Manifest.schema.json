@@ -195,6 +195,14 @@
           },
           "type": "array"
         },
+        "state_paths": {
+          "default": [],
+          "description": "Where the tools this plugin runs keep their own state (a package\nmanager's cache and database): the only places its sandbox can write.\nThe plugin itself changes nothing on the system; the core does.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "user": {
           "$ref": "#/$defs/SandboxUser"
         }

@@ -5,6 +5,7 @@
 
 mod devkey;
 mod ebpf;
+mod egress;
 mod f1;
 mod f2;
 mod f3;

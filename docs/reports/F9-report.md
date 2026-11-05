@@ -4,7 +4,7 @@
 # F9 report: VPN and endpoint
 
 Date: 2026-11-04. Plan: `docs/archive/plans/F9-vpn-and-endpoint.md`. ADR: 0040
-(OpenVPN import deferred; proposed, the maintainer decides).
+(OpenVPN import: a documented subset, accepted after delivery).
 
 ## What was done
 
@@ -119,4 +119,4 @@ Engine and tooling changes:
 
 ## Decisions for the maintainer
 
-- ADR-0040: defer OpenVPN import, or build the documented subset (option 2).
+- ADR-0040: decided, option 2 (done after acceptance).

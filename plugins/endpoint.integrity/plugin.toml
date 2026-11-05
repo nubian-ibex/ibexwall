@@ -21,7 +21,7 @@ pt-BR = "Pergunta ao gerenciador de pacotes quais arquivos instalados não são 
 
 [sandbox]
 user = "dynamic"
-capabilities = []
+capabilities = ["CAP_DAC_READ_SEARCH"]
 read_paths = ["/var/lib/rpm", "/usr/lib/sysimage/rpm", "/var/lib/dpkg", "/var/lib/pacman", "/var/lib/aide", "/usr/bin", "/usr/sbin", "/bin", "/sbin"]
 network = false
 

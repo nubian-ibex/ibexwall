@@ -24,9 +24,13 @@ pt-BR = "Lista as atualizações de segurança que a sua distribuição publicou
 commands = ["dnf5", "apt-get", "arch-audit"]
 
 [sandbox]
-user = "dynamic"
+# Root: dnf5 reads its root-owned cache only as root, and answers from a
+# user cache (empty) otherwise. The unit still drops every capability but
+# CAP_DAC_READ_SEARCH and can write only the package managers' own state.
+user = "root"
 capabilities = ["CAP_DAC_READ_SEARCH"]
 read_paths = ["/var/cache", "/var/lib", "/etc", "/usr"]
+state_paths = ["/var/cache/dnf", "/var/lib/dnf", "/var/cache/libdnf5", "/var/lib/rpm", "/usr/lib/sysimage/rpm", "/var/lib/apt/lists", "/var/cache/apt", "/var/lib/pacman/sync", "/tmp"]
 network = false
 
 [risk]

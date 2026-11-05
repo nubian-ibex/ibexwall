@@ -9,7 +9,7 @@ changes scopes; every proposal waits for a human with
 `com.ibexwall.proposals.decide`. Spec phase F8 and section 4.12; the
 maintainer approved the phase on 2026-11-04.
 
-Status: in progress (autonomous mode).
+Status: delivered (report: `docs/reports/F8-report.md`).
 
 ## Milestones
 

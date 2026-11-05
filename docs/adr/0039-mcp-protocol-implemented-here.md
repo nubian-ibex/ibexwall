@@ -3,8 +3,8 @@
 
 # ADR-0039: The MCP stdio protocol is implemented in `ibexwall-mcp`
 
-Status: accepted (autonomous mode, 2026-11-04); the maintainer may reverse
-it. Phase: F8.
+Status: accepted (autonomous mode, 2026-11-04; confirmed by the maintainer the
+same day); the maintainer may still reverse it. Phase: F8.
 
 ## Context
 

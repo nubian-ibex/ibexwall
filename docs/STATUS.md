@@ -7,65 +7,56 @@ Last updated: 2026-11-04 (F9 delivered, report ready for acceptance)
 
 ## Current phase
 
-**F3: secure DNS, delivered (report: `docs/reports/F3-report.md`, awaiting
-maintainer acceptance).** 13 VM scenarios green on five distros. F0 to F2
-accepted (F2 report: `docs/reports/F2-report.md`); the F3 core (resolver,
-lists, resolved backend, enforcement, DNS screen) is accepted and the
-remainder (DoH endpoints, browser policies, captive portal, counters,
-latency evidence) is being finished. Plan: `docs/plans/F3-secure-dns.md`.
-Run the app with `scripts/dev-sandbox.sh` (sandboxed daemon, host
-untouched). Manual runs on Omarchy and EndeavourOS are deferred by the
-maintainer. **F4 accepted. F5: inbound firewall, delivered** (report:
-`docs/reports/F5-report.md`, awaiting acceptance): `--phase f5` green on
-five distros (firewalld, ufw and the pure-nftables adapter; Docker
-coexistence; byte-exact rollback; foreign tables untouched). Plan:
-`docs/plans/F5-inbound-firewall.md`; ADRs 0031 to 0034. Open: profiles per
-connection (NetworkManager zones), rich-rule editing, ufw app profiles.
+F0 to F4 are accepted. F5 to F9 are delivered and wait for the maintainer's
+acceptance. Next: F10 (packaging, release, docs, site). Run the app with
+`scripts/dev-sandbox.sh` (sandboxed daemon, host untouched). Manual runs on
+Omarchy and EndeavourOS, and with real assistant clients, are deferred by the
+maintainer.
 
-**F6: per-app enforcement and Ask mode, delivered** (report:
-`docs/reports/F6-report.md`, awaiting acceptance; plan:
-`docs/plans/F6-app-enforcement.md`; ADRs 0035 to 0037). `--phase f6` green
-on five distros (8 scenarios): block over TCP, UDP, QUIC and IPv6 for the
-target only, Ask held until answered with scopes and a 30 s fallback, fail
-open when the unit or the daemon stops, Docker and Podman coexistence, 5000
-connections a second all recorded. ADR-0036 (Ask chains are derived state),
-ADR-0037 (no nft fallback without eBPF) and the plugin-id naming (ADR-0038,
-hyphens) were decided on 2026-11-04.
+Phases, newest first (report, plan, ADRs):
 
-**F7: hardening and system plugins, delivered** (report:
-`docs/reports/F7-report.md`, awaiting acceptance; plan:
-`docs/plans/F7-hardening-and-system.md`; ADR-0038). Sixteen plugins
-(sysctl, coredump, mounts, ssh, accounts, updates, firmware, audit,
-session-lock, usb, wifi, nts, camera-mic, telemetry, flatpak-perms, cves);
-`--phase f7` green on five distros (15 scenarios), including chrony
-authenticating Cloudflare, Netnod, PTB and NTP.br. Open: pending firmware
-and HSI, a plugin monitor interface (camera and microphone events), GNOME
-user lock settings through the agent, telemetry control, OSV lookup, a unit
-of their own for each plugin (F10).
+- **F9, VPN and endpoint** (`docs/reports/F9-report.md`,
+  `docs/plans/F9-vpn-and-endpoint.md`, ADR-0040 proposed). `endpoint.isolate`,
+  `net.vpn` (WireGuard through NetworkManager and a kill switch),
+  `endpoint.persistence`, `endpoint.integrity`, `endpoint.av`; address and
+  interface matches in nft rules, private-file previews, symmetric execs.
+  `--phase f9` green on five distros, with a `tcpdump` proof that a dropped
+  tunnel leaks nothing under the kill switch and the EICAR file flagged by
+  ClamAV and YARA. Open: OpenVPN import (ADR-0040), scan-folder discovery and
+  a file watcher (need plugin units, F10).
+- **F8, AI assistant (MCP)** (`docs/reports/F8-report.md`,
+  `docs/plans/F8-assistant-mcp.md`, ADR-0039 accepted). `ibexwall-mcp` over
+  stdio with nine tools and no way to apply, approve or revert; the core's
+  proposal queue (irreversible plans refused, approval re-plans and compares);
+  `ListAudit`; `ibexctl proposals` and `ibexctl mcp config`; the Assistant
+  screen; a hash-chained call log written before each call; the polkit rule
+  and the `ibexwall-assistants` group (accepted and shipped). `--phase f8`
+  green on five distros with a scripted client (no language model) and an
+  injection corpus in the suite. Open: Streamable HTTP and OAuth (off by
+  spec).
+- **F7, hardening and system plugins** (`docs/reports/F7-report.md`,
+  `docs/plans/F7-hardening-and-system.md`, ADR-0038). Sixteen plugins;
+  `--phase f7` green on five distros (15 scenarios). Open: pending firmware
+  and HSI, a plugin monitor interface, GNOME user lock settings, telemetry
+  control, OSV lookup.
+- **F6, per-app enforcement and Ask mode** (`docs/reports/F6-report.md`,
+  `docs/plans/F6-app-enforcement.md`, ADRs 0035 to 0037). Block over TCP, UDP,
+  QUIC and IPv6 for the target only, Ask held until answered, fail open;
+  `--phase f6` green on five distros.
+- **F5, inbound firewall** (`docs/reports/F5-report.md`,
+  `docs/plans/F5-inbound-firewall.md`, ADRs 0031 to 0034). firewalld, ufw and
+  pure nftables adapters, Docker coexistence, byte-exact rollback. Open:
+  profiles per connection, rich-rule editing, ufw app profiles.
+- **F4, apps and traffic** (accepted; `docs/reports/F4-report.md`).
+- **F3, secure DNS** (`docs/reports/F3-report.md`). Core accepted; DoH
+  endpoints, browser policies, captive portal, counters and latency evidence
+  delivered; leftovers: DNS backends B2 to B4, IPv6 presets, a DNSSEC ADR, the
+  TUI DNS view.
+- **F2, posture and UI** and **F1, core and CLI** (accepted).
 
-**F8: AI assistant (MCP) and the proposal queue, delivered** (report:
-`docs/reports/F8-report.md`, awaiting acceptance; plan:
-`docs/plans/F8-assistant-mcp.md`; ADR-0039). `ibexwall-mcp` (stdio, no
-root, nine tools, no way to apply, approve or revert), the core's proposal
-queue (irreversible plans refused, approval re-plans and compares),
-`ListAudit`, `ibexctl proposals` and `ibexctl mcp config`, the Assistant
-screen. Every call is logged before it runs in a hash-chained file;
-`--phase f8` green on five distros (4 scenarios) with a scripted client
-(no language model), and an injection corpus in the suite. Open: manual
-runs with Claude Code, OpenCode and VS Code, a packaged polkit rule for the
-user that runs an assistant (F10), Streamable HTTP and OAuth (off by spec).
-
-**F9: VPN and endpoint, delivered** (report: `docs/reports/F9-report.md`,
-awaiting acceptance; plan: `docs/plans/F9-vpn-and-endpoint.md`; ADR-0040
-proposed). `endpoint.isolate`, `net.vpn` (WireGuard through NetworkManager and
-a kill switch), `endpoint.persistence`, `endpoint.integrity`, `endpoint.av`;
-engine groundwork (address and interface matches in nft rules, private-file
-previews, symmetric execs). `--phase f9` green on five distros, including a
-`tcpdump` proof that a dropped tunnel leaks nothing under the kill switch and
-the EICAR file flagged by ClamAV and YARA. The F8 polkit rule and group for
-assistants (`ibexwall-assistants`) was accepted and shipped. Open: OpenVPN
-import (ADR-0040), scan folders discovery and a file watcher (need plugin
-units, F10), manual runs with real assistant clients.
+Cross-phase open items: a unit of its own for each plugin (F10; lifts the
+sandbox limits noted in the F9 report), the F10 polkit packaging beyond the
+assistants rule, manual runs on real desktops.
 
 ## What exists
 
@@ -121,14 +112,15 @@ units, F10), manual runs with real assistant clients.
 
 ## Pending / next
 
-- F1 plan (`docs/plans/F1-core-cli.md`): varlink framing decision
-  (zlink spike), polkit pidfd subject verification, change engine,
-  SQLite + audit chain, plugin supervisor, `dev.echo` plugin,
-  transient-unit executor spike. Threat model review point applies.
-- CI VM jobs on a KVM-capable runner (spike S0-b, F1).
-- P-01 domains (affects `com.ibexwall` prefix, ADR-0021).
-- `ibexwall-proto`/`ibexwall-sdk` publication to crates.io when
-  contracts stabilize.
+- F10: packages (COPR, PPA, OBS, AUR), SELinux and AppArmor profiles, signing,
+  SBOM and provenance, docs, site, the release checklist for v1.0.
+- Plugin units (F10): own sandbox per plugin, which gives the integrity and
+  persistence checks full sight of the filesystem and allows discovery of
+  scan folders.
+- CI VM jobs on a KVM-capable runner.
+- P-01 domains (affects the `com.ibexwall` prefix, ADR-0021).
+- `ibexwall-proto` and `ibexwall-sdk` publication to crates.io when contracts
+  stabilize.
 
 ## F1 (core + CLI)
 

@@ -12,8 +12,12 @@ It orchestrates the tools your distro already ships (firewalld/ufw,
 systemd-resolved, chrony, fwupd, PackageKit, USBGuard, ClamAV) instead of
 replacing them, and it is extensible through sandboxed plugins.
 
-**Status: pre-alpha.** Foundations are being laid (phase F0). There is
-nothing to install or run yet; see `docs/STATUS.md` and `docs/plans/`.
+**Status: pre-alpha.** The core, the CLI, the desktop app, secure DNS,
+per-app and inbound firewalling, hardening and endpoint plugins, and the AI
+assistant server exist and are tested in virtual machines on Fedora, Ubuntu,
+Debian and Arch (phases F0 to F9). There are no packages yet (F10). See
+`docs/STATUS.md` for where things stand and `docs/reports/` for what each
+phase proved.
 
 ## Guarantees
 
@@ -23,6 +27,8 @@ nothing to install or run yet; see `docs/STATUS.md` and `docs/plans/`.
   confirmation for network changes, crash recovery.
 - Local-first: zero telemetry, zero phone-home. Your data stays on your
   machine.
+- An AI assistant can read and suggest, never apply: every suggestion waits
+  for a person, can be undone, and every call it makes is logged.
 - Security is not a premium feature: all protections are free and open.
 
 ## Architecture (short)

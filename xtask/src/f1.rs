@@ -242,7 +242,7 @@ pub(crate) fn install_binary(vm: &Vm, local: &Path, destination: &str) -> Result
     )
 }
 
-/// Installs one plugin (binary, manifest, signature) from plugins/<id>/.
+/// Installs one plugin (binary, manifest, signature) from `plugins/<id>/`.
 pub(crate) fn install_plugin(vm: &Vm, workspace: &Path, id: &str) -> Result<()> {
     let dir = workspace.join("plugins").join(id);
     let bin = format!(

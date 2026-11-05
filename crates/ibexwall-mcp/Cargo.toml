@@ -30,7 +30,7 @@ sha2.workspace = true
 hex.workspace = true
 toml.workspace = true
 tokio.workspace = true
-argon2 = "0.5"
+ibexwall-token = { path = "../ibexwall-token", version = "0.1.0" }
 bytes = "1"
 http-body-util = "0.1"
 hyper = { version = "1", features = ["server", "http1"] }

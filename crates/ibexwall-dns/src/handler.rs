@@ -72,6 +72,8 @@ impl Counters {
 pub struct Handler {
     policy: Arc<RwLock<Arc<Policy>>>,
     resolver: Resolver<TokioRuntimeProvider>,
+    /// Split DNS: (domain, resolver), longest domain first.
+    routes: Arc<Vec<(String, Resolver<TokioRuntimeProvider>)>>,
     pub counters: Arc<Counters>,
     sink: Option<Arc<crate::answers::AnswerSink>>,
 }
@@ -81,9 +83,30 @@ impl Handler {
         Self {
             policy: Arc::new(RwLock::new(Arc::new(policy))),
             resolver,
+            routes: Arc::new(Vec::new()),
             counters: Arc::new(Counters::default()),
             sink: None,
         }
+    }
+
+    /// Queries under a route's domain go to that route's resolver.
+    pub fn with_routes(
+        mut self,
+        mut routes: Vec<(String, Resolver<TokioRuntimeProvider>)>,
+    ) -> Self {
+        routes.sort_by_key(|(domain, _)| std::cmp::Reverse(domain.len()));
+        self.routes = Arc::new(routes);
+        self
+    }
+
+    /// The resolver for `name`: the longest matching route, else the default.
+    fn resolver_for(&self, name: &str) -> &Resolver<TokioRuntimeProvider> {
+        let name = name.trim_end_matches('.').to_ascii_lowercase();
+        self.routes
+            .iter()
+            .find(|(domain, _)| route_matches(domain, &name))
+            .map(|(_, resolver)| resolver)
+            .unwrap_or(&self.resolver)
     }
 
     /// Reports forwarded answers to the core for traffic correlation.
@@ -105,6 +128,11 @@ impl Handler {
     fn policy(&self) -> Arc<Policy> {
         Arc::clone(&self.policy.read().expect("policy lock"))
     }
+}
+
+/// `corp.example` matches itself and anything under it, not `notcorp.example`.
+pub fn route_matches(domain: &str, name: &str) -> bool {
+    name == domain || name.ends_with(&format!(".{domain}"))
 }
 
 fn failed(request: &Request, code: ResponseCode) -> ResponseInfo {
@@ -153,7 +181,7 @@ impl RequestHandler for Handler {
             }
             Verdict::Forward => match tokio::time::timeout(
                 UPSTREAM_DEADLINE,
-                self.resolver.lookup(name.clone(), query_type),
+                self.resolver_for(&name).lookup(name.clone(), query_type),
             )
             .await
             .unwrap_or_else(|_| Err(NetError::Timeout))
@@ -228,4 +256,17 @@ fn block_answer(
         _ => return Blocked::Records(vec![]),
     };
     Blocked::Records(vec![Record::from_rdata(name, BLOCK_TTL, rdata)])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::route_matches;
+
+    #[test]
+    fn a_route_matches_its_domain_and_what_is_under_it_only() {
+        assert!(route_matches("corp.example", "corp.example"));
+        assert!(route_matches("corp.example", "git.corp.example"));
+        assert!(!route_matches("corp.example", "notcorp.example"));
+        assert!(!route_matches("corp.example", "corp.example.evil.net"));
+    }
 }

@@ -332,3 +332,35 @@ first mandatory review point.
   database kept elsewhere, or a remote attestation, is the answer, and
   neither is in v1). The daemon's hardened unit hides parts of the filesystem
   from plugins run as its children; own units per plugin (F10) lift that.
+
+## 15. The HTTPS transport and the rule "nothing in the clear" (ADR-0042)
+
+- **Front door.** TLS 1.2 and 1.3 only, ALPN http/1.1, no plain listener and
+  no flag to make one; a private key readable by others stops the server.
+  Connections are capped (64), headers and bodies are bounded (1 MiB), every
+  wait has a limit, and keep-alive is off.
+- **Who may come in.** A Bearer token `ibx_<id>_<secret>`: the id selects one
+  record, the secret is checked against an Argon2id hash (a decoy hash runs
+  for an unknown id so timing does not tell ids apart); expired tokens are
+  refused; failed sign-ins are counted per address and the door closes past a
+  limit (429), so the hash cost cannot be used to exhaust the machine. The
+  `Origin` header must be allowed (none are by default), which keeps a web
+  page from driving it.
+- **What a token can do.** Exactly what its client's scopes allow, through the
+  same pipeline as stdio (scopes, rate limit, audit line before the work,
+  redaction, `untrusted` objects); the server runs as its own user in the
+  assistants group, so polkit limits it to read, plan and propose.
+- **Accountability.** The audit chain records `via: http:<token id>`; the
+  token secret appears in no log (verified in the VM, journal included).
+- **Residual.** A stolen token works until it is deleted from `mcp.toml` or
+  expires; there is no per-request signature. A self-signed certificate is
+  only as good as the fingerprint check on the client. Compromise of the
+  machine running the server exposes the answers it can give, not the
+  ability to apply changes.
+- **Guard.** `xtask/src/egress.rs` fails the build on a plaintext `http://`
+  address in production code, on a network listener outside the two known
+  ones (the loopback resolver and the MCP server), and on a plain mode in the
+  MCP transport.
+- **Unencrypted DNS on a local network** is allowed only for local-range
+  addresses, announced to the person as information, and routed per domain; it
+  protects nothing against someone on that network, which the message says.

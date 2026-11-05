@@ -7,9 +7,12 @@
 //! applies, reverts, approves or changes scopes: what is not in the list
 //! cannot be called.
 
+pub mod admin;
 pub mod audit;
 pub mod config;
+pub mod http;
 pub mod ratelimit;
 pub mod redact;
 pub mod server;
+pub mod token;
 pub mod tools;

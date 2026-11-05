@@ -94,6 +94,15 @@ const FINDINGS: Finding[] = [
 ];
 
 const DNS_NOTES: Finding[] = [
+  {
+    ...finding('detect.dns', 'net.dns', 'info', 'detect-dns', {
+      stack: 'systemd-resolved',
+      servers: '192.168.1.1',
+      case: 'resolved-plain',
+      patch: JSON.stringify({ provider: 'cloudflare', transport: 'https' }),
+    }),
+    summary_key: 'detect-dns-resolved-plain',
+  },
   finding('dns.network_servers', 'net.dns', 'info', 'dns-network-servers', {
     servers: '192.168.1.1, 10.8.0.1',
   }),

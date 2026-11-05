@@ -156,3 +156,31 @@ describe('dns choices', () => {
     expect(DNS_PROVIDERS.every((p) => p.transports.includes('tls'))).toBe(true);
   });
 });
+
+describe('Dns screen: what was found', () => {
+  beforeEach(() => i18n.set('en'));
+
+  it('says how DNS works today and fills the form from the suggestion without applying it', async () => {
+    const transport = new FixtureTransport('attention');
+    const plan = vi.spyOn(transport, 'planChange');
+    app.useTransport(transport);
+    render(Dns);
+    await app.refresh();
+    expect(await screen.findByText(/how your dns works today/i)).toBeVisible();
+    expect(
+      screen.getByText(/uses systemd-resolved and sends lookups without encryption/i),
+    ).toBeVisible();
+    await fireEvent.click(screen.getByRole('button', { name: /use this suggestion/i }));
+    expect(screen.getByRole('radio', { name: /cloudflare/i })).toBeChecked();
+    expect(plan).not.toHaveBeenCalled();
+  });
+
+  it('speaks Portuguese', async () => {
+    i18n.set('pt-BR');
+    app.useTransport(new FixtureTransport('attention'));
+    render(Dns);
+    await app.refresh();
+    expect(await screen.findByText(/como o seu dns funciona hoje/i)).toBeVisible();
+    expect(screen.getByRole('button', { name: /usar esta sugestão/i })).toBeVisible();
+  });
+});

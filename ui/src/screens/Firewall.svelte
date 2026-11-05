@@ -17,6 +17,7 @@
   import { t } from '../lib/i18n.svelte';
   import { TransportError } from '../lib/transport';
   import ChangeFlow from '../components/ChangeFlow.svelte';
+  import Detected from '../components/Detected.svelte';
   import StateMessage from '../components/StateMessage.svelte';
   import Switch from '../components/Switch.svelte';
 
@@ -105,6 +106,8 @@
   <h1>{t('firewall-title')}</h1>
   <p class="muted">{t('firewall-subtitle')}</p>
 </header>
+
+<Detected plugin="net.firewall" />
 
 {#if load.status === 'loading' || app.plugins.status === 'loading'}
   <StateMessage kind="loading" />

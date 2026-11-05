@@ -13,6 +13,7 @@
     type DnsTransport,
   } from '../lib/dns';
   import ChangeFlow from '../components/ChangeFlow.svelte';
+  import Detected from '../components/Detected.svelte';
   import { relativeTime } from '../lib/time';
   import StateMessage from '../components/StateMessage.svelte';
   import type { DnsStatus, Finding } from '../gen/contracts';
@@ -35,6 +36,13 @@
   );
   const plainServers = $derived(notes.find((f) => f.id === 'dns.plain_upstream')?.args?.servers);
   const problems = $derived(ownProblems(choice.own));
+
+  /** The suggestion fills the form; the person still reviews the change. */
+  function useSuggestion(patch: Record<string, unknown>) {
+    if (DNS_PROVIDERS.some((p) => p.id === patch.provider))
+      choice.provider = patch.provider as DnsProviderId;
+    if (typeof patch.transport === 'string') choice.transport = patch.transport as DnsTransport;
+  }
 
   function useNetworkServer(address: string) {
     choice.own.enabled = true;
@@ -83,6 +91,8 @@
     <p class="muted">{t('dns-subtitle')}</p>
   </div>
 </header>
+
+<Detected plugin="net.dns" onuse={useSuggestion} />
 
 {#if app.plugins.status === 'loading'}
   <StateMessage kind="loading" />

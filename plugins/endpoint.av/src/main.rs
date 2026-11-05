@@ -39,7 +39,9 @@ const MAX_PATHS: usize = 8;
 /// ships so YARA does something useful out of the box.
 const RULES: &str = "// Managed by IbexWall (endpoint.av).\nrule EICAR_Test_File {\n  strings:\n    $e = \"EICAR-STANDARD-ANTIVIRUS-TEST-FILE!\"\n  condition:\n    $e\n}\n";
 
-fn main() {
+/// The plugin's entry point: the multicall binary calls it, and a plugin runs
+/// as its own process (ADR-0041).
+pub fn run() {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()

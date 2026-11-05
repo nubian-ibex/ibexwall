@@ -17,7 +17,9 @@ use serde_json::Value;
 
 const TIMER: &str = "fwupd-refresh.timer";
 
-fn main() {
+/// The plugin's entry point: the multicall binary calls it, and a plugin runs
+/// as its own process (ADR-0041).
+pub fn run() {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()

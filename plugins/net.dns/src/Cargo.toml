@@ -11,8 +11,8 @@ publish = false
 [lints]
 workspace = true
 
-[[bin]]
-name = "ibexwall-plugin-dns"
+[lib]
+name = "ibexwall_plugin_dns"
 path = "main.rs"
 
 [dependencies]

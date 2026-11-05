@@ -1,0 +1,44 @@
+[package]
+name = "ibexwall-plugins"
+description = "The official IbexWall plugins in one multicall binary (ADR-0041)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "ibexwall-plugins"
+path = "src/main.rs"
+
+[dependencies]
+ibexwall-plugin-flatpak-network = { path = "../../plugins/apps.flatpak-network/src", version = "0.1.0" }
+ibexwall-plugin-flatpak-perms = { path = "../../plugins/apps.flatpak-perms/src", version = "0.1.0" }
+ibexwall-plugin-usb = { path = "../../plugins/device.usb/src", version = "0.1.0" }
+ibexwall-plugin-av = { path = "../../plugins/endpoint.av/src", version = "0.1.0" }
+ibexwall-plugin-integrity = { path = "../../plugins/endpoint.integrity/src", version = "0.1.0" }
+ibexwall-plugin-isolate = { path = "../../plugins/endpoint.isolate/src", version = "0.1.0" }
+ibexwall-plugin-persistence = { path = "../../plugins/endpoint.persistence/src", version = "0.1.0" }
+ibexwall-plugin-dns = { path = "../../plugins/net.dns/src", version = "0.1.0" }
+ibexwall-plugin-firewall = { path = "../../plugins/net.firewall/src", version = "0.1.0" }
+ibexwall-plugin-nts = { path = "../../plugins/net.nts/src", version = "0.1.0" }
+ibexwall-plugin-vpn = { path = "../../plugins/net.vpn/src", version = "0.1.0" }
+ibexwall-plugin-wifi = { path = "../../plugins/net.wifi/src", version = "0.1.0" }
+ibexwall-plugin-camera-mic = { path = "../../plugins/privacy.camera-mic/src", version = "0.1.0" }
+ibexwall-plugin-telemetry = { path = "../../plugins/privacy.telemetry/src", version = "0.1.0" }
+ibexwall-plugin-accounts = { path = "../../plugins/system.accounts/src", version = "0.1.0" }
+ibexwall-plugin-audit = { path = "../../plugins/system.audit/src", version = "0.1.0" }
+ibexwall-plugin-coredump = { path = "../../plugins/system.coredump/src", version = "0.1.0" }
+ibexwall-plugin-firmware = { path = "../../plugins/system.firmware/src", version = "0.1.0" }
+ibexwall-plugin-mounts = { path = "../../plugins/system.mounts/src", version = "0.1.0" }
+ibexwall-plugin-ports = { path = "../../plugins/system.ports/src", version = "0.1.0" }
+ibexwall-plugin-posture = { path = "../../plugins/system.posture/src", version = "0.1.0" }
+ibexwall-plugin-session-lock = { path = "../../plugins/system.session-lock/src", version = "0.1.0" }
+ibexwall-plugin-ssh = { path = "../../plugins/system.ssh/src", version = "0.1.0" }
+ibexwall-plugin-sysctl = { path = "../../plugins/system.sysctl/src", version = "0.1.0" }
+ibexwall-plugin-updates = { path = "../../plugins/system.updates/src", version = "0.1.0" }
+ibexwall-plugin-cves = { path = "../../plugins/vuln.cves/src", version = "0.1.0" }

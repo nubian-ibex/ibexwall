@@ -11,8 +11,8 @@ publish = false
 [lints]
 workspace = true
 
-[[bin]]
-name = "ibexwall-plugin-persistence"
+[lib]
+name = "ibexwall_plugin_persistence"
 path = "main.rs"
 
 [dependencies]

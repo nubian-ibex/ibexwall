@@ -3,3 +3,7 @@ dns-unprotected-summary = Your computer sends DNS lookups through the network's 
 dns-may-affect-captive = Sign-in pages of captive portals (hotels, airports) may not load.
 dns-may-affect-vpn = VPN clients that set their own DNS may be overridden.
 dns-may-affect-split = Corporate split DNS (internal names) may stop resolving.
+dns-network-servers-title = Your network provides its own DNS servers
+dns-network-servers-summary = The network you are on (or your VPN) offers: { $servers }. Secure DNS does not use them unless you add them as a server or for specific domains.
+dns-plain-upstream-title = Some DNS goes unencrypted on your local network
+dns-plain-upstream-summary = Lookups for the names you routed to { $servers } are sent without encryption to that local server. Anyone on that network can read them.

@@ -53,8 +53,14 @@ fn main() {
 struct Config {
     provider: String,
     transport: Transport,
-    /// Custom upstreams; when present they replace the provider.
+    /// Custom upstreams; when present they replace the provider. The order
+    /// is the failover: the first answers, the next ones take over. A
+    /// `plain` server is allowed only on a local-network address (a router,
+    /// a corporate resolver, a VPN's DNS).
     servers: Vec<Server>,
+    /// Split DNS: domains answered by other servers, for example the
+    /// corporate zone by the corporate resolver.
+    routes: Vec<ibexwall_dns::config::Route>,
     lists: Vec<ListRef>,
     /// One block list by preset id, for the command line
     /// (`ibexctl plan net.dns --set list=oisd-small`).
@@ -80,6 +86,7 @@ impl Default for Config {
             provider: "quad9".into(),
             transport: Transport::Tls,
             servers: vec![],
+            routes: vec![],
             lists: vec![],
             block_response: BlockResponse::default(),
             block_doh: true,
@@ -129,9 +136,10 @@ impl Config {
             list.resolve()
                 .map_err(|e| PluginError::invalid("lists", e.to_string()))?;
         }
-        Ok(Settings {
+        let settings = Settings {
             listen: default_listen(),
             servers: self.upstreams()?,
+            routes: self.routes.clone(),
             block_response: self.block_response,
             block_doh: self.block_doh,
             block: vec![],
@@ -144,7 +152,11 @@ impl Config {
                 url: Some(DOH_ENDPOINTS_URL.into()),
             }),
             update_interval_hours: 24,
-        })
+        };
+        settings
+            .validate()
+            .map_err(|e| PluginError::invalid("servers", e.to_string()))?;
+        Ok(settings)
     }
 }
 
@@ -352,6 +364,69 @@ fn dropin_points_at_resolver(sandbox: &Sandbox) -> bool {
     })
 }
 
+fn info_finding(id: &str, title: &str, summary: &str, servers: &[String]) -> Finding {
+    Finding {
+        id: id.into(),
+        plugin: ID.into(),
+        severity: Severity::Info,
+        title_key: title.into(),
+        summary_key: summary.into(),
+        args: BTreeMap::from([("servers".to_string(), servers.join(", "))]),
+        references: vec![],
+        remediation: None,
+        status: FindingStatus::Open,
+        detected_at: "1970-01-01T00:00:00Z".into(),
+    }
+}
+
+/// The DNS servers the network handed this machine (DHCP, a VPN), as the
+/// system resolver sees them: IbexWall's own address and loopback excluded.
+fn network_servers(sandbox: &Sandbox) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for path in [
+        "/run/systemd/resolve/resolv.conf",
+        "/run/NetworkManager/resolv.conf",
+    ] {
+        let Some(text) = sandbox.read(path) else {
+            continue;
+        };
+        for line in text.lines() {
+            let Some(rest) = line.trim().strip_prefix("nameserver") else {
+                continue;
+            };
+            let address = rest.trim();
+            let Ok(ip) = address.parse::<std::net::IpAddr>() else {
+                continue;
+            };
+            if ip.is_loopback()
+                || address == names::DNS_BIND_ADDR
+                || out.iter().any(|s| s == address)
+            {
+                continue;
+            }
+            out.push(address.to_string());
+        }
+    }
+    out
+}
+
+/// Upstreams in IbexWall's own settings that are not encrypted.
+fn plain_upstreams(sandbox: &Sandbox) -> Vec<String> {
+    let Some(text) = sandbox.read(names::ARTIFACT_DNS_SETTINGS) else {
+        return vec![];
+    };
+    let Ok(settings) = serde_json::from_str::<Settings>(&text) else {
+        return vec![];
+    };
+    settings
+        .servers
+        .iter()
+        .chain(settings.routes.iter().flat_map(|r| r.servers.iter()))
+        .filter(|s| s.transport == Transport::Plain)
+        .map(|s| s.ip.to_string())
+        .collect()
+}
+
 /// Runs against any tree (real system, sandbox or fixture).
 fn evaluate(sandbox: &Sandbox) -> CheckReport {
     let backend = backend::detect(sandbox);
@@ -363,6 +438,27 @@ fn evaluate(sandbox: &Sandbox) -> CheckReport {
         Backend::Resolved => CheckOutcome::Fail,
     };
     let mut findings = vec![];
+    // What the person should know about where their DNS goes, said plainly
+    // and never as a failure: the network's own servers, and a plain
+    // upstream on a local network.
+    let network = network_servers(sandbox);
+    if !network.is_empty() {
+        findings.push(info_finding(
+            "dns.network_servers",
+            "dns-network-servers-title",
+            "dns-network-servers-summary",
+            &network,
+        ));
+    }
+    let plain = plain_upstreams(sandbox);
+    if !plain.is_empty() {
+        findings.push(info_finding(
+            "dns.plain_upstream",
+            "dns-plain-upstream-title",
+            "dns-plain-upstream-summary",
+            &plain,
+        ));
+    }
     if outcome == CheckOutcome::Fail {
         findings.push(Finding {
             id: CHECK_ID.into(),
@@ -419,6 +515,91 @@ mod tests {
         let full = root.join(path.trim_start_matches('/'));
         std::fs::create_dir_all(full.parent().unwrap()).unwrap();
         std::fs::write(full, content).unwrap();
+    }
+
+    fn settings_of(ops: &[Op]) -> Settings {
+        let content = ops
+            .iter()
+            .find_map(|op| match op {
+                Op::FileWrite { path, content, .. } if path.ends_with("resolver.json") => {
+                    Some(content.clone())
+                }
+                _ => None,
+            })
+            .expect("a settings file");
+        serde_json::from_str(&content).unwrap()
+    }
+
+    #[test]
+    fn a_corporate_resolver_with_a_secondary_and_a_split_zone_is_planned() {
+        let (_root, sandbox) = resolved_tree("custom");
+        let config = Config::parse(json!({
+            "servers": [
+                { "ip": "10.0.0.2", "transport": "plain" },
+                { "ip": "9.9.9.9", "server_name": "dns.quad9.net", "transport": "tls" },
+            ],
+            "routes": [{ "domains": ["corp.example"], "servers": [{ "ip": "10.0.0.2", "transport": "plain" }] }],
+        }))
+        .unwrap();
+        let settings = settings_of(&plan(&sandbox, config).unwrap());
+        // The order is the failover: the local one first, the encrypted one next.
+        assert_eq!(settings.servers[0].transport, Transport::Plain);
+        assert_eq!(settings.servers[1].transport, Transport::Tls);
+        assert_eq!(settings.routes[0].domains, ["corp.example"]);
+    }
+
+    #[test]
+    fn plain_dns_to_a_public_address_and_bad_routes_are_refused_at_plan_time() {
+        let (_root, sandbox) = resolved_tree("refuse");
+        for bad in [
+            json!({ "servers": [{ "ip": "8.8.8.8", "transport": "plain" }] }),
+            json!({ "routes": [{ "domains": ["Bad_Domain"], "servers": [{ "ip": "10.0.0.2", "transport": "plain" }] }] }),
+            json!({ "routes": [{ "domains": ["corp.example"], "servers": [] }] }),
+            json!({ "routes": [{ "domains": ["corp.example"], "servers": [{ "ip": "1.1.1.1", "transport": "plain" }] }] }),
+        ] {
+            let config = Config::parse(bad.clone()).unwrap();
+            assert!(plan(&sandbox, config).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn the_person_is_told_about_the_networks_servers_and_any_unencrypted_upstream() {
+        let (root, sandbox) = resolved_tree("told");
+        put(
+            &root,
+            "/run/systemd/resolve/resolv.conf",
+            "nameserver 192.168.1.1\nnameserver 127.0.0.53\nnameserver 192.168.1.1\nnameserver 10.8.0.1\nsearch lan\n",
+        );
+        let report = evaluate(&sandbox);
+        let network = report
+            .findings
+            .iter()
+            .find(|f| f.id == "dns.network_servers")
+            .unwrap();
+        assert_eq!(network.args["servers"], "192.168.1.1, 10.8.0.1");
+        assert_eq!(network.severity, Severity::Info);
+        assert!(report.findings.iter().all(|f| f.id != "dns.plain_upstream"));
+
+        put(
+            &root,
+            "/etc/ibexwall/dns/resolver.json",
+            r#"{ "servers": [{ "ip": "10.0.0.2", "transport": "plain" }, { "ip": "9.9.9.9", "server_name": "dns.quad9.net", "transport": "tls" }] }"#,
+        );
+        let report = evaluate(&sandbox);
+        let plain = report
+            .findings
+            .iter()
+            .find(|f| f.id == "dns.plain_upstream")
+            .unwrap();
+        assert_eq!(plain.args["servers"], "10.0.0.2");
+        // Information, never a failure: the score does not move.
+        assert!(
+            report
+                .findings
+                .iter()
+                .filter(|f| f.id.starts_with("dns."))
+                .all(|f| f.id == "dns.secure_resolver" || f.severity == Severity::Info)
+        );
     }
 
     #[test]

@@ -3,3 +3,7 @@ dns-unprotected-summary = O computador envia as consultas DNS pelo servidor da p
 dns-may-affect-captive = As páginas de login de redes com portal (hotéis, aeroportos) podem não abrir.
 dns-may-affect-vpn = Clientes de VPN que definem o próprio DNS podem ser sobrepostos.
 dns-may-affect-split = O DNS dividido de empresas (nomes internos) pode parar de resolver.
+dns-network-servers-title = Sua rede oferece servidores DNS próprios
+dns-network-servers-summary = A rede em que você está (ou a sua VPN) oferece: { $servers }. O DNS seguro não os usa, a menos que você os adicione como servidor ou para domínios específicos.
+dns-plain-upstream-title = Parte do DNS vai sem criptografia na sua rede local
+dns-plain-upstream-summary = As consultas dos nomes que você direcionou a { $servers } vão sem criptografia para esse servidor local. Qualquer pessoa nessa rede pode lê-las.

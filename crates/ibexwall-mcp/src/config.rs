@@ -59,12 +59,67 @@ pub struct Client {
     pub rate_limit: Option<String>,
 }
 
+/// The HTTP transport: off unless the person turns it on, and never without
+/// TLS (a token or an answer must not cross a network in the clear).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct Http {
+    pub enabled: bool,
+    /// `127.0.0.1:8765` by default: reachable from this machine only until
+    /// the person chooses an address.
+    pub listen: String,
+    pub tls_cert: String,
+    pub tls_key: String,
+    /// Browser origins allowed to call the server; none by default (a page
+    /// in a browser cannot reach it).
+    pub allowed_origins: Vec<String>,
+    /// Failed sign-ins per minute from one address before it is refused.
+    pub max_failures_per_minute: u32,
+}
+
+impl Default for Http {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            listen: "127.0.0.1:8765".into(),
+            tls_cert: "/etc/ibexwall/mcp/tls.crt".into(),
+            tls_key: "/etc/ibexwall/mcp/tls.key".into(),
+            allowed_origins: vec![],
+            max_failures_per_minute: 10,
+        }
+    }
+}
+
+/// An access token: only its Argon2id hash lives here.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Token {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    /// The `[[client]]` whose scopes this token gets.
+    pub client: String,
+    pub hash: String,
+    /// `YYYY-MM-DD`; the token stops working after that day.
+    #[serde(default)]
+    pub expires: Option<String>,
+}
+
+impl Token {
+    pub fn expired(&self, today: &str) -> bool {
+        self.expires.as_deref().is_some_and(|day| day < today)
+    }
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct Config {
     pub defaults: Defaults,
+    pub http: Http,
     #[serde(rename = "client")]
     pub clients: Vec<Client>,
+    #[serde(rename = "token")]
+    pub tokens: Vec<Token>,
 }
 
 /// What every unnamed client may do.
@@ -82,6 +137,38 @@ impl Config {
             "aggregates" | "none" | "full"
         ) {
             return Err("dns_history is aggregates, none or full".into());
+        }
+        if config.http.enabled {
+            if config.tokens.is_empty() {
+                return Err("the HTTP transport is on but no [[token]] is defined".into());
+            }
+            if config.http.listen.parse::<std::net::SocketAddr>().is_err() {
+                return Err(
+                    "[http] listen must be an address and a port, like 127.0.0.1:8765".into(),
+                );
+            }
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        for token in &config.tokens {
+            if !crate::token::valid_id(&token.id) || !seen.insert(token.id.clone()) {
+                return Err(format!("token id `{}` is invalid or repeated", token.id));
+            }
+            if !token.hash.starts_with("$argon2id$") {
+                return Err(format!("token `{}`: the hash must be Argon2id", token.id));
+            }
+            if token
+                .expires
+                .as_deref()
+                .is_some_and(|d| !crate::token::valid_day(d))
+            {
+                return Err(format!("token `{}`: expires is YYYY-MM-DD", token.id));
+            }
+            if !config.clients.iter().any(|c| c.name == token.client) {
+                return Err(format!(
+                    "token `{}`: no [[client]] named `{}` gives it scopes",
+                    token.id, token.client
+                ));
+            }
         }
         for client in &config.clients {
             if let Some(limit) = &client.rate_limit {
@@ -220,6 +307,43 @@ rate_limit = "30/min"
         }
         for allowed in ["net.dns", "system.sysctl", "system.accountsx"] {
             assert!(!config.denies(allowed), "{allowed}");
+        }
+    }
+
+    const HTTP_ON: &str = r#"
+[http]
+enabled = true
+listen = "0.0.0.0:8765"
+
+[[client]]
+name = "claude-code"
+scopes = ["read:posture"]
+
+[[token]]
+id = "k1x"
+name = "laptop"
+client = "claude-code"
+hash = "$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaGhhc2g"
+expires = "2026-12-31"
+"#;
+
+    #[test]
+    fn http_is_off_by_default_and_a_token_must_name_a_known_client() {
+        let default = Config::default();
+        assert!(!default.http.enabled && default.http.listen == "127.0.0.1:8765");
+        assert!(default.http.allowed_origins.is_empty());
+        let on = Config::parse(HTTP_ON).unwrap();
+        assert!(on.http.enabled && on.tokens[0].client == "claude-code");
+        assert!(on.tokens[0].expired("2027-01-01") && !on.tokens[0].expired("2026-12-31"));
+        for bad in [
+            HTTP_ON.replace("client = \"claude-code\"\nhash", "client = \"ghost\"\nhash"),
+            HTTP_ON.replace("$argon2id$", "$md5$"),
+            HTTP_ON.replace("id = \"k1x\"", "id = \"K1\""),
+            HTTP_ON.replace("expires = \"2026-12-31\"", "expires = \"soon\""),
+            HTTP_ON.replace("listen = \"0.0.0.0:8765\"", "listen = \"nowhere\""),
+            "[http]\nenabled = true\n".to_string(),
+        ] {
+            assert!(Config::parse(&bad).is_err(), "{bad}");
         }
     }
 

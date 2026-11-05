@@ -16,6 +16,7 @@ homepage = "https://ibexwall.com"
 ibexwall-proto = { path = "crates/ibexwall-proto", version = "0.1.0" }
 ibexwall-sdk = { path = "crates/ibexwall-sdk", version = "0.1.0" }
 ibexwall-varlink = { path = "crates/ibexwall-varlink", version = "0.1.0" }
+ibexwall-token = { path = "crates/ibexwall-token", version = "0.1.0" }
 ibexwall-tui = { path = "crates/ibexwall-tui", version = "0.1.0" }
 ibexwall-sys = { path = "crates/ibexwall-sys", version = "0.1.0" }
 ibexwall-dns = { path = "crates/ibexwall-dns", version = "0.1.0" }
@@ -53,6 +54,7 @@ ed25519-dalek = "3"
 base64 = "0.22"
 blake2 = "0.10"
 toml = "0.9"
+toml_edit = "0.23"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-journald = "0.3"

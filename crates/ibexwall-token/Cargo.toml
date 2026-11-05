@@ -1,0 +1,15 @@
+[package]
+name = "ibexwall-token"
+description = "Access tokens for the IbexWall MCP HTTP transport: generation, Argon2id hashing, verification"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+argon2 = "0.5"

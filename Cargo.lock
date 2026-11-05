@@ -2208,6 +2208,7 @@ dependencies = [
  "clap",
  "ibexwall-firewall",
  "ibexwall-proto",
+ "ibexwall-token",
  "ibexwall-tui",
  "ibexwall-varlink",
  "serde_json",
@@ -2253,6 +2254,7 @@ name = "ibexwall-desktop"
 version = "0.1.0"
 dependencies = [
  "ibexwall-proto",
+ "ibexwall-token",
  "ibexwall-varlink",
  "serde",
  "serde_json",
@@ -2333,7 +2335,6 @@ name = "ibexwall-mcp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "argon2",
  "bytes",
  "hex",
  "http-body-util",
@@ -2341,6 +2342,7 @@ dependencies = [
  "hyper-util",
  "ibexwall-proto",
  "ibexwall-sys",
+ "ibexwall-token",
  "ibexwall-varlink",
  "rcgen",
  "rustls",
@@ -2373,6 +2375,19 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "ibexwall-plugin-assistant"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "ibexwall-token",
+ "serde",
+ "serde_json",
+ "tokio",
+ "toml_edit 0.23.10+spec-1.0.0",
 ]
 
 [[package]]
@@ -2678,6 +2693,7 @@ name = "ibexwall-plugins"
 version = "0.1.0"
 dependencies = [
  "ibexwall-plugin-accounts",
+ "ibexwall-plugin-assistant",
  "ibexwall-plugin-audit",
  "ibexwall-plugin-av",
  "ibexwall-plugin-camera-mic",
@@ -2744,6 +2760,13 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "zbus",
+]
+
+[[package]]
+name = "ibexwall-token"
+version = "0.1.0"
+dependencies = [
+ "argon2",
 ]
 
 [[package]]
@@ -6178,6 +6201,19 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
+version = "0.23.10+spec-1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "84c8b9f757e028cee9fa244aea147aab2a9ec09d5325a9b01e0a49730c2b5269"
+dependencies = [
+ "indexmap 2.14.2",
+ "toml_datetime 0.7.5+spec-1.1.0",
+ "toml_parser",
+ "toml_writer",
+ "winnow 0.7.15",
+]
+
+[[package]]
+name = "toml_edit"
 version = "0.25.17+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3641d5bbb5349a79e1020a242d251efbc546ad8048d133958323ce9c40a9c9c"
@@ -7212,6 +7248,9 @@ name = "winnow"
 version = "0.7.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df79d97927682d2fd8adb29682d1140b343be4ac0f08fd68b7765d9c059d3945"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "winnow"

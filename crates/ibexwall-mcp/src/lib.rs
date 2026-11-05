@@ -14,5 +14,5 @@ pub mod http;
 pub mod ratelimit;
 pub mod redact;
 pub mod server;
-pub mod token;
+pub use ibexwall_token as token;
 pub mod tools;

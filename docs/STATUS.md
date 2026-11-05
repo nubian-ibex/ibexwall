@@ -8,7 +8,10 @@ Last updated: 2026-11-04 (F9 delivered, report ready for acceptance)
 ## Current phase
 
 F0 to F5 and F9 are accepted. F6 to F8 are delivered and wait for the
-maintainer's acceptance. Next: F10 (packaging, release, docs, site). Run the app with
+maintainer's acceptance. After acceptance, on 2026-11-04: OpenVPN import
+(subset), the HTTPS MCP transport with user-defined tokens, own DNS servers
+with a secondary and split DNS, ADR-0042 (nothing in the clear) and its
+guard, and signed commits from now on. Next: F10 (packaging, release, docs, site). Run the app with
 `scripts/dev-sandbox.sh` (sandboxed daemon, host untouched). Manual runs on
 Omarchy and EndeavourOS, and with real assistant clients, are deferred by the
 maintainer.
@@ -31,8 +34,7 @@ Phases, newest first (report, plan, ADRs):
   screen; a hash-chained call log written before each call; the polkit rule
   and the `ibexwall-assistants` group (accepted and shipped). `--phase f8`
   green on five distros with a scripted client (no language model) and an
-  injection corpus in the suite. Open: Streamable HTTP and OAuth (off by
-  spec).
+  injection corpus in the suite. Open: OAuth (not built; a user-defined token instead).
 - **F7, hardening and system plugins** (`docs/reports/F7-report.md`,
   `docs/plans/F7-hardening-and-system.md`, ADR-0038). Sixteen plugins;
   `--phase f7` green on five distros (15 scenarios). Open: pending firmware
@@ -47,7 +49,7 @@ Phases, newest first (report, plan, ADRs):
   pure nftables adapters, Docker coexistence, byte-exact rollback. Open:
   profiles per connection, rich-rule editing, ufw app profiles.
 - **F4, apps and traffic** (accepted; `docs/reports/F4-report.md`).
-- **F3, secure DNS** (`docs/reports/F3-report.md`). Core accepted; DoH
+- **F3, secure DNS** (`docs/reports/F3-report.md`). Own servers, a secondary and split DNS were added on 2026-11-04. Core accepted; DoH
   endpoints, browser policies, captive portal, counters and latency evidence
   delivered; leftovers: DNS backends B2 to B4, IPv6 presets, a DNSSEC ADR, the
   TUI DNS view.

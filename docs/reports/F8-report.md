@@ -115,7 +115,8 @@ core and polkit, so a client that bypasses the server gains nothing.
   is bounded by the core's pending-proposal limits instead.
 - `get_app_connections` ignores `since` (the monitor keeps aggregates), and
   says so in its answer.
-- Streamable HTTP and OAuth are not built (the spec keeps them off).
+- Streamable HTTP was built after acceptance (see "After acceptance"); OAuth
+  was not (decision 2026-11-04: a user-defined Bearer token instead).
 - Access for the user that runs an assistant is the group
   `ibexwall-assistants` (created by `packaging/sysusers.d/ibexwall.conf`),
   with the packaged polkit rule `49-ibexwall-assistants.rules` granting only
@@ -128,3 +129,34 @@ core and polkit, so a client that bypasses the server gains nothing.
   mode; it is local and reversible.
 - Accepted 2026-11-04: access through a packaged polkit rule for the group
   `ibexwall-assistants` (done), `ibexctl mcp config` tells people to join it.
+
+## After acceptance: the HTTPS transport (2026-11-04)
+
+Built at the maintainer's request, with a key or token the user defines.
+
+- `ibexwall-mcp --http`: Streamable HTTP (MCP 2025-06-18), TLS only (no plain
+  mode exists), off unless `[http] enabled = true` in `/etc/ibexwall/mcp.toml`.
+- Access is a Bearer token `ibx_<id>_<secret>`. The person lets IbexWall
+  generate 256 random bits or chooses their own secret (24 characters or
+  more, varied, read from stdin so it never touches argv), names it, binds it
+  to a `[[client]]` (its scopes), and may set an expiry. Only an Argon2id hash
+  is written. `ibexwall-mcp token create` and `tls-init` print what to paste;
+  nothing edits `/etc`.
+- The door: `Origin` allow list (empty by default), failed sign-ins counted per
+  address (429 past a limit), bounded headers and bodies, timeouts, a
+  connection cap, a decoy hash for unknown ids.
+- Behind the door it is the same pipeline as stdio, over one shared audit chain
+  that records `via: http:<token id>`.
+- `ibexctl mcp config <client> --url https://HOST:PORT/mcp` prints the remote
+  form for Claude Code, OpenCode and VS Code; the token comes from the
+  environment or a prompt, and an `http://` address is refused.
+- The unit `ibexwall-mcp.service` runs as `ibexwall-mcp` in the assistants
+  group (systemd exposure 1.7).
+- Verified on five distros (VM scenario h5): generated and chosen tokens
+  work, a scope the client lacks is refused over HTTP, wrong, expired and
+  missing tokens and a foreign origin are refused, GET is refused, plain HTTP
+  and an unverified certificate fail, and the log names the token, verifies
+  and holds no secret (neither does the journal).
+- Limits: a stolen token works until it is removed or expires; a self-signed
+  certificate is only as good as the fingerprint check on the client; a
+  TLS-terminating proxy in front would end the end-to-end property (ADR-0042).

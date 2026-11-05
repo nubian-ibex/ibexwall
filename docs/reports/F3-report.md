@@ -91,3 +91,27 @@ Date: 2026-11-02. Plan: `docs/archive/plans/F3-secure-dns.md`. ADRs: 0028, 0029,
 
 F4 (apps and traffic): identity, eBPF monitor mode, correlation, the Apps
 and network screen.
+
+## After acceptance: your own DNS servers (2026-11-04)
+
+- The resolver accepts a `plain` upstream (UDP and TCP) only for addresses on
+  the machine's own networks (private, loopback, link-local, unique local,
+  CGNAT such as VPNs use); a public address is refused at plan time and at
+  start, so clear DNS never crosses the Internet.
+- The server list is ordered: the first answers, the next ones take over
+  (a secondary). Routes send the names under given domains to their own
+  servers (split DNS: the corporate zone to the corporate resolver);
+  everything else keeps the encrypted default.
+- The check tells the person, as information and never a failure, which DNS
+  servers the network or a VPN offers and which of their own upstreams go
+  unencrypted. The screen shows them, fills one in on a click, takes a first
+  and a second server and internal domains, and holds back the review while
+  something is wrong.
+- Found and fixed on the way: the resolver's default log filter let the DNS
+  libraries write every queried name to the journal, contradicting the "no
+  query names are logged" promise. Their level is now warn; the VM scenario
+  asserts the journal holds no queried name.
+- Verified (VM scenario d11, five distros): a local resolver answers only
+  corp.example, a public name never reaches it and stays encrypted, the plain
+  upstream is announced, plain DNS to a public address is refused, and the
+  journal has no query name.

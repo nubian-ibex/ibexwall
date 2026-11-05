@@ -199,6 +199,55 @@ fn prompt_mode() -> bool {
     std::env::args().any(|arg| arg == "--prompt")
 }
 
+/// Makes an access token here, so its secret never travels through the core:
+/// the screen shows it once and sends the plan only the Argon2id hash.
+#[tauri::command]
+fn make_assistant_token(
+    name: String,
+    preset: String,
+    client: Option<String>,
+    id: Option<String>,
+    expires: Option<String>,
+    secret: Option<String>,
+) -> Result<Value, Value> {
+    let fail = |reason: String| json!({ "code": "com.ibexwall.Core.InvalidArgument", "parameters": { "reason": reason } });
+    let id = match id.filter(|i| !i.is_empty()) {
+        Some(id) => id,
+        None => ibexwall_token::random_bytes(4)
+            .map_err(|e| fail(e.to_string()))?
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect(),
+    };
+    let client = client
+        .filter(|c| !c.is_empty())
+        .unwrap_or_else(|| format!("remote-{id}"));
+    let expires = expires.filter(|e| !e.is_empty());
+    let created = ibexwall_token::create(
+        &id,
+        &name,
+        &client,
+        expires.as_deref(),
+        secret.as_deref().filter(|s| !s.is_empty()),
+    )
+    .map_err(fail)?;
+    let hash = created
+        .stanza
+        .lines()
+        .find_map(|l| l.strip_prefix("hash = \""))
+        .and_then(|l| l.strip_suffix('"'))
+        .unwrap_or_default()
+        .to_string();
+    let mut patch = json!({
+        "action": "token_add", "id": id, "name": name,
+        "client": client, "preset": preset, "hash": hash,
+    });
+    if let Some(day) = expires {
+        patch["expires"] = json!(day);
+    }
+    Ok(json!({ "token": created.token, "patch": patch }))
+}
+
 /// The prompt window asks to end the process once nothing is waiting.
 #[tauri::command]
 fn finish_prompt(app: tauri::AppHandle) {
@@ -253,6 +302,7 @@ pub fn run() {
             apply,
             confirm,
             rollback,
+            make_assistant_token,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the IbexWall app");

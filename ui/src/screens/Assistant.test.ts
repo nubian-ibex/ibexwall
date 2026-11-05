@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../lib/app.svelte';
 import { FixtureTransport } from '../lib/fixtures';
 import { i18n } from '../lib/i18n.svelte';
@@ -67,5 +67,77 @@ describe('Assistant', () => {
     app.useTransport(transport);
     render(Assistant);
     expect(await screen.findByRole('button', { name: /try again/i })).toBeVisible();
+  });
+});
+
+describe('Assistant: connect an AI', () => {
+  beforeEach(() => i18n.set('en'));
+
+  async function open(transport = new FixtureTransport('attention')) {
+    app.useTransport(transport);
+    render(Assistant);
+    await screen.findByRole('heading', { name: /connect an ai|conectar uma ia/i });
+    return transport;
+  }
+
+  it('shows what to paste for the chosen program and changes with it', async () => {
+    await open();
+    expect(screen.getByText(/\.mcp\.json/)).toBeVisible();
+    expect(screen.getByText(/"command": "ibexwall-mcp"/)).toBeVisible();
+    await fireEvent.change(screen.getByLabelText(/^program$/i), { target: { value: 'opencode' } });
+    expect(screen.getByText(/opencode\.json/)).toBeVisible();
+    expect(screen.getByText(/"type": "local"/)).toBeVisible();
+  });
+
+  it('offers three presets only, and plans exactly the chosen one', async () => {
+    const transport = new FixtureTransport('attention');
+    const plan = vi.spyOn(transport, 'planChange');
+    await open(transport);
+    const select = screen.getAllByLabelText(/^allowed$/i)[0] as HTMLSelectElement;
+    expect([...select.options].map((o) => o.value)).toEqual(['read', 'plan', 'propose']);
+    await fireEvent.change(select, { target: { value: 'propose' } });
+    expect(screen.getByText(/leave a suggestion here/i)).toBeVisible();
+    await fireEvent.click(screen.getAllByRole('button', { name: /simulate/i })[0]!);
+    expect(plan).toHaveBeenCalledWith('system.assistant', {
+      action: 'client',
+      client: 'claude-code',
+      preset: 'propose',
+    });
+  });
+
+  it('makes a key once, sends the plan only its hash, and lists the existing keys', async () => {
+    const transport = new FixtureTransport('attention');
+    const plan = vi.spyOn(transport, 'planChange');
+    await open(transport);
+    expect(await screen.findByText('work laptop')).toBeVisible();
+    expect(screen.getByText(/on, listening at 127\.0\.0\.1:8765/i)).toBeVisible();
+    await fireEvent.input(screen.getByLabelText(/what it is for/i), { target: { value: 'desk' } });
+    await fireEvent.click(screen.getByRole('button', { name: /make the key/i }));
+    expect(await screen.findByText(/copy this key now/i)).toBeVisible();
+    expect(screen.getByText(/ibx_fix01_/)).toBeVisible();
+    await fireEvent.click(screen.getAllByRole('button', { name: /simulate/i }).at(-1)!);
+    const patch = plan.mock.calls.at(-1)![1] as Record<string, string>;
+    expect(patch['action']).toBe('token_add');
+    expect(patch['hash']).toMatch(/^\$argon2id\$/);
+    expect(JSON.stringify(patch)).not.toContain('AbCdEfGhIj');
+  });
+
+  it('removes a key through a reviewed change', async () => {
+    const transport = new FixtureTransport('attention');
+    const plan = vi.spyOn(transport, 'planChange');
+    await open(transport);
+    await fireEvent.click(await screen.findByRole('button', { name: /^remove$/i }));
+    await fireEvent.click(screen.getAllByRole('button', { name: /simulate/i }).at(-1)!);
+    expect(plan).toHaveBeenLastCalledWith('system.assistant', {
+      action: 'token_revoke',
+      id: 'k1x',
+    });
+  });
+
+  it('speaks Portuguese', async () => {
+    i18n.set('pt-BR');
+    await open();
+    expect(screen.getAllByText(/conectar uma ia/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/acessar o ibexwall de outro computador/i)).toBeVisible();
   });
 });

@@ -373,8 +373,6 @@ command -v curl >/dev/null || {{ if command -v dnf >/dev/null; then sudo dnf ins
 sudo ibexctl plugins enable system.assistant >/dev/null
 sudo systemd-sysusers /usr/lib/sysusers.d/ibexwall.conf
 sudo cp /etc/ibexwall/mcp.toml /tmp/h6-orig.toml
-if ! sudo test -f /etc/ibexwall/mcp/tls.crt; then sudo mkdir -p /etc/ibexwall/mcp; sudo ibexwall-mcp tls-init --host localhost --host 127.0.0.1 --out /etc/ibexwall/mcp >/dev/null; fi
-sudo chown root:ibexwall-mcp /etc/ibexwall/mcp/tls.key && sudo chmod 640 /etc/ibexwall/mcp/tls.key
 sudo systemctl daemon-reload
 sudo systemctl enable --now ibexwall-mcp.path >/dev/null 2>&1
 
@@ -382,6 +380,27 @@ planapply() {{
   P=$(sudo ibexctl plan system.assistant "$@" --json 2>/tmp/h6-plan.err | python3 -c 'import json,sys;d=json.JSONDecoder().raw_decode(sys.stdin.read())[0];print(d["plan"]["id"])') || {{ echo "PLAN REFUSED: $(cat /tmp/h6-plan.err)"; return 1; }}
   sudo ibexctl apply "$P" --json >/tmp/h6-apply.json 2>&1 || {{ echo "APPLY FAILED:"; python3 -c "import json;print(json.JSONDecoder().raw_decode(open(\"/tmp/h6-apply.json\").read())[0][\"parameters\"][\"reason\"])" 2>&1 | tail -12; sudo journalctl --no-pager -n 6 -t ibexwall-exec 2>/dev/null | cut -c1-300; sudo journalctl --no-pager -u 'ibexwall-exec-*' -n 6 2>/dev/null | cut -c1-300; return 1; }}
 }}
+
+# The certificate, made by the plan: the key is created when it is applied.
+sudo mkdir -p /etc/ibexwall/mcp
+OLD=$(sudo sha256sum /etc/ibexwall/mcp/tls.crt 2>/dev/null | cut -d' ' -f1)
+sudo ibexctl plan system.assistant --set action=tls --set 'hosts=["localhost","127.0.0.1"]' --set replace=true --json >/tmp/h6-tls-plan.json || {{ echo "TLS PLAN REFUSED"; cat /tmp/h6-tls-plan.json; exit 1; }}
+if grep -q "PRIVATE KEY" /tmp/h6-tls-plan.json; then echo "A PRIVATE KEY IS IN THE PLAN"; exit 1; fi
+TP=$(python3 -c 'import json;print(json.JSONDecoder().raw_decode(open("/tmp/h6-tls-plan.json").read())[0]["plan"]["id"])')
+sudo ibexctl apply "$TP" --json >/tmp/h6-tls-apply.json || {{ echo "TLS APPLY FAILED"; cat /tmp/h6-tls-apply.json; exit 1; }}
+[ "$(sudo stat -c '%a %U:%G' /etc/ibexwall/mcp/tls.key)" = "640 root:ibexwall-mcp" ] || {{ echo "THE KEY IS NOT PRIVATE: $(sudo stat -c '%a %U:%G' /etc/ibexwall/mcp/tls.key)"; exit 1; }}
+NEW=$(sudo sha256sum /etc/ibexwall/mcp/tls.crt | cut -d' ' -f1)
+[ "$NEW" != "$OLD" ] || {{ echo "THE CERTIFICATE WAS NOT MADE"; exit 1; }}
+if sudo journalctl -u ibexwalld --no-pager | grep -q "PRIVATE KEY"; then echo "A KEY IS IN THE DAEMON LOG"; exit 1; fi
+if sudo grep -rl "PRIVATE KEY" /var/lib/ibexwall/state.db 2>/dev/null; then echo "A KEY IS IN THE STATE"; exit 1; fi
+sudo ibexctl findings system.assistant --json 2>/dev/null | grep -q "assistant.tls" || sudo ibexctl check system.assistant --json | grep -q "assistant.tls" || {{ echo "NO FINGERPRINT IS REPORTED"; exit 1; }}
+# Rolled back, the earlier pair comes back (or none, on a first run).
+TX=$(python3 -c 'import json;print(json.JSONDecoder().raw_decode(open("/tmp/h6-tls-apply.json").read())[0]["transaction"]["id"])')
+sudo ibexctl rollback "$TX" --json >/dev/null || {{ echo "TLS ROLLBACK FAILED"; exit 1; }}
+BACK=$(sudo sha256sum /etc/ibexwall/mcp/tls.crt 2>/dev/null | cut -d' ' -f1)
+[ "$BACK" = "$OLD" ] || {{ echo "THE ROLLBACK DID NOT RESTORE THE CERTIFICATE"; exit 1; }}
+planapply --set action=tls --set 'hosts=["localhost","127.0.0.1"]' --set replace=true || exit 1
+echo "METRIC: the certificate was made by the plan (key 0640 root:ibexwall-mcp, in no plan, log or state) and a rollback restored the old one"
 
 # Remote access needs a key first, and says so.
 if sudo ibexctl plan system.assistant --set action=http --set enabled=true --set listen=127.0.0.1:8765 --json >/dev/null 2>&1; then echo "REMOTE ACCESS WAS PLANNED WITH NO KEY"; exit 1; fi

@@ -1,10 +1,10 @@
 <!-- SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors -->
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 
-# ADR-0040: OpenVPN profiles are not imported in F9
+# ADR-0040: OpenVPN profiles are imported as a documented subset
 
-Status: proposed (autonomous mode, 2026-11-04); the maintainer decides.
-Phase: F9.
+Status: accepted 2026-11-04. The maintainer chose option 2 (a documented subset)
+after F9 shipped with option 1. Phase: F9, completed after acceptance.
 
 ## Context
 
@@ -37,3 +37,12 @@ No OpenVPN server can be run in the test VMs without much more machinery.
 Option 1 now, option 2 in a follow-up phase when a test server can be built:
 refusing what cannot be expressed is the behaviour this project wants, and
 option 3 would need a variable-argument exec that weakens the op allowlist.
+
+## Outcome
+
+Option 2 was built (`plugins/net.vpn/src/openvpn.rs`, documented in
+`docs/openvpn-subset.md`). It is verified on five distros against a real
+OpenVPN server in a namespace: NetworkManager takes the profile, the tunnel
+carries traffic, the kill switch leaks nothing with the tunnel down and the
+tunnel reconnects under it, and the rollback removes the files and the
+profile. WireGuard was already supported end to end.

@@ -22,8 +22,7 @@ Phases, newest first (report, plan, ADRs):
   interface matches in nft rules, private-file previews, symmetric execs.
   `--phase f9` green on five distros, with a `tcpdump` proof that a dropped
   tunnel leaks nothing under the kill switch and the EICAR file flagged by
-  ClamAV and YARA. Open: OpenVPN import (ADR-0040), scan-folder discovery and
-  a file watcher (need plugin units, F10).
+  ClamAV and YARA. OpenVPN import (a documented subset, ADR-0040 accepted, `docs/openvpn-subset.md`) was added after acceptance, verified on five distros. Open: scan-folder discovery and a file watcher (need plugin units, F10).
 - **F8, AI assistant (MCP)** (`docs/reports/F8-report.md`,
   `docs/plans/F8-assistant-mcp.md`, ADR-0039 accepted). `ibexwall-mcp` over
   stdio with nine tools and no way to apply, approve or revert; the core's

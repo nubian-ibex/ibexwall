@@ -98,8 +98,8 @@ Engine and tooling changes:
 
 ## Deviations and open points
 
-- OpenVPN profiles are not imported (ADR-0040, proposed). The kill switch
-  protects any tunnel interface and server the person names.
+- OpenVPN import was added after acceptance (ADR-0040 accepted, subset in
+  `docs/openvpn-subset.md`, VM scenario v2 on five distros).
 - Scan folders are explicit. The daemon's unit hides `/home`, so a plugin
   cannot discover Downloads folders; own units per plugin (F10) fix this.
 - No file watcher for persistence: the SDK has no monitor interface yet.

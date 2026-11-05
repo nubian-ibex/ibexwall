@@ -5,3 +5,6 @@ sysctl-may-affect-bpf = Programs that load eBPF without privileges stop working.
 sysctl-may-affect-kexec = Cannot be undone without a reboot: kexec loading stays disabled until then.
 sysctl-may-affect-rp-filter = May break VPNs and machines with several network routes.
 sysctl-may-affect-sysrq = The SysRq emergency keys stop working.
+sysctl-may-affect-ipv6-ra = IPv6 addresses and routes that your router announces are no longer accepted, so IPv6 may stop working on networks that rely on them.
+sysctl-may-affect-sack = Downloads can be slower on lossy connections.
+sysctl-may-affect-userns = Programs that build their own sandbox without privileges stop working: Flatpak, Chromium and Firefox sandboxes, rootless containers.

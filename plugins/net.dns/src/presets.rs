@@ -9,7 +9,7 @@ use std::net::IpAddr;
 use ibexwall_dns::config::{Server, Transport};
 
 // The jurisdiction, sources and consultation date are shown by the DNS
-// screen (F3 M7, docs/plans/F3-secure-dns.md); until then tests read them.
+// screen (F3 M7, docs/archive/plans/F3-secure-dns.md); until then tests read them.
 #[cfg_attr(not(test), allow(dead_code))]
 pub struct Provider {
     pub id: &'static str,

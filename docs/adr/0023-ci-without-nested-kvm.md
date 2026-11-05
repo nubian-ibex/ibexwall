@@ -5,7 +5,7 @@
 
 - Status: Accepted
 - Date: 2026-11-01
-- Related: docs/plans/F0-foundation.md
+- Related: docs/archive/plans/F0-foundation.md
 
 ## Context
 

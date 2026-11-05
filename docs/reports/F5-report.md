@@ -3,7 +3,7 @@
 
 # F5 report: inbound firewall
 
-Date: 2026-11-03. Plan: `docs/plans/F5-inbound-firewall.md`. ADRs: 0034.
+Date: 2026-11-03. Plan: `docs/archive/plans/F5-inbound-firewall.md`. ADRs: 0034.
 
 ## What was done
 

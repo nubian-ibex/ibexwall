@@ -3,7 +3,7 @@
 
 # F2 report: posture, UI and TUI (v0.1 alpha milestone)
 
-Date: 2026-11-02. Plan: `docs/plans/F2-posture-ui.md`.
+Date: 2026-11-02. Plan: `docs/archive/plans/F2-posture-ui.md`.
 
 ## What was done
 
@@ -70,4 +70,4 @@ Date: 2026-11-02. Plan: `docs/plans/F2-posture-ui.md`.
 
 ## Next step
 
-F3 (secure DNS): plan in `docs/plans/F3-secure-dns.md`.
+F3 (secure DNS): plan in `docs/archive/plans/F3-secure-dns.md`.

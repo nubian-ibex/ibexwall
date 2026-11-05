@@ -3,7 +3,7 @@
 
 # F3 report: secure DNS
 
-Date: 2026-11-02. Plan: `docs/plans/F3-secure-dns.md`. ADRs: 0028, 0029, 0030.
+Date: 2026-11-02. Plan: `docs/archive/plans/F3-secure-dns.md`. ADRs: 0028, 0029, 0030.
 
 ## What was done
 

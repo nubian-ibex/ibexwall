@@ -1,3 +1,7 @@
 firewall-may-affect-remote = O acesso remoto, como SSH, deixa de funcionar se não for permitido.
 firewall-may-affect-sharing = Serviços que outros computadores usam neste, como compartilhamento de arquivos, deixam de funcionar.
 firewall-may-affect-containers = A rede de contêineres e máquinas virtuais pode quebrar em alguns casos.
+detect-firewall-title = O firewall deste computador
+detect-firewall-active = O { $manager } está rodando e filtrando. O IbexWall trabalha por meio dele e deixa as regras dele como estão.
+detect-firewall-inactive = O { $manager } está instalado, mas não está rodando, então nada está sendo filtrado. Para iniciá-lo, execute: { $start }
+detect-firewall-none = Nenhum gerenciador de firewall foi encontrado. O IbexWall ainda pode manter as próprias regras, mas um gerenciador é o caminho usual. Para instalar o { $package }, execute: { $install }

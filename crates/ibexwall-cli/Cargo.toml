@@ -20,6 +20,7 @@ ibexwall-proto.workspace = true
 ibexwall-firewall.workspace = true
 ibexwall-varlink.workspace = true
 ibexwall-tui.workspace = true
+ibexwall-token.workspace = true
 anyhow.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

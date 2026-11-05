@@ -9,7 +9,9 @@ has generated documentation and a site; and a v1.0 release can be cut from a
 checklist. Spec phase F10; the maintainer said "siga para a F10" on
 2026-11-05 and accepted ADR-0041 (official plugins as one multicall binary).
 
-Status: in progress (autonomous mode).
+Status: in progress (autonomous mode). M2 done 2026-11-05: 26 official plugins in
+one `ibexwall-plugins` binary (9.2 MiB stripped, from 58 MiB over 31), phases
+f1 to f9 green on Fedora; the other four distros are still to be rerun.
 
 ## What I can and cannot do alone
 

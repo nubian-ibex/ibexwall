@@ -382,11 +382,21 @@ fn unsupported_stacks_are_refused_not_guessed() {
     assert!(format!("{err:?}").contains("backend"));
 }
 
+/// The findings that are about something to fix; the "we found" notes are
+/// information about the current setup.
+fn problems(report: &CheckReport) -> Vec<&Finding> {
+    report
+        .findings
+        .iter()
+        .filter(|f| !f.id.starts_with("detect."))
+        .collect()
+}
+
 #[test]
 fn check_fails_until_the_dropin_exists_and_the_resolver_listens() {
     let (root, sandbox) = resolved_tree("check");
     assert_eq!(evaluate(&sandbox).results[0].outcome, CheckOutcome::Fail);
-    assert_eq!(evaluate(&sandbox).findings.len(), 1);
+    assert_eq!(problems(&evaluate(&sandbox)).len(), 1);
 
     put(&root, names::ARTIFACT_RESOLVED, &dropin_content());
     assert_eq!(evaluate(&sandbox).results[0].outcome, CheckOutcome::Fail);
@@ -398,7 +408,14 @@ fn check_fails_until_the_dropin_exists_and_the_resolver_listens() {
     put(&root, "/proc/net/udp", &table);
     let report = evaluate(&sandbox);
     assert_eq!(report.results[0].outcome, CheckOutcome::Pass);
-    assert!(report.findings.is_empty());
+    assert!(problems(&report).is_empty());
+    // The note says it is on.
+    let note = report
+        .findings
+        .iter()
+        .find(|f| f.id == "detect.dns")
+        .unwrap();
+    assert_eq!(note.summary_key, "detect-dns-ibexwall");
 }
 
 #[test]
@@ -408,7 +425,7 @@ fn check_is_not_assessed_on_an_unsupported_stack() {
     put(&root, "/etc/resolv.conf", "nameserver 192.0.2.1\n");
     let report = evaluate(&Sandbox::at(&root));
     assert_eq!(report.results[0].outcome, CheckOutcome::NotAssessed);
-    assert!(report.findings.is_empty());
+    assert!(problems(&report).is_empty());
 }
 
 #[test]

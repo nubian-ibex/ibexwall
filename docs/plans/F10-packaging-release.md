@@ -12,6 +12,11 @@ checklist. Spec phase F10; the maintainer said "siga para a F10" on
 Status: in progress (autonomous mode). M2 done 2026-11-05: 26 official plugins in
 one `ibexwall-plugins` binary (9.2 MiB stripped, from 58 MiB over 31), phases
 f1 to f9 green on all five distros.
+M1 done 2026-11-05: `unwrap` denied in production code (mutex locks say
+`lock poisoned`, one real unchecked parse fixed), the five largest files split
+(now all under 800 lines; what remains over 600 are the e2e tests, the eBPF
+loader, `nft.rs`, `ops.rs`), `cargo doc` clean with warnings denied, and CI
+jobs for docs, UI and a coverage report (unverified until they run on GitHub).
 
 ## What I can and cannot do alone
 

@@ -35,7 +35,7 @@ nft_prefix = "net_dns"
 [sandbox]
 user = "dynamic"
 capabilities = []
-read_paths = ["/etc/resolv.conf", "/etc/systemd/resolved.conf.d", "/run/systemd/resolve", "/run/systemd/netif", "/run/NetworkManager", "/proc/net/udp", "/etc/passwd", "/usr/bin"]
+read_paths = ["/etc/resolv.conf", "/etc/systemd/resolved.conf.d", "/run/systemd/resolve", "/run/systemd/netif", "/run/NetworkManager", "/etc/ibexwall/dns", "/proc/net/udp", "/etc/passwd", "/usr/bin"]
 network = false
 
 [risk]

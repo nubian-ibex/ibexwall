@@ -11,6 +11,8 @@
 //!
 //! This crate is permissively licensed and must not depend on GPL code.
 
+pub mod detect;
+
 use std::future::Future;
 use std::sync::Arc;
 

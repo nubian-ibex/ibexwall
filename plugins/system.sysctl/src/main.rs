@@ -211,6 +211,126 @@ pub const TABLE: &[Entry] = &[
         may_affect: Some("sysctl-may-affect-sysrq"),
         at_least: false,
     },
+    Entry {
+        key: "kernel.perf_event_paranoid",
+        value: "2",
+        offer: Offer::OptIn,
+        severity: Severity::Low,
+        may_affect: None,
+        at_least: true,
+    },
+    Entry {
+        key: "net.ipv4.tcp_rfc1337",
+        value: "1",
+        offer: Offer::OptIn,
+        severity: Severity::Low,
+        may_affect: None,
+        at_least: false,
+    },
+    Entry {
+        key: "net.ipv4.conf.all.secure_redirects",
+        value: "0",
+        offer: Offer::OptIn,
+        severity: Severity::Low,
+        may_affect: None,
+        at_least: false,
+    },
+    Entry {
+        key: "net.ipv4.conf.default.accept_redirects",
+        value: "0",
+        offer: Offer::OptIn,
+        severity: Severity::Low,
+        may_affect: None,
+        at_least: false,
+    },
+    Entry {
+        key: "net.ipv4.conf.default.secure_redirects",
+        value: "0",
+        offer: Offer::OptIn,
+        severity: Severity::Low,
+        may_affect: None,
+        at_least: false,
+    },
+    Entry {
+        key: "net.ipv4.conf.default.send_redirects",
+        value: "0",
+        offer: Offer::OptIn,
+        severity: Severity::Low,
+        may_affect: None,
+        at_least: false,
+    },
+    Entry {
+        key: "net.ipv6.conf.default.accept_redirects",
+        value: "0",
+        offer: Offer::OptIn,
+        severity: Severity::Low,
+        may_affect: None,
+        at_least: false,
+    },
+    Entry {
+        key: "net.ipv4.conf.default.accept_source_route",
+        value: "0",
+        offer: Offer::OptIn,
+        severity: Severity::Low,
+        may_affect: None,
+        at_least: false,
+    },
+    Entry {
+        key: "net.ipv6.conf.all.accept_source_route",
+        value: "0",
+        offer: Offer::OptIn,
+        severity: Severity::Low,
+        may_affect: None,
+        at_least: false,
+    },
+    Entry {
+        key: "net.ipv6.conf.default.accept_source_route",
+        value: "0",
+        offer: Offer::OptIn,
+        severity: Severity::Low,
+        may_affect: None,
+        at_least: false,
+    },
+    Entry {
+        key: "net.ipv4.conf.default.rp_filter",
+        value: "1",
+        offer: Offer::OptIn,
+        severity: Severity::Low,
+        may_affect: Some("sysctl-may-affect-rp-filter"),
+        at_least: false,
+    },
+    Entry {
+        key: "net.ipv6.conf.all.accept_ra",
+        value: "0",
+        offer: Offer::OptIn,
+        severity: Severity::Medium,
+        may_affect: Some("sysctl-may-affect-ipv6-ra"),
+        at_least: false,
+    },
+    Entry {
+        key: "net.ipv6.conf.default.accept_ra",
+        value: "0",
+        offer: Offer::OptIn,
+        severity: Severity::Medium,
+        may_affect: Some("sysctl-may-affect-ipv6-ra"),
+        at_least: false,
+    },
+    Entry {
+        key: "net.ipv4.tcp_sack",
+        value: "0",
+        offer: Offer::OptIn,
+        severity: Severity::Low,
+        may_affect: Some("sysctl-may-affect-sack"),
+        at_least: false,
+    },
+    Entry {
+        key: "user.max_user_namespaces",
+        value: "0",
+        offer: Offer::OptIn,
+        severity: Severity::Medium,
+        may_affect: Some("sysctl-may-affect-userns"),
+        at_least: false,
+    },
 ];
 
 /// The drop-in the control owns, so the setting survives a reboot and no
@@ -414,9 +534,24 @@ pub fn plan(sandbox: &Sandbox, config: &Config) -> Result<Vec<Op>, PluginError> 
             });
         }
     }
+    // The drop-in keeps what earlier changes put there: choosing more keys
+    // later adds to it, and a key chosen again takes its new value.
+    let mut kept: BTreeMap<String, String> = BTreeMap::new();
+    for line in sandbox.read(DROP_IN).unwrap_or_default().lines() {
+        if let Some((key, value)) = line.split_once('=')
+            && !line.trim_start().starts_with('#')
+            && entry(key.trim()).is_some()
+            && let Ok(value) = normalize(key.trim(), value)
+        {
+            kept.insert(key.trim().to_string(), value);
+        }
+    }
+    for (key, value) in &chosen {
+        kept.insert((*key).to_string(), value.clone());
+    }
     let mut drop_in =
         String::from("# Managed by IbexWall (system.sysctl); edit it from IbexWall.\n");
-    for (key, value) in &chosen {
+    for (key, value) in &kept {
         drop_in.push_str(&format!("{key} = {value}\n"));
     }
     ops.push(Op::FileWrite {
@@ -461,6 +596,45 @@ mod tests {
             std::fs::write(&path, format!("{value}\n")).unwrap();
         }
         (root.clone(), Sandbox::at(root))
+    }
+
+    #[test]
+    fn a_later_change_adds_to_the_drop_in_and_a_key_chosen_again_takes_the_new_value() {
+        let (root, sandbox) = tree(&[
+            ("kernel.perf_event_paranoid", "1"),
+            ("net.ipv4.tcp_rfc1337", "0"),
+        ]);
+        let dir = root.join("etc/sysctl.d");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            root.join(DROP_IN.trim_start_matches('/')),
+            "# Managed by IbexWall\nkernel.kptr_restrict = 2\nnet.ipv4.tcp_rfc1337 = 0\nnot.a.known.key = 1\n",
+        )
+        .unwrap();
+        let config = Config {
+            keys: BTreeMap::from([
+                ("kernel.perf_event_paranoid".to_string(), "2".to_string()),
+                ("net.ipv4.tcp_rfc1337".to_string(), "1".to_string()),
+            ]),
+            ..Default::default()
+        };
+        let ops = plan(&sandbox, &config).unwrap();
+        let Some(Op::FileWrite { content, .. }) = ops.last() else {
+            panic!("the drop-in is last");
+        };
+        assert!(
+            content.contains("kernel.kptr_restrict = 2"),
+            "the earlier key stays"
+        );
+        assert!(content.contains("kernel.perf_event_paranoid = 2"));
+        assert!(
+            content.contains("net.ipv4.tcp_rfc1337 = 1") && !content.contains("tcp_rfc1337 = 0")
+        );
+        assert!(
+            !content.contains("not.a.known.key"),
+            "only table keys are kept"
+        );
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

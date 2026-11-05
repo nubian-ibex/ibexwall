@@ -27,6 +27,21 @@ sysctl_keys = [
   "net.ipv4.conf.all.accept_source_route", "net.ipv6.conf.all.accept_redirects",
   "net.ipv4.tcp_syncookies", "dev.tty.ldisc_autoload",
   "vm.unprivileged_userfaultfd", "net.ipv4.conf.all.rp_filter", "kernel.sysrq",
+  "kernel.perf_event_paranoid",
+  "net.ipv4.tcp_rfc1337",
+  "net.ipv4.conf.all.secure_redirects",
+  "net.ipv4.conf.default.accept_redirects",
+  "net.ipv4.conf.default.secure_redirects",
+  "net.ipv4.conf.default.send_redirects",
+  "net.ipv6.conf.default.accept_redirects",
+  "net.ipv4.conf.default.accept_source_route",
+  "net.ipv6.conf.all.accept_source_route",
+  "net.ipv6.conf.default.accept_source_route",
+  "net.ipv4.conf.default.rp_filter",
+  "net.ipv6.conf.all.accept_ra",
+  "net.ipv6.conf.default.accept_ra",
+  "net.ipv4.tcp_sack",
+  "user.max_user_namespaces",
 ]
 write_paths = ["/etc/sysctl.d"]
 
@@ -46,6 +61,9 @@ may_affect = [
   "sysctl-may-affect-kexec",
   "sysctl-may-affect-rp-filter",
   "sysctl-may-affect-sysrq",
+  "sysctl-may-affect-ipv6-ra",
+  "sysctl-may-affect-sack",
+  "sysctl-may-affect-userns",
 ]
 
 [ui]

@@ -1,0 +1,28 @@
+[package]
+name = "ibexwall-plugin-hardening"
+description = "system.hardening plugin: which items of the hardening catalog this machine already has"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "ibexwall_plugin_hardening"
+path = "main.rs"
+
+[dependencies]
+ibexwall-proto.workspace = true
+ibexwall-sdk.workspace = true
+ibexwall-plugin-modules = { path = "../../system.modules/src", version = "0.1.0" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+ibexwall-plugin-sysctl = { path = "../../system.sysctl/src", version = "0.1.0" }
+ibexwall-plugin-mounts = { path = "../../system.mounts/src", version = "0.1.0" }

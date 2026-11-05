@@ -1,0 +1,1242 @@
+{
+  "version": 1,
+  "reviewed": "2026-11-05",
+  "items": [
+    {
+      "id": "kernel.kptr-restrict",
+      "area": "kernel",
+      "risk": "low",
+      "recommended": true,
+      "title": {
+        "en": "Hide kernel addresses",
+        "pt-BR": "Esconder endereços do kernel"
+      },
+      "summary": {
+        "en": "Programs without special rights can no longer read where things sit in kernel memory. Attackers use those addresses to aim exploits.",
+        "pt-BR": "Programas sem direitos especiais deixam de ler onde as coisas ficam na memória do kernel. Atacantes usam esses endereços para mirar explorações."
+      },
+      "breaks": null,
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.2.1",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#sysctl-kernel"
+        },
+        {
+          "name": "Linux kernel documentation",
+          "section": "kernel.kptr_restrict",
+          "url": "https://docs.kernel.org/admin-guide/sysctl/index.html"
+        }
+      ],
+      "probe": {
+        "kind": "sysctl",
+        "keys": [
+          {
+            "key": "kernel.kptr_restrict",
+            "want": "2",
+            "at_least": false
+          }
+        ]
+      },
+      "apply": {
+        "plugin": "system.sysctl",
+        "patch": {
+          "keys": {
+            "kernel.kptr_restrict": "2"
+          }
+        }
+      },
+      "doc": "kernel.kptr-restrict"
+    },
+    {
+      "id": "kernel.dmesg-restrict",
+      "area": "kernel",
+      "risk": "low",
+      "recommended": true,
+      "title": {
+        "en": "Keep the kernel log for administrators",
+        "pt-BR": "Deixar o log do kernel só para administradores"
+      },
+      "summary": {
+        "en": "The kernel log can reveal addresses and hardware details. Only an administrator may read it.",
+        "pt-BR": "O log do kernel pode revelar endereços e detalhes do hardware. Só um administrador pode lê-lo."
+      },
+      "breaks": null,
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.2.1",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#sysctl-kernel"
+        },
+        {
+          "name": "Linux kernel documentation",
+          "section": "kernel.dmesg_restrict",
+          "url": "https://docs.kernel.org/admin-guide/sysctl/index.html"
+        }
+      ],
+      "probe": {
+        "kind": "sysctl",
+        "keys": [
+          {
+            "key": "kernel.dmesg_restrict",
+            "want": "1",
+            "at_least": false
+          }
+        ]
+      },
+      "apply": {
+        "plugin": "system.sysctl",
+        "patch": {
+          "keys": {
+            "kernel.dmesg_restrict": "1"
+          }
+        }
+      },
+      "doc": "kernel.dmesg-restrict"
+    },
+    {
+      "id": "kernel.unprivileged-bpf",
+      "area": "kernel",
+      "risk": "medium",
+      "recommended": true,
+      "title": {
+        "en": "Restrict eBPF to administrators",
+        "pt-BR": "Restringir o eBPF a administradores"
+      },
+      "summary": {
+        "en": "eBPF lets programs run code inside the kernel and has been a steady source of flaws. This limits it to privileged programs and hardens its compiler.",
+        "pt-BR": "O eBPF deixa programas executar código dentro do kernel e é fonte constante de falhas. Isto o limita a programas privilegiados."
+      },
+      "breaks": {
+        "en": "Tools that load eBPF without privileges stop working. IbexWall itself is not affected.",
+        "pt-BR": "Ferramentas que carregam eBPF sem privilégios deixam de funcionar. O próprio IbexWall não é afetado."
+      },
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.2.1",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#sysctl-kernel"
+        },
+        {
+          "name": "Linux kernel documentation",
+          "section": "kernel.unprivileged_bpf_disabled",
+          "url": "https://docs.kernel.org/admin-guide/sysctl/index.html"
+        }
+      ],
+      "probe": {
+        "kind": "sysctl",
+        "keys": [
+          {
+            "key": "kernel.unprivileged_bpf_disabled",
+            "want": "1",
+            "at_least": true
+          }
+        ]
+      },
+      "apply": {
+        "plugin": "system.sysctl",
+        "patch": {
+          "keys": {
+            "kernel.unprivileged_bpf_disabled": "1"
+          }
+        }
+      },
+      "doc": "kernel.unprivileged-bpf"
+    },
+    {
+      "id": "kernel.bpf-jit-harden",
+      "area": "kernel",
+      "risk": "low",
+      "recommended": true,
+      "title": {
+        "en": "Harden the eBPF compiler",
+        "pt-BR": "Endurecer o compilador do eBPF"
+      },
+      "summary": {
+        "en": "Makes the code the eBPF compiler produces harder to abuse for attacks that smuggle in chosen instructions.",
+        "pt-BR": "Torna mais difícil abusar do código que o compilador do eBPF produz em ataques que introduzem instruções escolhidas."
+      },
+      "breaks": null,
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.2.1",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#sysctl-kernel"
+        },
+        {
+          "name": "Linux kernel documentation",
+          "section": "net.core.bpf_jit_harden",
+          "url": "https://docs.kernel.org/admin-guide/sysctl/index.html"
+        }
+      ],
+      "probe": {
+        "kind": "sysctl",
+        "keys": [
+          {
+            "key": "net.core.bpf_jit_harden",
+            "want": "2",
+            "at_least": true
+          }
+        ]
+      },
+      "apply": {
+        "plugin": "system.sysctl",
+        "patch": {
+          "keys": {
+            "net.core.bpf_jit_harden": "2"
+          }
+        }
+      },
+      "doc": "kernel.bpf-jit-harden"
+    },
+    {
+      "id": "kernel.ldisc-autoload",
+      "area": "kernel",
+      "risk": "low",
+      "recommended": true,
+      "title": {
+        "en": "Do not load terminal line disciplines on demand",
+        "pt-BR": "Não carregar disciplinas de linha de terminal sob demanda"
+      },
+      "summary": {
+        "en": "Stops an ordinary program from making the kernel load rarely used terminal code that has been exploited before.",
+        "pt-BR": "Impede que um programa comum faça o kernel carregar código de terminal pouco usado que já foi explorado."
+      },
+      "breaks": null,
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.2.1",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#sysctl-kernel"
+        }
+      ],
+      "probe": {
+        "kind": "sysctl",
+        "keys": [
+          {
+            "key": "dev.tty.ldisc_autoload",
+            "want": "0",
+            "at_least": false
+          }
+        ]
+      },
+      "apply": {
+        "plugin": "system.sysctl",
+        "patch": {
+          "keys": {
+            "dev.tty.ldisc_autoload": "0"
+          }
+        }
+      },
+      "doc": "kernel.ldisc-autoload"
+    },
+    {
+      "id": "kernel.userfaultfd",
+      "area": "kernel",
+      "risk": "low",
+      "recommended": true,
+      "title": {
+        "en": "Restrict userfaultfd",
+        "pt-BR": "Restringir o userfaultfd"
+      },
+      "summary": {
+        "en": "A system call that attackers use to freeze the kernel at a chosen moment while they exploit a race. Only privileged programs keep it.",
+        "pt-BR": "Uma chamada de sistema que atacantes usam para congelar o kernel num momento escolhido enquanto exploram uma corrida. Só programas privilegiados a mantêm."
+      },
+      "breaks": null,
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.2.1",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#sysctl-kernel"
+        }
+      ],
+      "probe": {
+        "kind": "sysctl",
+        "keys": [
+          {
+            "key": "vm.unprivileged_userfaultfd",
+            "want": "0",
+            "at_least": false
+          }
+        ]
+      },
+      "apply": {
+        "plugin": "system.sysctl",
+        "patch": {
+          "keys": {
+            "vm.unprivileged_userfaultfd": "0"
+          }
+        }
+      },
+      "doc": "kernel.userfaultfd"
+    },
+    {
+      "id": "kernel.perf-events",
+      "area": "kernel",
+      "risk": "medium",
+      "recommended": false,
+      "title": {
+        "en": "Restrict performance events",
+        "pt-BR": "Restringir os eventos de desempenho"
+      },
+      "summary": {
+        "en": "Profiling hooks add a lot of kernel code that ordinary users can reach. This limits most of it to administrators.",
+        "pt-BR": "Os ganchos de profiling acrescentam muito código do kernel ao alcance de usuários comuns. Isto limita a maior parte aos administradores."
+      },
+      "breaks": {
+        "en": "Developers can no longer profile their own programs with perf without extra rights.",
+        "pt-BR": "Desenvolvedores deixam de perfilar os próprios programas com o perf sem direitos extras."
+      },
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.2.1",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#sysctl-kernel"
+        },
+        {
+          "name": "Linux kernel documentation",
+          "section": "kernel.perf_event_paranoid",
+          "url": "https://docs.kernel.org/admin-guide/sysctl/index.html"
+        }
+      ],
+      "probe": {
+        "kind": "sysctl",
+        "keys": [
+          {
+            "key": "kernel.perf_event_paranoid",
+            "want": "2",
+            "at_least": true
+          }
+        ]
+      },
+      "apply": {
+        "plugin": "system.sysctl",
+        "patch": {
+          "keys": {
+            "kernel.perf_event_paranoid": "2"
+          }
+        }
+      },
+      "doc": "kernel.perf-events"
+    },
+    {
+      "id": "kernel.kexec",
+      "area": "kernel",
+      "risk": "medium",
+      "recommended": false,
+      "title": {
+        "en": "Forbid loading another kernel while running",
+        "pt-BR": "Proibir carregar outro kernel em execução"
+      },
+      "summary": {
+        "en": "Closes a way for an attacker with administrator rights to switch to a kernel they prepared.",
+        "pt-BR": "Fecha um caminho para um atacante com direitos de administrador trocar para um kernel que ele preparou."
+      },
+      "breaks": {
+        "en": "Cannot be undone until the next restart. Tools that rely on kexec (fast reboot, crash dumps) stop working.",
+        "pt-BR": "Não pode ser desfeito até a próxima reinicialização. Ferramentas que usam kexec (reinício rápido, dumps de falha) deixam de funcionar."
+      },
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.2.1",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#sysctl-kernel"
+        },
+        {
+          "name": "Linux kernel documentation",
+          "section": "kernel.kexec_load_disabled",
+          "url": "https://docs.kernel.org/admin-guide/sysctl/index.html"
+        }
+      ],
+      "probe": {
+        "kind": "sysctl",
+        "keys": [
+          {
+            "key": "kernel.kexec_load_disabled",
+            "want": "1",
+            "at_least": false
+          }
+        ]
+      },
+      "apply": {
+        "plugin": "system.sysctl",
+        "patch": {
+          "keys": {
+            "kernel.kexec_load_disabled": "1"
+          }
+        }
+      },
+      "doc": "kernel.kexec"
+    },
+    {
+      "id": "kernel.sysrq",
+      "area": "kernel",
+      "risk": "low",
+      "recommended": false,
+      "title": {
+        "en": "Turn off the SysRq emergency keys",
+        "pt-BR": "Desligar as teclas de emergência SysRq"
+      },
+      "summary": {
+        "en": "The SysRq keys can reboot or dump a machine from the keyboard, and can be triggered remotely in some setups.",
+        "pt-BR": "As teclas SysRq podem reiniciar ou despejar a máquina pelo teclado e, em alguns cenários, ser acionadas remotamente."
+      },
+      "breaks": {
+        "en": "You lose the emergency keys for a frozen machine.",
+        "pt-BR": "Você perde as teclas de emergência para uma máquina travada."
+      },
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.2.1",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#sysctl-kernel"
+        },
+        {
+          "name": "Linux kernel documentation",
+          "section": "kernel.sysrq",
+          "url": "https://docs.kernel.org/admin-guide/sysctl/index.html"
+        }
+      ],
+      "probe": {
+        "kind": "sysctl",
+        "keys": [
+          {
+            "key": "kernel.sysrq",
+            "want": "0",
+            "at_least": false
+          }
+        ]
+      },
+      "apply": {
+        "plugin": "system.sysctl",
+        "patch": {
+          "keys": {
+            "kernel.sysrq": "0"
+          }
+        }
+      },
+      "doc": "kernel.sysrq"
+    },
+    {
+      "id": "kernel.ptrace",
+      "area": "kernel",
+      "risk": "medium",
+      "recommended": true,
+      "title": {
+        "en": "Limit one program inspecting another",
+        "pt-BR": "Limitar um programa que inspeciona outro"
+      },
+      "summary": {
+        "en": "A program may only attach to its own children, so malware in your session cannot read or change your other programs.",
+        "pt-BR": "Um programa só pode se anexar aos próprios filhos, então um malware na sua sessão não lê nem altera seus outros programas."
+      },
+      "breaks": {
+        "en": "Attaching a debugger (gdb, strace) to a program that is already running needs administrator rights.",
+        "pt-BR": "Anexar um depurador (gdb, strace) a um programa já em execução exige direitos de administrador."
+      },
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.2.3",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#sysctl-userspace"
+        },
+        {
+          "name": "Linux kernel documentation, Yama",
+          "section": "ptrace_scope",
+          "url": "https://docs.kernel.org/admin-guide/LSM/Yama.html"
+        }
+      ],
+      "probe": {
+        "kind": "sysctl",
+        "keys": [
+          {
+            "key": "kernel.yama.ptrace_scope",
+            "want": "1",
+            "at_least": true
+          }
+        ]
+      },
+      "apply": {
+        "plugin": "system.sysctl",
+        "patch": {
+          "keys": {
+            "kernel.yama.ptrace_scope": "1"
+          }
+        }
+      },
+      "doc": "kernel.ptrace"
+    },
+    {
+      "id": "kernel.user-namespaces",
+      "area": "kernel",
+      "risk": "high",
+      "recommended": false,
+      "title": {
+        "en": "Turn off unprivileged sandboxes (user namespaces)",
+        "pt-BR": "Desligar sandboxes sem privilégio (user namespaces)"
+      },
+      "summary": {
+        "en": "User namespaces give ordinary programs a lot of kernel code to attack. Turning them off removes a large part of the surface.",
+        "pt-BR": "Os user namespaces dão aos programas comuns muito código do kernel para atacar. Desligá-los remove boa parte da superfície."
+      },
+      "breaks": {
+        "en": "Flatpak, the Chromium and Firefox sandboxes, rootless containers and many AppImages stop working.",
+        "pt-BR": "Flatpak, os sandboxes do Chromium e do Firefox, contêineres sem root e muitos AppImages deixam de funcionar."
+      },
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.2.1",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#sysctl-kernel"
+        },
+        {
+          "name": "Linux kernel documentation",
+          "section": "user.max_user_namespaces",
+          "url": "https://docs.kernel.org/admin-guide/sysctl/index.html"
+        }
+      ],
+      "probe": {
+        "kind": "sysctl",
+        "keys": [
+          {
+            "key": "user.max_user_namespaces",
+            "want": "0",
+            "at_least": false
+          }
+        ]
+      },
+      "apply": {
+        "plugin": "system.sysctl",
+        "patch": {
+          "keys": {
+            "user.max_user_namespaces": "0"
+          }
+        }
+      },
+      "doc": "kernel.user-namespaces"
+    },
+    {
+      "id": "fs.protected-files",
+      "area": "filesystem",
+      "risk": "low",
+      "recommended": true,
+      "title": {
+        "en": "Protect shared folders from link and file tricks",
+        "pt-BR": "Proteger pastas compartilhadas de truques com links e arquivos"
+      },
+      "summary": {
+        "en": "Blocks the classic attacks that plant a link or a file in /tmp so a privileged program writes where the attacker wants.",
+        "pt-BR": "Bloqueia os ataques clássicos que plantam um link ou um arquivo em /tmp para que um programa privilegiado escreva onde o atacante quer."
+      },
+      "breaks": null,
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.2.3",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#sysctl-userspace"
+        },
+        {
+          "name": "Linux kernel documentation",
+          "section": "fs.protected_symlinks",
+          "url": "https://docs.kernel.org/admin-guide/sysctl/index.html"
+        }
+      ],
+      "probe": {
+        "kind": "sysctl",
+        "keys": [
+          {
+            "key": "fs.protected_symlinks",
+            "want": "1",
+            "at_least": false
+          },
+          {
+            "key": "fs.protected_hardlinks",
+            "want": "1",
+            "at_least": false
+          },
+          {
+            "key": "fs.protected_fifos",
+            "want": "2",
+            "at_least": false
+          },
+          {
+            "key": "fs.protected_regular",
+            "want": "2",
+            "at_least": false
+          }
+        ]
+      },
+      "apply": {
+        "plugin": "system.sysctl",
+        "patch": {
+          "keys": {
+            "fs.protected_symlinks": "1",
+            "fs.protected_hardlinks": "1",
+            "fs.protected_fifos": "2",
+            "fs.protected_regular": "2"
+          }
+        }
+      },
+      "doc": "fs.protected-files"
+    },
+    {
+      "id": "fs.suid-dumpable",
+      "area": "memory",
+      "risk": "low",
+      "recommended": true,
+      "title": {
+        "en": "No memory dumps of privileged programs",
+        "pt-BR": "Sem dumps de memória de programas privilegiados"
+      },
+      "summary": {
+        "en": "A crashing program that runs with extra rights no longer writes its memory, which may hold secrets, to a file.",
+        "pt-BR": "Um programa que roda com direitos extras e trava deixa de gravar a memória, que pode ter segredos, em um arquivo."
+      },
+      "breaks": null,
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.2.3",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#sysctl-userspace"
+        },
+        {
+          "name": "Linux kernel documentation",
+          "section": "fs.suid_dumpable",
+          "url": "https://docs.kernel.org/admin-guide/sysctl/index.html"
+        }
+      ],
+      "probe": {
+        "kind": "sysctl",
+        "keys": [
+          {
+            "key": "fs.suid_dumpable",
+            "want": "0",
+            "at_least": false
+          }
+        ]
+      },
+      "apply": {
+        "plugin": "system.sysctl",
+        "patch": {
+          "keys": {
+            "fs.suid_dumpable": "0"
+          }
+        }
+      },
+      "doc": "fs.suid-dumpable"
+    },
+    {
+      "id": "net.tcp-syncookies",
+      "area": "network",
+      "risk": "low",
+      "recommended": true,
+      "title": {
+        "en": "Survive connection floods",
+        "pt-BR": "Resistir a inundações de conexões"
+      },
+      "summary": {
+        "en": "Keeps the machine answering when someone floods it with half-open connections.",
+        "pt-BR": "Mantém a máquina respondendo quando alguém a inunda com conexões pela metade."
+      },
+      "breaks": null,
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.2.2",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#sysctl-network"
+        },
+        {
+          "name": "Linux kernel documentation",
+          "section": "net",
+          "url": "https://docs.kernel.org/admin-guide/sysctl/index.html"
+        }
+      ],
+      "probe": {
+        "kind": "sysctl",
+        "keys": [
+          {
+            "key": "net.ipv4.tcp_syncookies",
+            "want": "1",
+            "at_least": false
+          }
+        ]
+      },
+      "apply": {
+        "plugin": "system.sysctl",
+        "patch": {
+          "keys": {
+            "net.ipv4.tcp_syncookies": "1"
+          }
+        }
+      },
+      "doc": "net.tcp-syncookies"
+    },
+    {
+      "id": "net.tcp-rfc1337",
+      "area": "network",
+      "risk": "low",
+      "recommended": true,
+      "title": {
+        "en": "Ignore resets of closing connections",
+        "pt-BR": "Ignorar resets de conexões em encerramento"
+      },
+      "summary": {
+        "en": "Protects against a trick that ends a connection by sending a forged reset while it winds down.",
+        "pt-BR": "Protege contra um truque que encerra uma conexão enviando um reset forjado enquanto ela termina."
+      },
+      "breaks": null,
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.2.2",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#sysctl-network"
+        }
+      ],
+      "probe": {
+        "kind": "sysctl",
+        "keys": [
+          {
+            "key": "net.ipv4.tcp_rfc1337",
+            "want": "1",
+            "at_least": false
+          }
+        ]
+      },
+      "apply": {
+        "plugin": "system.sysctl",
+        "patch": {
+          "keys": {
+            "net.ipv4.tcp_rfc1337": "1"
+          }
+        }
+      },
+      "doc": "net.tcp-rfc1337"
+    },
+    {
+      "id": "net.redirects",
+      "area": "network",
+      "risk": "low",
+      "recommended": true,
+      "title": {
+        "en": "Ignore and never send ICMP redirects",
+        "pt-BR": "Ignorar e nunca enviar redirecionamentos ICMP"
+      },
+      "summary": {
+        "en": "A network device can tell this computer to send its traffic through someone else. This refuses such messages and stops sending them.",
+        "pt-BR": "Um dispositivo da rede pode mandar este computador enviar o tráfego por outra pessoa. Isto recusa essas mensagens e para de enviá-las."
+      },
+      "breaks": null,
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.2.2",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#sysctl-network"
+        },
+        {
+          "name": "ANSSI, Configuration recommendations of a GNU/Linux system (BP-028)",
+          "section": "kernel and network settings",
+          "url": "https://messervices.cyber.gouv.fr/guides/en-configuration-recommendations-gnulinux-system"
+        }
+      ],
+      "probe": {
+        "kind": "sysctl",
+        "keys": [
+          {
+            "key": "net.ipv4.conf.all.accept_redirects",
+            "want": "0",
+            "at_least": false
+          },
+          {
+            "key": "net.ipv4.conf.default.accept_redirects",
+            "want": "0",
+            "at_least": false
+          },
+          {
+            "key": "net.ipv4.conf.all.secure_redirects",
+            "want": "0",
+            "at_least": false
+          },
+          {
+            "key": "net.ipv4.conf.default.secure_redirects",
+            "want": "0",
+            "at_least": false
+          },
+          {
+            "key": "net.ipv6.conf.all.accept_redirects",
+            "want": "0",
+            "at_least": false
+          },
+          {
+            "key": "net.ipv6.conf.default.accept_redirects",
+            "want": "0",
+            "at_least": false
+          },
+          {
+            "key": "net.ipv4.conf.all.send_redirects",
+            "want": "0",
+            "at_least": false
+          },
+          {
+            "key": "net.ipv4.conf.default.send_redirects",
+            "want": "0",
+            "at_least": false
+          }
+        ]
+      },
+      "apply": {
+        "plugin": "system.sysctl",
+        "patch": {
+          "keys": {
+            "net.ipv4.conf.all.accept_redirects": "0",
+            "net.ipv4.conf.default.accept_redirects": "0",
+            "net.ipv4.conf.all.secure_redirects": "0",
+            "net.ipv4.conf.default.secure_redirects": "0",
+            "net.ipv6.conf.all.accept_redirects": "0",
+            "net.ipv6.conf.default.accept_redirects": "0",
+            "net.ipv4.conf.all.send_redirects": "0",
+            "net.ipv4.conf.default.send_redirects": "0"
+          }
+        }
+      },
+      "doc": "net.redirects"
+    },
+    {
+      "id": "net.source-routing",
+      "area": "network",
+      "risk": "low",
+      "recommended": true,
+      "title": {
+        "en": "Refuse source-routed packets",
+        "pt-BR": "Recusar pacotes com roteamento pela origem"
+      },
+      "summary": {
+        "en": "A packet can carry its own route, which lets an attacker steer traffic through a machine they control. This refuses them.",
+        "pt-BR": "Um pacote pode levar a própria rota, o que deixa um atacante guiar o tráfego por uma máquina que ele controla. Isto os recusa."
+      },
+      "breaks": null,
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.2.2",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#sysctl-network"
+        },
+        {
+          "name": "ANSSI, Configuration recommendations of a GNU/Linux system (BP-028)",
+          "section": "kernel and network settings",
+          "url": "https://messervices.cyber.gouv.fr/guides/en-configuration-recommendations-gnulinux-system"
+        }
+      ],
+      "probe": {
+        "kind": "sysctl",
+        "keys": [
+          {
+            "key": "net.ipv4.conf.all.accept_source_route",
+            "want": "0",
+            "at_least": false
+          },
+          {
+            "key": "net.ipv4.conf.default.accept_source_route",
+            "want": "0",
+            "at_least": false
+          },
+          {
+            "key": "net.ipv6.conf.all.accept_source_route",
+            "want": "0",
+            "at_least": false
+          },
+          {
+            "key": "net.ipv6.conf.default.accept_source_route",
+            "want": "0",
+            "at_least": false
+          }
+        ]
+      },
+      "apply": {
+        "plugin": "system.sysctl",
+        "patch": {
+          "keys": {
+            "net.ipv4.conf.all.accept_source_route": "0",
+            "net.ipv4.conf.default.accept_source_route": "0",
+            "net.ipv6.conf.all.accept_source_route": "0",
+            "net.ipv6.conf.default.accept_source_route": "0"
+          }
+        }
+      },
+      "doc": "net.source-routing"
+    },
+    {
+      "id": "net.rp-filter",
+      "area": "network",
+      "risk": "medium",
+      "recommended": false,
+      "title": {
+        "en": "Drop packets with a forged sender address",
+        "pt-BR": "Descartar pacotes com endereço de origem forjado"
+      },
+      "summary": {
+        "en": "Checks that a packet could really have arrived on the link it came in on, which stops address spoofing.",
+        "pt-BR": "Confere se um pacote poderia mesmo ter chegado pelo enlace em que entrou, o que impede a falsificação de endereço."
+      },
+      "breaks": {
+        "en": "Can break some VPNs and machines with several network routes.",
+        "pt-BR": "Pode quebrar algumas VPNs e máquinas com várias rotas de rede."
+      },
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.2.2",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#sysctl-network"
+        },
+        {
+          "name": "Linux kernel documentation",
+          "section": "net",
+          "url": "https://docs.kernel.org/admin-guide/sysctl/index.html"
+        }
+      ],
+      "probe": {
+        "kind": "sysctl",
+        "keys": [
+          {
+            "key": "net.ipv4.conf.all.rp_filter",
+            "want": "1",
+            "at_least": false
+          },
+          {
+            "key": "net.ipv4.conf.default.rp_filter",
+            "want": "1",
+            "at_least": false
+          }
+        ]
+      },
+      "apply": {
+        "plugin": "system.sysctl",
+        "patch": {
+          "keys": {
+            "net.ipv4.conf.all.rp_filter": "1",
+            "net.ipv4.conf.default.rp_filter": "1"
+          }
+        }
+      },
+      "doc": "net.rp-filter"
+    },
+    {
+      "id": "net.ipv6-router-adverts",
+      "area": "network",
+      "risk": "medium",
+      "recommended": false,
+      "title": {
+        "en": "Ignore IPv6 router announcements",
+        "pt-BR": "Ignorar anúncios de roteador IPv6"
+      },
+      "summary": {
+        "en": "A malicious device on the network can announce itself as the router and sit in the middle. This ignores such announcements.",
+        "pt-BR": "Um dispositivo malicioso na rede pode se anunciar como roteador e ficar no meio do caminho. Isto ignora esses anúncios."
+      },
+      "breaks": {
+        "en": "IPv6 may stop working on networks that hand out addresses this way, which is most home networks.",
+        "pt-BR": "O IPv6 pode parar em redes que distribuem endereços assim, o que vale para a maioria das redes domésticas."
+      },
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.2.2",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#sysctl-network"
+        }
+      ],
+      "probe": {
+        "kind": "sysctl",
+        "keys": [
+          {
+            "key": "net.ipv6.conf.all.accept_ra",
+            "want": "0",
+            "at_least": false
+          },
+          {
+            "key": "net.ipv6.conf.default.accept_ra",
+            "want": "0",
+            "at_least": false
+          }
+        ]
+      },
+      "apply": {
+        "plugin": "system.sysctl",
+        "patch": {
+          "keys": {
+            "net.ipv6.conf.all.accept_ra": "0",
+            "net.ipv6.conf.default.accept_ra": "0"
+          }
+        }
+      },
+      "doc": "net.ipv6-router-adverts"
+    },
+    {
+      "id": "net.tcp-sack",
+      "area": "network",
+      "risk": "low",
+      "recommended": false,
+      "title": {
+        "en": "Turn off selective acknowledgements",
+        "pt-BR": "Desligar confirmações seletivas"
+      },
+      "summary": {
+        "en": "This TCP feature has been the target of remote attacks. Turning it off removes that target.",
+        "pt-BR": "Este recurso do TCP já foi alvo de ataques remotos. Desligá-lo remove esse alvo."
+      },
+      "breaks": {
+        "en": "Downloads can be slower on connections that lose packets.",
+        "pt-BR": "Downloads podem ficar mais lentos em conexões que perdem pacotes."
+      },
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.2.2",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#sysctl-network"
+        }
+      ],
+      "probe": {
+        "kind": "sysctl",
+        "keys": [
+          {
+            "key": "net.ipv4.tcp_sack",
+            "want": "0",
+            "at_least": false
+          }
+        ]
+      },
+      "apply": {
+        "plugin": "system.sysctl",
+        "patch": {
+          "keys": {
+            "net.ipv4.tcp_sack": "0"
+          }
+        }
+      },
+      "doc": "net.tcp-sack"
+    },
+    {
+      "id": "modules.net-protocols",
+      "area": "kernel",
+      "risk": "low",
+      "recommended": true,
+      "title": {
+        "en": "Block obscure network protocols",
+        "pt-BR": "Bloquear protocolos de rede obscuros"
+      },
+      "summary": {
+        "en": "An ordinary program can make the kernel load old or rare network protocols (DCCP, SCTP, AX.25, ATM and others), and several have had serious flaws. Almost no computer needs them.",
+        "pt-BR": "Um programa comum pode fazer o kernel carregar protocolos de rede antigos ou raros (DCCP, SCTP, AX.25, ATM e outros), e vários já tiveram falhas graves. Quase nenhum computador precisa deles."
+      },
+      "breaks": {
+        "en": "Software that uses SCTP, CAN or amateur radio networking stops working.",
+        "pt-BR": "Programas que usam SCTP, CAN ou rede de radioamador deixam de funcionar."
+      },
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.5.2",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#kasr-kernel-modules"
+        }
+      ],
+      "probe": {
+        "kind": "modules",
+        "group": "net-protocols"
+      },
+      "apply": {
+        "plugin": "system.modules",
+        "patch": {
+          "block": [
+            "net-protocols"
+          ]
+        }
+      },
+      "doc": "modules.net-protocols"
+    },
+    {
+      "id": "modules.rare-filesystems",
+      "area": "kernel",
+      "risk": "medium",
+      "recommended": false,
+      "title": {
+        "en": "Block rarely used file systems",
+        "pt-BR": "Bloquear sistemas de arquivos pouco usados"
+      },
+      "summary": {
+        "en": "Mounting a crafted disk or stick can exploit the code of an old file system. This keeps the kernel from loading the ones almost nobody uses.",
+        "pt-BR": "Montar um disco ou pendrive adulterado pode explorar o código de um sistema de arquivos antigo. Isto impede o kernel de carregar os que quase ninguém usa."
+      },
+      "breaks": {
+        "en": "Optical discs and images in UDF format, and old Mac or embedded media, can no longer be mounted.",
+        "pt-BR": "Discos ópticos e imagens em UDF, e mídias antigas de Mac ou embarcadas, não podem mais ser montados."
+      },
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.5.2",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#kasr-kernel-modules"
+        }
+      ],
+      "probe": {
+        "kind": "modules",
+        "group": "rare-filesystems"
+      },
+      "apply": {
+        "plugin": "system.modules",
+        "patch": {
+          "block": [
+            "rare-filesystems"
+          ]
+        }
+      },
+      "doc": "modules.rare-filesystems"
+    },
+    {
+      "id": "modules.network-filesystems",
+      "area": "kernel",
+      "risk": "high",
+      "recommended": false,
+      "title": {
+        "en": "Block network file systems",
+        "pt-BR": "Bloquear sistemas de arquivos de rede"
+      },
+      "summary": {
+        "en": "If you never mount shares from NFS or Windows file servers, the kernel does not need to carry that code.",
+        "pt-BR": "Se você nunca monta compartilhamentos NFS ou de servidores de arquivos do Windows, o kernel não precisa carregar esse código."
+      },
+      "breaks": {
+        "en": "NFS and SMB/CIFS shares can no longer be mounted.",
+        "pt-BR": "Compartilhamentos NFS e SMB/CIFS não podem mais ser montados."
+      },
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.5.2",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#kasr-kernel-modules"
+        }
+      ],
+      "probe": {
+        "kind": "modules",
+        "group": "network-filesystems"
+      },
+      "apply": {
+        "plugin": "system.modules",
+        "patch": {
+          "block": [
+            "network-filesystems"
+          ]
+        }
+      },
+      "doc": "modules.network-filesystems"
+    },
+    {
+      "id": "modules.bluetooth",
+      "area": "kernel",
+      "risk": "high",
+      "recommended": false,
+      "title": {
+        "en": "Turn off Bluetooth",
+        "pt-BR": "Desligar o Bluetooth"
+      },
+      "summary": {
+        "en": "Bluetooth has a long history of security flaws. If you do not use it, keeping its code out of the kernel removes that exposure.",
+        "pt-BR": "O Bluetooth tem um longo histórico de falhas de segurança. Se você não o usa, manter o código dele fora do kernel remove essa exposição."
+      },
+      "breaks": {
+        "en": "Bluetooth keyboards, mice, headphones and file transfer stop working.",
+        "pt-BR": "Teclados, mouses, fones e transferência de arquivos por Bluetooth deixam de funcionar."
+      },
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.5.2",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#kasr-kernel-modules"
+        }
+      ],
+      "probe": {
+        "kind": "modules",
+        "group": "bluetooth"
+      },
+      "apply": {
+        "plugin": "system.modules",
+        "patch": {
+          "block": [
+            "bluetooth"
+          ]
+        }
+      },
+      "doc": "modules.bluetooth"
+    },
+    {
+      "id": "modules.vivid",
+      "area": "kernel",
+      "risk": "low",
+      "recommended": true,
+      "title": {
+        "en": "Block the test video driver",
+        "pt-BR": "Bloquear o driver de vídeo de teste"
+      },
+      "summary": {
+        "en": "The vivid driver exists only for testing and has caused privilege escalation flaws.",
+        "pt-BR": "O driver vivid existe só para testes e já causou falhas de escalonamento de privilégio."
+      },
+      "breaks": null,
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "2.5.2",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#kasr-kernel-modules"
+        }
+      ],
+      "probe": {
+        "kind": "modules",
+        "group": "vivid"
+      },
+      "apply": {
+        "plugin": "system.modules",
+        "patch": {
+          "block": [
+            "vivid"
+          ]
+        }
+      },
+      "doc": "modules.vivid"
+    },
+    {
+      "id": "mounts.tmp-noexec",
+      "area": "filesystem",
+      "risk": "high",
+      "recommended": false,
+      "title": {
+        "en": "Do not run programs from /tmp",
+        "pt-BR": "Não executar programas a partir de /tmp"
+      },
+      "summary": {
+        "en": "Malware and exploits often drop a program into /tmp and run it. This stops anything from running there.",
+        "pt-BR": "Malwares e explorações costumam deixar um programa em /tmp e executá-lo. Isto impede que algo rode ali."
+      },
+      "breaks": {
+        "en": "Installers, build tools and some scripts that run from /tmp stop working.",
+        "pt-BR": "Instaladores, ferramentas de compilação e alguns scripts que rodam de /tmp deixam de funcionar."
+      },
+      "sources": [
+        {
+          "name": "Linux Hardening Guide (madaidans)",
+          "section": "17",
+          "url": "https://madaidans-insecurities.github.io/guides/linux-hardening.html#partitioning"
+        }
+      ],
+      "probe": {
+        "kind": "mount_option",
+        "path": "/tmp",
+        "option": "noexec"
+      },
+      "apply": {
+        "plugin": "system.mounts",
+        "patch": {
+          "tmp_noexec": true
+        }
+      },
+      "doc": "mounts.tmp-noexec"
+    }
+  ]
+}

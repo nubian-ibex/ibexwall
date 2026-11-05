@@ -1,0 +1,35 @@
+id = "system.hardening"
+version = "0.1.0"
+api = 1
+category = "system"
+kinds = ["check"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-hardening"
+default_enabled = true
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "Hardening"
+pt-BR = "Endurecimento"
+
+[description]
+en = "Tells which of the recommended hardening settings this machine already has. It changes nothing; each setting is applied through the plugin that owns it."
+pt-BR = "Diz quais das configurações de endurecimento recomendadas esta máquina já tem. Não altera nada; cada configuração é aplicada pelo plugin que a controla."
+
+[privileges]
+
+[sandbox]
+user = "dynamic"
+capabilities = []
+read_paths = ["/proc/sys", "/proc/mounts", "/etc/modprobe.d", "/usr/lib/modprobe.d"]
+network = false
+
+[risk]
+affects = []
+reversible = "immediate"
+confirm_timeout = false
+
+[ui]
+icon = "shield-check"
+order = 15

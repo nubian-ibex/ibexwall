@@ -38,6 +38,8 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     provision(vm, workspace, install)?;
     for id in [
         "system.sysctl",
+        "system.modules",
+        "system.hardening",
         "system.coredump",
         "system.mounts",
         "system.ssh",
@@ -697,6 +699,62 @@ else
 fi
 echo "METRIC: telemetry findings now: [$(findings privacy.telemetry)]"
 "#
+        )
+    );
+
+    scenario!(
+        "m6 hardening: the catalog says what is in place, items are applied through their plugins, merged with earlier ones, and undone",
+        &format!(
+            r#"{lib}
+for p in system.hardening system.modules system.sysctl; do sudo ibexctl plugins enable $p >/dev/null; done
+state() {{ sudo ibexctl check system.hardening --json 2>/dev/null | python3 -c '
+import json,sys
+d=json.JSONDecoder().raw_decode(sys.stdin.read())[0]
+n=[f for f in d["findings"] if f["id"]=="hardening.state"][0]
+assert n["severity"]=="info"
+print(n["args"]["'"$1"'"])'; }}
+has() {{ echo ",$(state "$1")," | grep -q ",$2,"; }}
+
+# Every catalog item is somewhere, and the three lists add up.
+T=$(state total); N=0; for k in applied open unknown; do N=$((N + $(state $k | tr ',' '\n' | grep -c .))); done
+[ "$T" = "$N" ] || {{ echo "THE LISTS DO NOT ADD UP: total $T, listed $N"; exit 1; }}
+echo "METRIC: $(state applied_count) of $T hardening items already in place on this machine"
+
+sudo rm -f /etc/modprobe.d/70-ibexwall-modules.conf
+has open modules.vivid || {{ echo "vivid SHOULD BE OPEN"; exit 1; }}
+sudo sysctl -w net.ipv4.tcp_rfc1337=0 >/dev/null
+has open net.tcp-rfc1337 || {{ echo "rfc1337 SHOULD BE OPEN"; exit 1; }}
+
+# Two items, two plugins, two reviewed changes; the screen applies them one after the other.
+change system.sysctl --set 'keys={{"net.ipv4.tcp_rfc1337":"1"}}'
+TX1=$TX
+change system.modules --set 'block=["vivid"]'
+TX2=$TX
+has applied net.tcp-rfc1337 || {{ echo "rfc1337 IS NOT SEEN AS APPLIED"; exit 1; }}
+has applied modules.vivid || {{ echo "vivid IS NOT SEEN AS APPLIED"; exit 1; }}
+[ "$(cat /proc/sys/net/ipv4/tcp_rfc1337)" = 1 ]
+sudo grep -q 'install vivid /bin/false' /etc/modprobe.d/70-ibexwall-modules.conf
+
+# A later change adds to the drop-in and keeps the earlier key.
+change system.sysctl --set 'keys={{"net.ipv4.conf.default.secure_redirects":"0"}}'
+TX3=$TX
+sudo grep -q 'net.ipv4.tcp_rfc1337 = 1' /etc/sysctl.d/70-ibexwall-sysctl.conf || {{ echo "THE EARLIER KEY WAS LOST"; exit 1; }}
+sudo grep -q 'net.ipv4.conf.default.secure_redirects = 0' /etc/sysctl.d/70-ibexwall-sysctl.conf
+# Another group joins the first one.
+change system.modules --set 'block=["bluetooth"]'
+TX4=$TX
+sudo grep -q 'install vivid' /etc/modprobe.d/70-ibexwall-modules.conf && sudo grep -q 'install btusb' /etc/modprobe.d/70-ibexwall-modules.conf || {{ echo "THE MODULE GROUPS DID NOT JOIN"; exit 1; }}
+echo "METRIC: two plugins applied, a later change merged with the earlier ones, and the catalog sees them"
+
+# Undone in reverse: the settings are open again.
+for tx in $TX4 $TX3 $TX2 $TX1; do sudo ibexctl rollback "$tx" --json >/dev/null || {{ echo "ROLLBACK OF $tx FAILED"; exit 1; }}; done
+has open modules.vivid || {{ echo "vivid DID NOT GO BACK"; exit 1; }}
+sudo test ! -e /etc/modprobe.d/70-ibexwall-modules.conf || {{ echo "THE MODULE DROP-IN SURVIVED"; exit 1; }}
+if sudo test -e /etc/sysctl.d/70-ibexwall-sysctl.conf && sudo grep -q rfc1337 /etc/sysctl.d/70-ibexwall-sysctl.conf; then echo "THE SYSCTL DROP-IN SURVIVED"; exit 1; fi
+has open net.tcp-rfc1337 || {{ echo "rfc1337 DID NOT GO BACK"; exit 1; }}
+echo "METRIC: all four changes undone in reverse, the catalog sees the settings open again"
+"#,
+            lib = lib
         )
     );
 

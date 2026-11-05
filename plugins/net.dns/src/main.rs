@@ -8,6 +8,7 @@
 //! back. Nothing here writes to the system.
 
 mod backend;
+mod detect;
 mod presets;
 
 use std::collections::BTreeMap;
@@ -439,7 +440,7 @@ fn evaluate(sandbox: &Sandbox) -> CheckReport {
         }
         Backend::Resolved => CheckOutcome::Fail,
     };
-    let mut findings = vec![];
+    let mut findings = vec![detect::dns(sandbox, "1970-01-01T00:00:00Z")];
     // What the person should know about where their DNS goes, said plainly
     // and never as a failure: the network's own servers, and a plain
     // upstream on a local network.

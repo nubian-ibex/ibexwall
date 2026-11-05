@@ -93,7 +93,7 @@ impl Monitor {
     pub(crate) fn lookup_domain(&self, ip: IpAddr, now: i64) -> Option<String> {
         self.correlator
             .lock()
-            .unwrap()
+            .expect("lock poisoned")
             .lookup(ip, now.max(0) as u64)
             .map(str::to_string)
     }
@@ -165,11 +165,11 @@ impl Monitor {
     }
 
     pub fn status(&self) -> MonitorStatus {
-        self.status.lock().unwrap().clone()
+        self.status.lock().expect("lock poisoned").clone()
     }
 
     pub fn set_status(&self, running: bool, reason: Option<&str>) {
-        *self.status.lock().unwrap() = MonitorStatus {
+        *self.status.lock().expect("lock poisoned") = MonitorStatus {
             running,
             reason: reason.map(str::to_string),
         };
@@ -179,13 +179,13 @@ impl Monitor {
     pub fn learn(&self, ip: IpAddr, domain: &str, ttl: u32, now: i64) {
         self.correlator
             .lock()
-            .unwrap()
+            .expect("lock poisoned")
             .learn(ip, domain, ttl, now.max(0) as u64);
     }
 
     /// When the package manager's state last changed, cached briefly.
     fn package_db_changed(&self, now: i64) -> Option<i64> {
-        let mut cache = self.package_db.lock().unwrap();
+        let mut cache = self.package_db.lock().expect("lock poisoned");
         if now - cache.0 >= DB_MTIME_TTL {
             *cache = (now, newest_mtime(&self.root));
         }

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#![allow(clippy::unwrap_used)]
+
 //! Runs the real `ibexwall-dns` binary with a settings file and talks to
 //! it over UDP and TCP. Blocked names and the canary never need the
 //! upstream, so the test does not touch the network.

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#![allow(clippy::unwrap_used)]
+
 //! End to end over loopback: a fake upstream, the real handler behind a
 //! real hickory server, and a raw UDP client. The encrypted transports are
 //! covered by unit tests on the config and by the VM phase; here the

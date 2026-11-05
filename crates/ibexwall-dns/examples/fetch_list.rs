@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#![allow(clippy::unwrap_used)]
+
 //! Updates one list into a directory with the production fetcher.
 //! Usage: `cargo run -p ibexwall-dns --example fetch_list -- <dir> <id> [url]`
 

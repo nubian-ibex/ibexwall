@@ -10,7 +10,7 @@ struct Shared(Arc<Mutex<Vec<u8>>>);
 
 impl Write for Shared {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().unwrap().extend_from_slice(buf);
+        self.0.lock().expect("lock poisoned").extend_from_slice(buf);
         Ok(buf.len())
     }
     fn flush(&mut self) -> std::io::Result<()> {
@@ -26,7 +26,10 @@ struct Fake {
 impl Backend for Fake {
     fn call(&mut self, method: &str, parameters: Value) -> Result<Value, String> {
         let short = method.rsplit('.').next().unwrap().to_string();
-        self.calls.lock().unwrap().push(short.clone());
+        self.calls
+            .lock()
+            .expect("lock poisoned")
+            .push(short.clone());
         Ok(match short.as_str() {
             "GetPosture" => json!({ "posture": { "score": 80, "protections": [
                 { "id": "net-dns", "state": "on" }, { "plugin": "system.accounts", "state": "on" }] } }),
@@ -164,7 +167,7 @@ fn hostile_or_malformed_input_gets_an_error_and_never_a_panic() {
             );
         }
     }
-    assert!(fake.calls.lock().unwrap().is_empty());
+    assert!(fake.calls.lock().expect("lock poisoned").is_empty());
 }
 
 #[test]
@@ -183,7 +186,7 @@ fn tools_that_apply_revert_or_approve_do_not_exist() {
         let answer = call(&mut s, name, json!({}));
         assert_eq!(answer["error"]["code"], -32602, "{name}");
     }
-    assert!(fake.calls.lock().unwrap().is_empty());
+    assert!(fake.calls.lock().expect("lock poisoned").is_empty());
 }
 
 #[test]
@@ -222,7 +225,7 @@ fn whatever_the_assistant_does_the_core_only_sees_read_calls_and_proposals() {
         "CreateProposal",
         "ListProposals",
     ];
-    for method in fake.calls.lock().unwrap().iter() {
+    for method in fake.calls.lock().expect("lock poisoned").iter() {
         assert!(allowed.contains(&method.as_str()), "{method}");
     }
     for resource in [
@@ -239,7 +242,7 @@ fn whatever_the_assistant_does_the_core_only_sees_read_calls_and_proposals() {
             json!({ "uri": format!("ibexwall://{resource}") }),
         );
     }
-    for method in fake.calls.lock().unwrap().iter() {
+    for method in fake.calls.lock().expect("lock poisoned").iter() {
         assert!(
             ![
                 "Apply",
@@ -290,7 +293,7 @@ fn sensitive_plugins_are_closed_even_to_a_client_with_every_scope() {
     ] {
         assert!(is_error(&call(&mut s, name, args)), "{name}");
     }
-    assert!(fake.calls.lock().unwrap().is_empty());
+    assert!(fake.calls.lock().expect("lock poisoned").is_empty());
     let posture = text(&call(&mut s, "get_posture", json!({})));
     assert!(!posture.contains("system.accounts"), "{posture}");
     let config = request(
@@ -317,7 +320,10 @@ fn a_stranger_is_read_only_and_cannot_propose_or_plan() {
     ] {
         assert!(is_error(&call(&mut s, name, args)), "{name}");
     }
-    assert_eq!(fake.calls.lock().unwrap().as_slice(), ["GetPosture"]);
+    assert_eq!(
+        fake.calls.lock().expect("lock poisoned").as_slice(),
+        ["GetPosture"]
+    );
 }
 
 #[test]
@@ -388,7 +394,10 @@ fn a_proposal_says_it_is_not_applied_and_how_it_is_undone() {
     assert_eq!(v["applied"], false);
     assert_eq!(v["proposal"]["status"], "pending");
     assert!(v["rollback"].as_str().unwrap().contains("ibexctl rollback"));
-    assert_eq!(fake.calls.lock().unwrap().as_slice(), ["CreateProposal"]);
+    assert_eq!(
+        fake.calls.lock().expect("lock poisoned").as_slice(),
+        ["CreateProposal"]
+    );
     let big = "x".repeat(20_000);
     assert!(is_error(&call(
         &mut s,
@@ -449,7 +458,7 @@ fn every_call_is_logged_before_and_after_in_a_chain_that_verifies() {
         "propose_change",
         json!({ "plugin": "disk.luks", "patch": {}, "justification": "denied calls are logged too" }),
     );
-    let text = String::from_utf8(log.0.lock().unwrap().clone()).unwrap();
+    let text = String::from_utf8(log.0.lock().expect("lock poisoned").clone()).unwrap();
     assert_eq!(crate::audit::verify(&text), Ok(4));
     assert!(text.contains("propose_change") && text.contains("error:"));
 }
@@ -463,7 +472,7 @@ fn the_log_holds_pseudonyms_not_private_values() {
         "propose_change",
         json!({ "plugin": "system-sysctl", "patch": { "who": "ana", "ip": "10.0.0.5" }, "justification": "x" }),
     );
-    let text = String::from_utf8(log.0.lock().unwrap().clone()).unwrap();
+    let text = String::from_utf8(log.0.lock().expect("lock poisoned").clone()).unwrap();
     assert!(
         !text.contains("10.0.0.5") && !text.contains("\\\"ana\\\""),
         "{text}"
@@ -495,7 +504,7 @@ fn when_the_log_cannot_be_written_the_call_is_refused() {
     .unwrap();
     assert!(is_error(&answer));
     assert!(
-        fake.calls.lock().unwrap().is_empty(),
+        fake.calls.lock().expect("lock poisoned").is_empty(),
         "nothing runs unlogged"
     );
 }
@@ -512,8 +521,8 @@ fn a_flooding_client_is_limited_and_the_log_does_not_fill_up() {
         }
     }
     assert_eq!(refused, 195);
-    assert_eq!(fake.calls.lock().unwrap().len(), 5);
-    let lines = String::from_utf8(log.0.lock().unwrap().clone())
+    assert_eq!(fake.calls.lock().expect("lock poisoned").len(), 5);
+    let lines = String::from_utf8(log.0.lock().expect("lock poisoned").clone())
         .unwrap()
         .lines()
         .count();
@@ -547,7 +556,10 @@ struct Hostile {
 impl Backend for Hostile {
     fn call(&mut self, method: &str, _parameters: Value) -> Result<Value, String> {
         let short = method.rsplit('.').next().unwrap().to_string();
-        self.calls.lock().unwrap().push(short.clone());
+        self.calls
+            .lock()
+            .expect("lock poisoned")
+            .push(short.clone());
         let p = &self.payload;
         Ok(match short.as_str() {
             "ListFindings" => {
@@ -607,7 +619,7 @@ fn the_injection_corpus_stays_data_and_never_reaches_the_core_as_a_write() {
         }
         let resource = json!({ "jsonrpc": "2.0", "id": 2, "method": "resources/read", "params": { "uri": "ibexwall://audit/changes" } }).to_string();
         assert!(!s.handle(&resource).unwrap().contains('\n'));
-        for method in calls.lock().unwrap().iter() {
+        for method in calls.lock().expect("lock poisoned").iter() {
             assert!(
                 [
                     "ListFindings",
@@ -620,7 +632,7 @@ fn the_injection_corpus_stays_data_and_never_reaches_the_core_as_a_write() {
                 "{method}"
             );
         }
-        let text = String::from_utf8(log.0.lock().unwrap().clone()).unwrap();
+        let text = String::from_utf8(log.0.lock().expect("lock poisoned").clone()).unwrap();
         assert!(crate::audit::verify(&text).is_ok());
     }
 }
@@ -662,7 +674,7 @@ fn hostile_arguments_are_rejected_before_they_reach_the_core() {
             );
         }
     }
-    let seen = fake.calls.lock().unwrap();
+    let seen = fake.calls.lock().expect("lock poisoned");
     assert!(
         seen.iter().all(|m| m == "ListFindings"),
         "only explain_finding may read: {seen:?}"

@@ -127,7 +127,7 @@ impl crate::monitor::Monitor {
             return Ok(());
         }
 
-        let mut pending = self.asks.pending.lock().unwrap();
+        let mut pending = self.asks.pending.lock().expect("lock poisoned");
         pending.retain(|_, p| now < p.created + p.timeout);
         if let Some(existing) = pending.values_mut().find(|p| {
             p.prompt.app == app && p.prompt.destination == destination && p.prompt.port == ask.port
@@ -187,7 +187,7 @@ impl crate::monitor::Monitor {
 
     /// The open questions, oldest first.
     pub fn prompts(&self, now: i64) -> Vec<Prompt> {
-        let mut pending = self.asks.pending.lock().unwrap();
+        let mut pending = self.asks.pending.lock().expect("lock poisoned");
         pending.retain(|_, p| now < p.created + p.timeout);
         let mut all: Vec<(u64, Prompt)> = pending
             .iter()
@@ -210,7 +210,13 @@ impl crate::monitor::Monitor {
         let Ok(number) = id.parse::<u64>() else {
             return Ok(false);
         };
-        let Some(pending) = self.asks.pending.lock().unwrap().remove(&number) else {
+        let Some(pending) = self
+            .asks
+            .pending
+            .lock()
+            .expect("lock poisoned")
+            .remove(&number)
+        else {
             return Ok(false);
         };
         for ask_id in &pending.ask_ids {

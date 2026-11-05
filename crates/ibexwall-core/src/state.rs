@@ -136,7 +136,7 @@ impl State {
     }
 
     fn migrate(&self) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().expect("lock poisoned");
         conn.execute(
             "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, name TEXT NOT NULL)",
             [],
@@ -165,7 +165,7 @@ impl State {
 
     /// Runs `f` with the connection (audit helpers need it too).
     pub fn with_conn<R>(&self, f: impl FnOnce(&Connection) -> R) -> R {
-        f(&self.conn.lock().unwrap())
+        f(&self.conn.lock().expect("lock poisoned"))
     }
 
     pub fn snapshots_dir(&self) -> &Path {

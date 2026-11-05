@@ -68,7 +68,10 @@ impl FakeSysctl {
     }
 
     pub fn seed(&self, key: &str, value: &str) {
-        self.values.lock().unwrap().insert(key.into(), value.into());
+        self.values
+            .lock()
+            .expect("lock poisoned")
+            .insert(key.into(), value.into());
     }
 }
 
@@ -76,7 +79,7 @@ impl Sysctl for FakeSysctl {
     fn get(&self, key: &str) -> anyhow::Result<String> {
         self.values
             .lock()
-            .unwrap()
+            .expect("lock poisoned")
             .get(key)
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("sysctl {key}: not found"))
@@ -84,7 +87,10 @@ impl Sysctl for FakeSysctl {
 
     fn set(&self, key: &str, value: &str) -> anyhow::Result<()> {
         self.log.push(format!("set {key} = {value}"));
-        self.values.lock().unwrap().insert(key.into(), value.into());
+        self.values
+            .lock()
+            .expect("lock poisoned")
+            .insert(key.into(), value.into());
         Ok(())
     }
 }

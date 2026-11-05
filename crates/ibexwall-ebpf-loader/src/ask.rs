@@ -73,11 +73,11 @@ impl Broker {
 
     /// The core pushes these with every policy.
     pub fn configure(&self, timeout: Duration, fallback: Decision) {
-        *self.settings.lock().unwrap() = (timeout, fallback);
+        *self.settings.lock().expect("lock poisoned") = (timeout, fallback);
     }
 
     pub fn arrive(&self, id: u16, held: Held, now: Instant) -> Arrival {
-        let mut flows = self.flows.lock().unwrap();
+        let mut flows = self.flows.lock().expect("lock poisoned");
         flows.retain(|_, flow| match flow {
             Flow::Answered { at, .. } => now.duration_since(*at) < REMEMBER,
             Flow::Pending { .. } => true,
@@ -104,7 +104,7 @@ impl Broker {
     /// The user's answer: the packets to release (empty when the flow is
     /// not waiting, e.g. it already timed out).
     pub fn answer(&self, id: u16, decision: Decision, now: Instant) -> Vec<Held> {
-        let mut flows = self.flows.lock().unwrap();
+        let mut flows = self.flows.lock().expect("lock poisoned");
         match flows.get(&id) {
             Some(Flow::Pending { .. }) => {}
             _ => return vec![],
@@ -119,8 +119,8 @@ impl Broker {
 
     /// Flows nobody answered in time get the fallback.
     pub fn expire(&self, now: Instant) -> Vec<(Decision, Vec<Held>)> {
-        let (timeout, fallback) = *self.settings.lock().unwrap();
-        let mut flows = self.flows.lock().unwrap();
+        let (timeout, fallback) = *self.settings.lock().expect("lock poisoned");
+        let mut flows = self.flows.lock().expect("lock poisoned");
         let due: Vec<u16> = flows
             .iter()
             .filter(|(_, flow)| {

@@ -62,7 +62,7 @@ impl FakeRunner {
     }
 
     pub fn calls(&self) -> Vec<Vec<String>> {
-        self.calls.lock().unwrap().clone()
+        self.calls.lock().expect("lock poisoned").clone()
     }
 }
 
@@ -71,12 +71,15 @@ impl Runner for FakeRunner {
         if !argv.first().is_some_and(|program| allowed(program)) {
             bail!("not an allowed firewall tool: {argv:?}");
         }
-        if let Some(word) = self.fail_on.lock().unwrap().as_deref()
+        if let Some(word) = self.fail_on.lock().expect("lock poisoned").as_deref()
             && argv.iter().any(|arg| arg.contains(word))
         {
             bail!("simulated failure for {argv:?}");
         }
-        self.calls.lock().unwrap().push(argv.to_vec());
+        self.calls
+            .lock()
+            .expect("lock poisoned")
+            .push(argv.to_vec());
         Ok(())
     }
 }
@@ -100,7 +103,7 @@ mod tests {
         fake.run(&[FIREWALL_CMD.to_string(), "--reload".into()])
             .unwrap();
         assert_eq!(fake.calls().len(), 1);
-        *fake.fail_on.lock().unwrap() = Some("--reload".into());
+        *fake.fail_on.lock().expect("lock poisoned") = Some("--reload".into());
         assert!(
             fake.run(&[FIREWALL_CMD.to_string(), "--reload".into()])
                 .is_err()

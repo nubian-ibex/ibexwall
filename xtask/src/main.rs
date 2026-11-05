@@ -20,6 +20,7 @@ mod f8;
 mod f9;
 mod fixtures;
 mod idl;
+mod plugin_units;
 mod schemas;
 mod vm;
 
@@ -36,6 +37,8 @@ Commands:
                      f1 provisions the daemon and runs acceptance tests
   ebpf               Build the eBPF programs into target/bpf/ (nightly,
                      rust-src and bpf-linker required)
+  plugin-units       Write the systemd socket and service unit of every plugin
+                     (--out DIR, default target/plugin-units)
   devkey             Generate the dev plugin-signing key and sign
                      plugins/*/plugin.toml (dev builds only)
 ";
@@ -81,6 +84,18 @@ fn main() {
                 }
             };
             if let Err(err) = result {
+                eprintln!("error: {err:#}");
+                std::process::exit(1);
+            }
+        }
+        Some("plugin-units") => {
+            let mut out = std::path::PathBuf::from("target/plugin-units");
+            while let Some(arg) = args.next() {
+                if arg == "--out" {
+                    out = args.next().unwrap_or_default().into();
+                }
+            }
+            if let Err(err) = plugin_units::run(&out) {
                 eprintln!("error: {err:#}");
                 std::process::exit(1);
             }

@@ -71,7 +71,8 @@ Engine and tooling changes:
     the same probes put 0 on it, the tunnel reconnected under the kill
     switch, and both rollbacks left no chain, marker, keyfile, record or
     interface. The private key appears in no preview.
-- REGRESSIONS_PLACEHOLDER
+- Regressions f1, f3, f4, f5, f6, f7 and f8 re-run green on fedora after the
+  engine changes; the UI suite (91 tests, e2e with axe) is unchanged and green.
 
 ## Defects found and fixed along the way
 

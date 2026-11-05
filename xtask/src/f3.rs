@@ -122,6 +122,29 @@ sudo nft list ruleset | sha256sum > /tmp/ibx-nft-baseline
     );
 
     scenario!(
+        "d0b net.dns says how DNS works today, as information, before anything changes",
+        r#"
+sudo ibexctl plugins enable net.dns >/dev/null
+sudo ibexctl check net.dns --json >/tmp/detect-dns.json 2>&1 || true
+python3 - <<'PYEOF'
+import json
+d = json.JSONDecoder().raw_decode(open("/tmp/detect-dns.json").read())[0]
+notes = [x for x in d["findings"] if x["id"] == "detect.dns"]
+assert len(notes) == 1, [x["id"] for x in d["findings"]]
+n = notes[0]
+assert n["severity"] == "info", n
+case = n["args"]["case"]
+assert case in ("resolved-plain", "resolved-tls"), n["args"]
+assert n["args"]["stack"] == "systemd-resolved", n["args"]
+assert ("patch" in n["args"]) == (case == "resolved-plain"), n["args"]
+if case == "resolved-plain":
+    assert json.loads(n["args"]["patch"])["transport"] == "tls"
+print("METRIC: detect.dns says", case)
+PYEOF
+"#
+    );
+
+    scenario!(
         "d1 plan and apply: resolver up, resolved points at it",
         &format!(
             r#"

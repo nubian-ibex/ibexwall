@@ -155,6 +155,30 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     // Nothing manages the firewall yet on a fresh Debian or Arch image:
     // run before any manager is installed.
     scenario!(
+        "p2b net.firewall says which manager the machine has, and how to start or install one",
+        r#"
+sudo ibexctl plugins enable net.firewall >/dev/null
+sudo ibexctl check net.firewall --json >/tmp/detect-firewall.json 2>&1 || true
+python3 - <<'PYEOF'
+import json
+d = json.JSONDecoder().raw_decode(open("/tmp/detect-firewall.json").read())[0]
+notes = [x for x in d["findings"] if x["id"] == "detect.firewall"]
+assert len(notes) == 1, [x["id"] for x in d["findings"]]
+n = notes[0]
+assert n["severity"] == "info", n
+case = n["args"]["case"]
+assert case in ("active", "inactive", "none"), n["args"]
+if case == "inactive":
+    assert n["args"]["start"].startswith("sudo "), n["args"]
+if case == "none":
+    assert n["args"]["install"].startswith("sudo ") and n["args"]["package"] in ("ufw", "firewalld"), n["args"]
+assert "patch" not in n["args"], "nothing is started or installed for the person"
+print("METRIC: detect.firewall says", case)
+PYEOF
+"#
+    );
+
+    scenario!(
         "p3 basic inbound protection in IbexWall's own table, and nothing else touched",
         &format!(
             "{}{}",

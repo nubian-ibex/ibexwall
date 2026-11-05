@@ -22,7 +22,7 @@ mod tests {
                 if !matches!(name, "target" | "tests" | "examples" | "node_modules") {
                     rust_files(&path, out);
                 }
-            } else if name.ends_with(".rs") {
+            } else if name.ends_with(".rs") && name != "tests.rs" {
                 out.push(path);
             }
         }

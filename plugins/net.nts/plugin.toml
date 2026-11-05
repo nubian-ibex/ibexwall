@@ -29,7 +29,7 @@ unit_actions = ["restart"]
 
 [sandbox]
 user = "dynamic"
-capabilities = []
+capabilities = ["CAP_DAC_READ_SEARCH"]
 read_paths = ["/etc/chrony.conf", "/etc/chrony", "/etc/chrony.d", "/etc/chrony-ibexwall", "/usr/sbin/chronyd", "/usr/bin/chronyd", "/usr/lib/systemd/system", "/etc/systemd/system", "/run/chrony", "/etc/os-release"]
 network = false
 

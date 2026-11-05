@@ -25,7 +25,7 @@ exec = [{ path = "/usr/sbin/sshd", args = ["-t"] }]
 
 [sandbox]
 user = "dynamic"
-capabilities = []
+capabilities = ["CAP_DAC_READ_SEARCH"]
 read_paths = ["/etc/ssh", "/usr/sbin/sshd", "/usr/lib/systemd/system", "/run"]
 network = false
 

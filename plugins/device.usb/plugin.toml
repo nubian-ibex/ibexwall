@@ -24,7 +24,7 @@ unit_actions = ["enable"]
 
 [sandbox]
 user = "dynamic"
-capabilities = []
+capabilities = ["CAP_DAC_READ_SEARCH"]
 read_paths = ["/sys/bus/usb/devices", "/etc/usbguard", "/usr/sbin/usbguard-daemon", "/usr/bin/usbguard-daemon", "/etc/systemd/system", "/usr/lib/systemd/system"]
 network = false
 

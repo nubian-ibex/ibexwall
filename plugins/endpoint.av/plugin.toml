@@ -24,7 +24,7 @@ unit_actions = ["start", "enable", "disable"]
 
 [sandbox]
 user = "dynamic"
-capabilities = []
+capabilities = ["CAP_DAC_READ_SEARCH"]
 read_paths = ["/sys/fs/selinux", "/var/lib/ibexwall/av", "/etc/ibexwall/av", "/usr/bin", "/var/lib/clamav", "/usr/share/clamav", "/etc/systemd/system"]
 network = false
 

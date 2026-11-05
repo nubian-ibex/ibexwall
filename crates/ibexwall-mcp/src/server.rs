@@ -10,6 +10,7 @@
 //! and redacts, then the `result` line.
 
 use std::io::Write;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use ibexwall_sys::Clock;
@@ -44,7 +45,9 @@ pub struct Server<B: Backend, W: Write> {
     redactor: Redactor,
     limiter: Limiter,
     refusing: bool,
-    audit: Audit<W>,
+    audit: Arc<Mutex<Audit<W>>>,
+    /// `stdio`, or `http:<token id>`: recorded with every call.
+    via: String,
     backend: B,
 }
 
@@ -157,6 +160,26 @@ impl<B: Backend, W: Write> Server<B, W> {
         audit: Audit<W>,
         backend: B,
     ) -> Self {
+        Self::shared(
+            config,
+            client,
+            "stdio",
+            redactor,
+            Arc::new(Mutex::new(audit)),
+            backend,
+        )
+    }
+
+    /// One audit chain for every client of a process (the HTTP server keeps
+    /// one `Server` per token and a single log).
+    pub fn shared(
+        config: Config,
+        client: &str,
+        via: &str,
+        redactor: Redactor,
+        audit: Arc<Mutex<Audit<W>>>,
+        backend: B,
+    ) -> Self {
         let grants = config.client(client);
         let limiter = Limiter::new(grants.per_minute, Duration::from_secs(60));
         Self {
@@ -167,6 +190,7 @@ impl<B: Backend, W: Write> Server<B, W> {
             limiter,
             refusing: false,
             audit,
+            via: via.to_string(),
             backend,
         }
     }
@@ -271,9 +295,10 @@ impl<B: Backend, W: Write> Server<B, W> {
         if !self.limiter.allow(Instant::now()) {
             if !self.refusing {
                 self.refusing = true;
-                let _ = self.audit.call(
+                let _ = self.audit.lock().expect("audit lock").call_via(
                     &now(),
                     &self.client,
+                    &self.via,
                     "rate-limited",
                     &json!({ "next": label }),
                 );
@@ -286,7 +311,13 @@ impl<B: Backend, W: Write> Server<B, W> {
         self.refusing = false;
         let mut logged = arguments.clone();
         self.redactor.value(&mut logged);
-        let call = match self.audit.call(&now(), &self.client, label, &logged) {
+        let call = match self.audit.lock().expect("audit lock").call_via(
+            &now(),
+            &self.client,
+            &self.via,
+            label,
+            &logged,
+        ) {
             Ok(seq) => seq,
             Err(_) => {
                 return Err("the assistant log cannot be written, so the call was refused".into());
@@ -311,7 +342,11 @@ impl<B: Backend, W: Write> Server<B, W> {
             Ok(_) => "ok".to_string(),
             Err(message) => format!("error: {message}"),
         };
-        let _ = self.audit.result(&now(), call, &summary);
+        let _ = self
+            .audit
+            .lock()
+            .expect("audit lock")
+            .result(&now(), call, &summary);
         outcome
     }
 

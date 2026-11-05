@@ -70,9 +70,22 @@ impl<W: Write> Audit<W> {
         tool: &str,
         params: &Value,
     ) -> std::io::Result<u64> {
+        self.call_via(ts, client, "stdio", tool, params)
+    }
+
+    /// `via` says how the client came in: `stdio`, or `http:<token id>`.
+    pub fn call_via(
+        &mut self,
+        ts: &str,
+        client: &str,
+        via: &str,
+        tool: &str,
+        params: &Value,
+    ) -> std::io::Result<u64> {
         let mut m = Map::new();
         m.insert("phase".into(), json!("call"));
         m.insert("client".into(), json!(client));
+        m.insert("via".into(), json!(via));
         m.insert("tool".into(), json!(tool));
         m.insert(
             "params".into(),

@@ -532,13 +532,8 @@ echo "METRIC: rolled back: files, NetworkManager's profile gone, foreign tables 
 pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     println!("== f9: build ==");
     let mut args = vec!["build".to_string(), "--release".to_string()];
-    for id in PLUGINS {
-        args.push("-p".into());
-        args.push(format!(
-            "ibexwall-plugin-{}",
-            id.rsplit('.').next().unwrap()
-        ));
-    }
+    args.push("-p".into());
+    args.push("ibexwall-plugins".into());
     for package in ["ibexwall-exec", "ibexwall-cli", "ibexwall-core"] {
         args.push("-p".into());
         args.push(package.into());

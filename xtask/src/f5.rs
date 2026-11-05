@@ -132,7 +132,7 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
             "-p",
             "ibexwall-plugin-echo",
             "-p",
-            "ibexwall-plugin-firewall",
+            "ibexwall-plugins",
             "--bins",
         ],
         None,

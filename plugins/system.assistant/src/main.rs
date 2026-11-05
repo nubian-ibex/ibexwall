@@ -73,6 +73,11 @@ struct Config {
     name: String,
     hash: String,
     expires: Option<String>,
+    /// `tls`: the names or addresses clients will use, how long it is
+    /// valid, and whether to replace a certificate that exists.
+    hosts: Vec<String>,
+    days: Option<u32>,
+    replace: bool,
 }
 
 struct Assistant;
@@ -181,7 +186,47 @@ fn set_preset(doc: &mut DocumentMut, client: &str, preset: &str) -> Result<(), P
     Ok(())
 }
 
+const TLS_CERT: &str = "/etc/ibexwall/mcp/tls.crt";
+const TLS_KEY: &str = "/etc/ibexwall/mcp/tls.key";
+
+/// The certificate the server will present. The key is made when the plan is
+/// applied and appears nowhere before that.
+fn plan_tls(sandbox: &Sandbox, config: &Config) -> Result<Vec<Op>, PluginError> {
+    if config.hosts.is_empty()
+        || config.hosts.len() > 8
+        || !config
+            .hosts
+            .iter()
+            .all(|h| ibexwall_sys::tls::valid_host(h))
+    {
+        return Err(PluginError::invalid(
+            "hosts",
+            "one to eight names or addresses that clients will use",
+        ));
+    }
+    let days = config.days.unwrap_or(365);
+    if !(1..=825).contains(&days) {
+        return Err(PluginError::invalid("days", "1 to 825"));
+    }
+    if sandbox.exists(TLS_CERT) && !config.replace {
+        return Err(PluginError::invalid(
+            "replace",
+            "a certificate exists; replacing it means every client must trust the new fingerprint",
+        ));
+    }
+    Ok(vec![Op::TlsKeyPair {
+        cert_path: TLS_CERT.into(),
+        key_path: TLS_KEY.into(),
+        hosts: config.hosts.clone(),
+        days,
+        key_group: "ibexwall-mcp".into(),
+    }])
+}
+
 fn plan(sandbox: &Sandbox, config: &Config) -> Result<Vec<Op>, PluginError> {
+    if config.action == "tls" {
+        return plan_tls(sandbox, config);
+    }
     let mut doc = load(sandbox)?;
     match config.action.as_str() {
         "client" => set_preset(&mut doc, &config.client, &config.preset)?,
@@ -320,7 +365,7 @@ fn plan(sandbox: &Sandbox, config: &Config) -> Result<Vec<Op>, PluginError> {
         _ => {
             return Err(PluginError::invalid(
                 "action",
-                "action is `client`, `http`, `token_add` or `token_revoke`",
+                "action is `client`, `http`, `token_add`, `token_revoke` or `tls`",
             ));
         }
     }
@@ -354,16 +399,50 @@ fn info(
     }
 }
 
+/// SHA-256 of the first certificate in a PEM, as `AA:BB:...`.
+fn fingerprint(pem: &str) -> Option<String> {
+    use base64::Engine;
+    use sha2::{Digest, Sha256};
+    let body: String = pem
+        .lines()
+        .skip_while(|l| !l.starts_with("-----BEGIN CERTIFICATE"))
+        .skip(1)
+        .take_while(|l| !l.starts_with("-----END"))
+        .collect();
+    let der = base64::engine::general_purpose::STANDARD
+        .decode(body)
+        .ok()?;
+    Some(
+        Sha256::digest(der)
+            .iter()
+            .map(|b| format!("{b:02X}"))
+            .collect::<Vec<_>>()
+            .join(":"),
+    )
+}
+
 /// What is set today, for the screen: the transport, and each token without
 /// its hash. Information only.
 fn report(sandbox: &Sandbox, at: &str) -> Vec<Finding> {
+    let mut out = Vec::new();
+    // The certificate the server presents, by the fingerprint a client checks.
+    if let Some(pem) = sandbox.read(TLS_CERT)
+        && let Some(fingerprint) = fingerprint(&pem)
+    {
+        out.push(info(
+            "assistant.tls".into(),
+            "assistant-tls-title",
+            "assistant-tls-summary",
+            BTreeMap::from([("fingerprint".to_string(), fingerprint)]),
+            at,
+        ));
+    }
     let Some(text) = sandbox.read(CONFIG) else {
-        return vec![];
+        return out;
     };
     let Ok(doc) = text.parse::<DocumentMut>() else {
-        return vec![];
+        return out;
     };
-    let mut out = Vec::new();
     let http = doc.get("http").and_then(|h| h.as_table());
     let enabled = http
         .and_then(|h| h.get("enabled"))

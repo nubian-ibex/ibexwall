@@ -18,7 +18,7 @@ en = "What an AI assistant may read, plan or propose, and the access tokens for 
 pt-BR = "O que um assistente de IA pode ler, planejar ou propor, e as chaves de acesso para assistentes em outras máquinas."
 
 [privileges]
-write_paths = ["/etc/ibexwall/mcp.toml"]
+write_paths = ["/etc/ibexwall/mcp.toml", "/etc/ibexwall/mcp"]
 
 [sandbox]
 user = "dynamic"

@@ -254,3 +254,65 @@ fn sandbox_empty() -> Sandbox {
     let (_root, sandbox) = tree(&[]);
     sandbox
 }
+
+#[test]
+fn the_certificate_is_planned_as_an_op_that_holds_no_key_and_refuses_to_replace_by_accident() {
+    let (root, sandbox) = tree(&[]);
+    let ops = plan(
+        &sandbox,
+        &config(json!({ "action": "tls", "hosts": ["mcp.example", "10.0.0.5"], "days": 90 })),
+    )
+    .unwrap();
+    match &ops[..] {
+        [
+            Op::TlsKeyPair {
+                cert_path,
+                key_path,
+                hosts,
+                days,
+                key_group,
+            },
+        ] => {
+            assert_eq!(cert_path, TLS_CERT);
+            assert_eq!(key_path, TLS_KEY);
+            assert_eq!(
+                (hosts.len(), *days, key_group.as_str()),
+                (2, 90, "ibexwall-mcp")
+            );
+        }
+        other => panic!("{other:?}"),
+    }
+    for bad in [
+        json!({ "hosts": [] }),
+        json!({ "hosts": ["x;y"] }),
+        json!({ "hosts": ["a"], "days": 0 }),
+    ] {
+        let mut c = bad.as_object().unwrap().clone();
+        c.insert("action".into(), json!("tls"));
+        assert!(plan(&sandbox, &config(json!(c))).is_err());
+    }
+    let (root2, existing) = tree(&[(TLS_CERT, "x")]);
+    let again = json!({ "action": "tls", "hosts": ["a"] });
+    assert!(
+        plan(&existing, &config(again.clone()))
+            .unwrap_err()
+            .to_string()
+            .contains("replace")
+    );
+    let mut replace = again.as_object().unwrap().clone();
+    replace.insert("replace".into(), json!(true));
+    assert!(plan(&existing, &config(json!(replace))).is_ok());
+    for r in [root, root2] {
+        std::fs::remove_dir_all(r).unwrap();
+    }
+}
+
+#[test]
+fn the_fingerprint_of_the_certificate_is_reported() {
+    let pair = ibexwall_sys::tls::generate(&["a.example".to_string()], 30, 1_800_000_000).unwrap();
+    let (root, sandbox) = tree(&[(TLS_CERT, &pair.cert_pem)]);
+    let findings = report(&sandbox, "x");
+    let tls = findings.iter().find(|f| f.id == "assistant.tls").unwrap();
+    assert_eq!(tls.args["fingerprint"], pair.fingerprint);
+    std::fs::remove_dir_all(root).unwrap();
+}

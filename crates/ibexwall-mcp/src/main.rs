@@ -87,8 +87,80 @@ fn flag(args: &[String], name: &str) -> Option<String> {
         .cloned()
 }
 
+/// The HTTP transport (`--http`, and `[http] enabled = true` in mcp.toml):
+/// TLS only, one `Server` per token behind a worker thread, one audit chain.
+fn run_http(
+    config: Config,
+    socket: PathBuf,
+    redactor: Redactor,
+    audit: Audit<std::fs::File>,
+) -> Result<()> {
+    use ibexwall_mcp::http::{self, Gate, State};
+    use std::sync::{Arc, Mutex};
+
+    if !config.http.enabled {
+        anyhow::bail!("the HTTP transport is off: set `[http] enabled = true` in mcp.toml");
+    }
+    let tls = http::tls_config(&config.http.tls_cert, &config.http.tls_key)
+        .map_err(|e| anyhow::anyhow!("TLS: {e}"))?;
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()?;
+    let listener = runtime.block_on(tokio::net::TcpListener::bind(&config.http.listen))?;
+    eprintln!(
+        "ibexwall-mcp: serving MCP over HTTPS on {} ({} token(s))",
+        listener.local_addr()?,
+        config.tokens.len()
+    );
+    let audit = Arc::new(Mutex::new(audit));
+    let (tx, rx) = tokio::sync::mpsc::channel(64);
+    let worker_config = config.clone();
+    http::spawn_worker(rx, move |client, token_id| {
+        let backend = Varlink {
+            runtime: tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("a current-thread runtime"),
+            socket: socket.clone(),
+            client: None,
+        };
+        let mut server = Server::shared(
+            worker_config.clone(),
+            client,
+            &format!("http:{token_id}"),
+            redactor.clone(),
+            Arc::clone(&audit),
+            backend,
+        );
+        Box::new(move |line| server.handle(line))
+    });
+    let state = Arc::new(State {
+        gate: Gate::new(Arc::new(config)),
+        jobs: tx,
+    });
+    runtime.block_on(http::serve(listener, tls, state));
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // Setting up the HTTP transport: nothing here touches /etc or the core.
+    let sub: Vec<&str> = args.iter().take(2).map(String::as_str).collect();
+    match sub.as_slice() {
+        ["token", "create"] => {
+            let text = ibexwall_mcp::admin::token_create(&args[2..], &mut std::io::stdin())
+                .map_err(|e| anyhow::anyhow!(e))?;
+            print!("{text}");
+            return Ok(());
+        }
+        ["tls-init", ..] => {
+            let text = ibexwall_mcp::admin::tls_init(&args[1..]).map_err(|e| anyhow::anyhow!(e))?;
+            print!("{text}");
+            return Ok(());
+        }
+        _ => {}
+    }
     let dir = flag(&args, "--state-dir")
         .map(PathBuf::from)
         .unwrap_or_else(state_dir);
@@ -132,6 +204,9 @@ fn main() -> Result<()> {
         .append(true)
         .mode(0o600)
         .open(&log_path)?;
+    if args.iter().any(|a| a == "--http") {
+        return run_http(config, socket, redactor, Audit::new(log, seq, prev));
+    }
     let backend = Varlink {
         runtime: tokio::runtime::Builder::new_current_thread()
             .enable_all()

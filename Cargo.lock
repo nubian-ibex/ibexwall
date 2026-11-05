@@ -2520,6 +2520,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ibexwall-plugin-hardening"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-plugin-modules",
+ "ibexwall-plugin-mounts",
+ "ibexwall-plugin-sysctl",
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "ibexwall-plugin-integrity"
 version = "0.1.0"
 dependencies = [
@@ -2538,6 +2552,17 @@ dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
  "ibexwall-sys",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "ibexwall-plugin-modules"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
  "serde",
  "serde_json",
  "tokio",
@@ -2707,8 +2732,10 @@ dependencies = [
  "ibexwall-plugin-firmware",
  "ibexwall-plugin-flatpak-network",
  "ibexwall-plugin-flatpak-perms",
+ "ibexwall-plugin-hardening",
  "ibexwall-plugin-integrity",
  "ibexwall-plugin-isolate",
+ "ibexwall-plugin-modules",
  "ibexwall-plugin-mounts",
  "ibexwall-plugin-nts",
  "ibexwall-plugin-persistence",

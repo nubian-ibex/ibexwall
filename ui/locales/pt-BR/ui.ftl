@@ -466,3 +466,5 @@ remote-cert-hosts-help = Por exemplo: mcp.casa.example, 192.168.1.20. Separe com
 remote-cert-make = Criar o certificado
 remote-cert-replace = Substituir o certificado
 remote-cert-never-shown = A chave privada é criada quando você aplica a mudança. Ela nunca é mostrada e só o servidor MCP consegue lê-la.
+detected-use = Usar esta sugestão
+detected-review = Revisar a mudança sugerida

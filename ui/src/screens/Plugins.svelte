@@ -4,6 +4,7 @@
   import type { PluginInfo } from '../gen/contracts';
   import Button from '../components/Button.svelte';
   import ChangeFlow from '../components/ChangeFlow.svelte';
+  import Detected from '../components/Detected.svelte';
   import FindingRow from '../components/FindingRow.svelte';
   import LockBadge from '../components/LockBadge.svelte';
   import StateMessage from '../components/StateMessage.svelte';
@@ -17,7 +18,7 @@
   const findings = $derived.by(() => {
     const current = selected;
     if (app.findings.status !== 'ready' || !current) return [];
-    return app.findings.data.filter((f) => f.plugin === current.id);
+    return app.findings.data.filter((f) => f.plugin === current.id && !f.id.startsWith('detect.'));
   });
 
   async function toggle(plugin: PluginInfo, value: boolean) {
@@ -126,6 +127,8 @@
                 </li>
               {/each}
             </ul>
+
+            <Detected plugin={selected.id} />
 
             {#if findings.length > 0}
               <h2>{t('plugins-findings')}</h2>

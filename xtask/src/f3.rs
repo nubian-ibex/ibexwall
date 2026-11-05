@@ -407,6 +407,83 @@ getent hosts example.com
         )
     );
 
+    // The corporate case: a local resolver for an internal zone (split DNS)
+    // next to the encrypted default, and the person told about it.
+    scenario!(
+        "d11 a local resolver answers only its own zone; everything else stays encrypted; the plain upstream is announced",
+        &r#"
+set -e
+sudo ip link add ibxdns0 type dummy 2>/dev/null || true
+sudo ip addr add 10.77.0.2/24 dev ibxdns0 2>/dev/null || true
+sudo ip link set ibxdns0 up
+cat > /tmp/ibx-corp-dns.py <<'PYEOF'
+import socket, struct
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.bind(("10.77.0.2", 53))
+log = open("/run/ibx-corp-dns.log", "a", buffering=1)
+while True:
+    data, addr = s.recvfrom(512)
+    i = 12; labels = []
+    while data[i]:
+        labels.append(data[i+1:i+1+data[i]].decode()); i += data[i] + 1
+    qtype = struct.unpack(">H", data[i+1:i+3])[0]
+    log.write(".".join(labels) + "\n")
+    question = data[12:i+5]
+    if qtype == 1 and labels[-2:] == ["corp", "example"]:
+        head = data[:2] + b"\x81\x80\x00\x01\x00\x01\x00\x00\x00\x00"
+        answer = b"\xc0\x0c\x00\x01\x00\x01\x00\x00\x00\x1e\x00\x04\x0a\x09\x09\x09"
+        s.sendto(head + question + answer, addr)
+    else:
+        s.sendto(data[:2] + b"\x81\x83\x00\x01\x00\x00\x00\x00\x00\x00" + question, addr)
+PYEOF
+sudo rm -f /run/ibx-corp-dns.log
+sudo python3 /tmp/ibx-corp-dns.py >/tmp/ibx-corp-dns.out 2>&1 &
+STUB=$!
+trap 'sudo kill $STUB 2>/dev/null || true; sudo ip link del ibxdns0 2>/dev/null || true' EXIT
+sleep 1
+
+P=$(sudo ibexctl plan net.dns --set provider=quad9 --set transport=tls --set 'routes=[{"domains":["corp.example"],"servers":[{"ip":"10.77.0.2","transport":"plain"}]}]' --json 2>/tmp/d11.err | @JSON_ID@) || { echo "PLAN FAILED: $(cat /tmp/d11.err)"; exit 1; }
+OUT=$(sudo ibexctl apply $P --confirm-timeout 300 --json 2>/dev/null || true)
+TX=$(echo "$OUT" | @JSON_ID@) || { echo "APPLY OUTPUT: $OUT"; exit 1; }
+for i in $(seq 1 15); do getent hosts example.com >/dev/null && break; sleep 1; done
+sudo ibexctl confirm "$TX" >/dev/null 2>&1 || true
+
+# The internal zone is answered by the local server; the public name is not.
+ANSWER=$(getent hosts git.corp.example | awk '{print $1}')
+[ "$ANSWER" = 10.9.9.9 ] || { echo "SPLIT DNS DID NOT ANSWER: [$ANSWER]"; echo "--- stub log:"; sudo cat /run/ibx-corp-dns.log; echo "--- stub out:"; cat /tmp/ibx-corp-dns.out | tail -5; echo "--- resolver:"; sudo journalctl -u ibexwall-dns -n 8 --no-pager; echo "--- settings:"; sudo cat /etc/ibexwall/dns/resolver.json | head -c 600; echo; echo "--- direct:"; python3 -c "
+import socket
+s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.settimeout(2)
+q=bytes.fromhex('1234010000010000000000000367697404636f727007657861 6d706c6500000100 01'.replace(' ',''))
+s.sendto(q,('10.77.0.2',53)); print(s.recvfrom(512)[0][:20].hex())" 2>&1 | tail -2; echo "--- via stub:"; getent hosts git.corp.example; dig +short @127.0.0.153 git.corp.example 2>&1 | head -3; exit 1; }
+getent hosts example.com >/dev/null || { echo "THE ENCRYPTED DEFAULT DOES NOT ANSWER"; exit 1; }
+if sudo grep -q '^example.com' /run/ibx-corp-dns.log; then echo "A PUBLIC NAME REACHED THE CORPORATE SERVER"; sudo cat /run/ibx-corp-dns.log; exit 1; fi
+sudo grep -q '^git.corp.example' /run/ibx-corp-dns.log || { echo "THE CORPORATE SERVER WAS NOT ASKED"; exit 1; }
+echo "METRIC: git.corp.example -> $ANSWER from the local server; example.com never reached it"
+# The journal holds no query names: the resolver must not record browsing.
+if sudo journalctl -u ibexwall-dns --no-pager | grep -qE 'corp\.example|example\.com'; then echo "QUERY NAMES ARE IN THE JOURNAL"; sudo journalctl -u ibexwall-dns --no-pager | grep -E 'corp\.example|example\.com' | head -3; exit 1; fi
+echo "METRIC: no query name in the resolver's journal"
+
+# The person is told that part of their DNS is unencrypted, and where.
+sudo ibexctl check net.dns --json > /tmp/d11-check.json 2>/dev/null || true
+python3 -c '
+import json
+f = {x["id"]: x for x in json.load(open("/tmp/d11-check.json"))["findings"]}
+assert "dns.plain_upstream" in f, list(f)
+assert f["dns.plain_upstream"]["args"]["servers"] == "10.77.0.2", f["dns.plain_upstream"]
+assert f["dns.plain_upstream"]["severity"] == "info"
+print("announced")'
+echo "METRIC: the check announces the unencrypted local upstream (10.77.0.2) as information"
+
+# Plain DNS to a public address is refused at plan time.
+if sudo ibexctl plan net.dns --set 'servers=[{"ip":"8.8.8.8","transport":"plain"}]' --json >/dev/null 2>&1; then echo "PLAIN DNS TO A PUBLIC ADDRESS WAS PLANNED"; exit 1; fi
+
+sudo ibexctl rollback "$TX" --json >/dev/null || { echo "ROLLBACK FAILED"; exit 1; }
+sudo test ! -e /etc/ibexwall/dns/resolver.json
+for i in $(seq 1 15); do getent hosts example.com >/dev/null && break; sleep 1; done
+getent hosts example.com
+"#.replace("@JSON_ID@", JSON_ID)
+    );
+
     if failures == 0 {
         println!("PASS: f3 phase (all scenarios)");
         Ok(())

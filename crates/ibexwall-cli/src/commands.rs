@@ -320,3 +320,87 @@ pub(crate) async fn proposals(
     }
     Ok(Finish::Done)
 }
+
+pub(crate) struct McpToken<'a> {
+    pub name: &'a str,
+    pub preset: &'a str,
+    pub client: Option<String>,
+    pub id: Option<String>,
+    pub expires: Option<String>,
+    pub secret_stdin: bool,
+}
+
+/// Makes the token here, shows it once, and plans the change with its hash:
+/// the secret never reaches the daemon, a plan or a log.
+pub(crate) async fn mcp_token(
+    client: &mut ibexwall_varlink::Client,
+    request: McpToken<'_>,
+    json: bool,
+) -> Result<Finish, CliError> {
+    use std::io::Read;
+    let id = match request.id {
+        Some(id) => id,
+        None => {
+            let bytes = ibexwall_token::random_bytes(4).map_err(|e| CliError::Other(e.into()))?;
+            bytes
+                .iter()
+                .map(|b| format!("{:02x}", b))
+                .collect::<String>()
+                .chars()
+                .take(8)
+                .collect()
+        }
+    };
+    let client_name = request.client.unwrap_or_else(|| format!("remote-{id}"));
+    let secret = if request.secret_stdin {
+        let mut text = String::new();
+        std::io::stdin()
+            .take(512)
+            .read_to_string(&mut text)
+            .map_err(|e| CliError::Other(e.into()))?;
+        Some(text.trim().to_string())
+    } else {
+        None
+    };
+    let created = ibexwall_token::create(
+        &id,
+        request.name,
+        &client_name,
+        request.expires.as_deref(),
+        secret.as_deref(),
+    )
+    .map_err(|e| CliError::Other(anyhow::anyhow!(e)))?;
+    let hash = created
+        .stanza
+        .lines()
+        .find_map(|l| l.strip_prefix("hash = \""))
+        .and_then(|l| l.strip_suffix('"'))
+        .ok_or_else(|| CliError::Other(anyhow::anyhow!("no hash was made")))?
+        .to_string();
+    let mut config = serde_json::json!({
+        "action": "token_add", "id": id, "name": request.name,
+        "client": client_name, "preset": request.preset, "hash": hash,
+    });
+    if let Some(day) = &request.expires {
+        config["expires"] = serde_json::json!(day);
+    }
+    let params = serde_json::json!({ "plugin": "system.assistant", "patch": config });
+    let value = client.call("com.ibexwall.Core.PlanChange", params).await?;
+    if json {
+        emit(
+            serde_json::json!({ "token": created.token, "plan": value["plan"] }),
+            json,
+        );
+    } else {
+        println!(
+            "Token (shown once; copy it now, only its hash is kept):\n\n  {}\n",
+            created.token
+        );
+        println!("plan {} for system.assistant", value["plan"]["id"]);
+        println!("apply with: ibexctl apply {}", value["plan"]["id"]);
+        println!(
+            "Then, on the client, keep the token in IBEXWALL_MCP_TOKEN. For the address and the certificate: ibexctl mcp config <client> --url https://HOST:PORT/mcp"
+        );
+    }
+    Ok(Finish::Done)
+}

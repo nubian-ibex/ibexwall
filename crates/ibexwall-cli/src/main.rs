@@ -180,6 +180,28 @@ enum McpAction {
         #[arg(long, value_name = "https://HOST:PORT/mcp")]
         url: Option<String>,
     },
+    /// Make an access token for an assistant on another machine and plan the
+    /// change that lets it in. The token is shown once; only its hash is sent.
+    Token {
+        /// What the token is for, e.g. "work laptop".
+        #[arg(long)]
+        name: String,
+        /// What the assistant may do: read, plan or propose.
+        #[arg(long, default_value = "read")]
+        preset: String,
+        /// The client entry it belongs to (default: `remote-ID`).
+        #[arg(long)]
+        client: Option<String>,
+        /// Three to sixteen lowercase letters or digits (default: random).
+        #[arg(long)]
+        id: Option<String>,
+        /// Last day it works, YYYY-MM-DD.
+        #[arg(long)]
+        expires: Option<String>,
+        /// Read your own secret from standard input instead of generating one.
+        #[arg(long)]
+        secret_stdin: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -338,6 +360,31 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
         Command::Plugins { action } => plugins(client, action, json).await,
         Command::Apps { action } => apps(client, action, json).await,
         Command::Prompts { action } => prompts(client, action, json).await,
+        Command::Mcp {
+            action:
+                McpAction::Token {
+                    name,
+                    preset,
+                    client: for_client,
+                    id,
+                    expires,
+                    secret_stdin,
+                },
+        } => {
+            mcp_token(
+                client,
+                McpToken {
+                    name,
+                    preset,
+                    client: for_client.clone(),
+                    id: id.clone(),
+                    expires: expires.clone(),
+                    secret_stdin: *secret_stdin,
+                },
+                json,
+            )
+            .await
+        }
         Command::Mcp { .. } => Ok(Finish::Done),
         Command::Proposals { action } => proposals(client, action, json).await,
         Command::Firewall { action } => firewall(client, action, json).await,

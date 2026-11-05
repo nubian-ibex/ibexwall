@@ -3,7 +3,7 @@
 
 # F9 report: VPN and endpoint
 
-Date: 2026-11-04. Plan: `docs/plans/F9-vpn-and-endpoint.md`. ADR: 0040
+Date: 2026-11-04. Plan: `docs/archive/plans/F9-vpn-and-endpoint.md`. ADR: 0040
 (OpenVPN import deferred; proposed, the maintainer decides).
 
 ## What was done

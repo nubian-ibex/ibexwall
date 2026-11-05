@@ -3,7 +3,7 @@
 
 # F4 report: apps and traffic (monitor)
 
-Date: 2026-11-03. Plan: `docs/plans/F4-apps-traffic.md`. ADRs: 0031, 0032,
+Date: 2026-11-03. Plan: `docs/archive/plans/F4-apps-traffic.md`. ADRs: 0031, 0032,
 0033.
 
 ## What was done

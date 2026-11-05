@@ -63,8 +63,12 @@ sudo ibexctl plugins list --json | grep -c '"id": "system.posture"'
     scenario!(
         "p1 checks produce findings",
         r#"
-sudo ibexctl check --json >/dev/null 2>&1; RC=$?
-[ "$RC" -eq 10 ] || [ "$RC" -eq 0 ]
+sudo ibexctl check --json >/tmp/p1.out 2>&1; RC=$?
+if [ "$RC" -ne 10 ] && [ "$RC" -ne 0 ]; then
+  head -c 400 /tmp/p1.out
+  sudo journalctl -b --no-pager | grep -E "ibexwall-plugin-[a-z-]+\.service.*(Failed|failed)" | tail -6
+  exit 1
+fi
 sudo ibexctl findings --json | python3 -c '
 import json,sys
 findings=json.load(sys.stdin)["findings"]
@@ -75,6 +79,29 @@ ids={f["id"] for f in findings}
 assert "posture.firewall" in ids, ids
 assert any(i.startswith("ports.") for i in ids), ids
 print("findings ok:", len(findings))'
+"#
+    );
+
+    // M3 (F10): a plugin is not a child of the daemon. Its socket unit starts
+    // it in its own service, as a dynamic user, with only the capabilities
+    // its manifest declares.
+    scenario!(
+        "p3 each plugin runs in its own sandboxed unit, not as a child of the daemon",
+        r#"
+sudo ibexctl check --json >/dev/null 2>&1 || true
+for u in ibexwall-plugin-posture ibexwall-plugin-ports; do
+  systemctl is-active --quiet $u.service || { echo "$u IS NOT RUNNING AS ITS OWN UNIT"; exit 1; }
+  P=$(systemctl show $u.service -p MainPID --value)
+  [ "$P" -gt 0 ] || { echo "NO PID FOR $u"; exit 1; }
+  [ "$(ps -o ppid= -p $P | tr -d ' ')" = 1 ] || { echo "$u IS NOT A CHILD OF SYSTEMD"; exit 1; }
+  [ "$(ps -o user= -p $P | tr -d ' ')" != root ] || { echo "$u RUNS AS ROOT"; exit 1; }
+  [ "$(systemctl show $u.service -p DynamicUser --value)" = yes ] || { echo "$u IS NOT A DYNAMIC USER"; exit 1; }
+  [ "$(systemctl show $u.service -p NoNewPrivileges --value)" = yes ] || { echo "$u CAN GAIN PRIVILEGES"; exit 1; }
+  echo "METRIC: $u: $(systemd-analyze security $u.service --no-pager 2>&1 | tail -1)"
+done
+DAEMON=$(systemctl show ibexwalld.service -p MainPID --value)
+[ -z "$(pgrep -P $DAEMON)" ] || { echo "THE DAEMON HAS CHILD PROCESSES: $(pgrep -P $DAEMON | tr '\n' ' ')"; exit 1; }
+echo "METRIC: the daemon has no plugin children; plugins are units under systemd"
 "#
     );
 

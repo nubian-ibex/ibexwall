@@ -27,9 +27,10 @@ for id in system.posture system.ports net.dns; do
     # Copy then rename: a running plugin binary cannot be overwritten in
     # place (ETXTBSY) but it can be replaced.
     # The official plugins are one multicall binary reached through a link.
-    cp "$repo/target/debug/ibexwall-plugins" "$root/usr/lib/ibexwall/.plugins.new"
-    mv -f "$root/usr/lib/ibexwall/.plugins.new" "$root/usr/lib/ibexwall/ibexwall-plugins"
-    ln -sf "$root/usr/lib/ibexwall/ibexwall-plugins" "$plugins/$id/$bin"
+    mkdir -p "$root/usr/libexec/ibexwall"
+    cp "$repo/target/debug/ibexwall-plugins" "$root/usr/libexec/ibexwall/.plugins.new"
+    mv -f "$root/usr/libexec/ibexwall/.plugins.new" "$root/usr/libexec/ibexwall/ibexwall-plugins"
+    ln -sf "$root/usr/libexec/ibexwall/ibexwall-plugins" "$plugins/$id/$bin"
     for file in "$repo/plugins/$id/plugin.toml" \
         "$repo/plugins/$id/plugin.toml.sig"; do
         name=$(basename -- "$file")

@@ -14,7 +14,14 @@ import type {
   Proposal,
   Transaction,
 } from '../gen/contracts';
-import { TransportError, type AppsListing, type PromptScope, type Transport } from './transport';
+import {
+  TransportError,
+  type AppsListing,
+  type NewToken,
+  type NewTokenRequest,
+  type PromptScope,
+  type Transport,
+} from './transport';
 
 /// True when running inside the Tauri shell.
 export function insideTauri(): boolean {
@@ -110,6 +117,10 @@ export class TauriTransport implements Transport {
 
   async getManifest(id: string): Promise<Record<string, unknown>> {
     return invoke('get_manifest', { id });
+  }
+
+  makeAssistantToken(request: NewTokenRequest) {
+    return invoke<NewToken>('make_assistant_token', { ...request });
   }
 
   planChange(plugin: string, patch: Record<string, unknown>) {

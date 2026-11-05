@@ -25,6 +25,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 ibexwall-proto.workspace = true
+ibexwall-token.workspace = true
 ibexwall-varlink.workspace = true
 serde_json.workspace = true
 serde.workspace = true

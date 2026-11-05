@@ -17,7 +17,13 @@ import type {
   Proposal,
   Transaction,
 } from '../gen/contracts';
-import { TransportError, type AppsListing, type PromptScope, type Transport } from './transport';
+import {
+  TransportError,
+  type AppsListing,
+  type NewTokenRequest,
+  type PromptScope,
+  type Transport,
+} from './transport';
 
 export type Scenario = 'attention' | 'protected' | 'empty' | 'error' | 'denied';
 
@@ -90,6 +96,20 @@ const FINDINGS: Finding[] = [
 const DNS_NOTES: Finding[] = [
   finding('dns.network_servers', 'net.dns', 'info', 'dns-network-servers', {
     servers: '192.168.1.1, 10.8.0.1',
+  }),
+];
+
+const ASSISTANT_NOTES: Finding[] = [
+  finding('assistant.http', 'system.assistant', 'info', 'assistant-http', {
+    enabled: 'true',
+    listen: '127.0.0.1:8765',
+  }),
+  finding('assistant.token.k1x', 'system.assistant', 'info', 'assistant-token', {
+    id: 'k1x',
+    name: 'work laptop',
+    client: 'remote-k1x',
+    preset: 'plan',
+    expires: '2027-01-01',
   }),
 ];
 
@@ -401,6 +421,7 @@ export class FixtureTransport implements Transport {
       // What the DNS screen says about the network; kept out of the general
       // list so it does not count as something to fix.
       if (plugin === 'net.dns') return this.scenario === 'attention' ? DNS_NOTES : [];
+      if (plugin === 'system.assistant') return ASSISTANT_NOTES;
       if (this.scenario === 'empty' || this.scenario === 'protected') return [];
       return plugin ? FINDINGS.filter((f) => f.plugin === plugin) : FINDINGS;
     });
@@ -494,7 +515,23 @@ export class FixtureTransport implements Transport {
     return this.gate(() => undefined);
   }
 
-  planChange(plugin: string) {
+  makeAssistantToken(request: NewTokenRequest) {
+    return this.gate(() => ({
+      token: 'ibx_fix01_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789',
+      patch: {
+        action: 'token_add',
+        id: 'fix01',
+        name: request.name,
+        client: request.client || 'remote-fix01',
+        preset: request.preset,
+        hash: '$argon2id$v=19$fixture',
+      },
+    }));
+  }
+
+  // The patch is part of the contract; the fixture plan does not depend on it.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  planChange(plugin: string, _patch?: Record<string, unknown>) {
     return this.gate((): Plan => ({
       id: 'plan-fixture-1',
       plugin,

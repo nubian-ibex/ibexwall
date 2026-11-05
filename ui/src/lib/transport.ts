@@ -43,6 +43,21 @@ export interface AppsListing {
   apps: AppEntry[];
 }
 
+/** A new access token: shown once, with the plan patch that holds only its hash. */
+export interface NewToken {
+  token: string;
+  patch: Record<string, unknown>;
+}
+
+export interface NewTokenRequest {
+  name: string;
+  preset: string;
+  client?: string;
+  expires?: string;
+  /** The person's own secret; empty to have one generated. */
+  secret?: string;
+}
+
 export interface Transport {
   getInfo(): Promise<Info>;
   getPosture(): Promise<Posture>;
@@ -69,4 +84,6 @@ export interface Transport {
   listProposals(status?: Proposal['status']): Promise<Proposal[]>;
   /** Approving applies the reviewed plan; the core refuses it if the plan changed. */
   decideProposal(id: string, decision: 'approve' | 'reject'): Promise<void>;
+  /** Makes an access token on this machine; the secret never goes through the core. */
+  makeAssistantToken(request: NewTokenRequest): Promise<NewToken>;
 }

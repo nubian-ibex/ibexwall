@@ -7,6 +7,7 @@
   import Button from '../components/Button.svelte';
   import Callouts from '../components/Callouts.svelte';
   import DiffViewer from '../components/DiffViewer.svelte';
+  import ConnectAssistant from '../components/ConnectAssistant.svelte';
   import StateMessage from '../components/StateMessage.svelte';
 
   let proposals = $state<Proposal[] | null>(null);
@@ -59,6 +60,8 @@
     <li>{t('assistant-promise-undo')}</li>
   </ul>
 </section>
+
+<ConnectAssistant />
 
 {#if problem}
   <p class="problem" role="alert">{t(problem)}</p>

@@ -31,13 +31,19 @@ fn settings_path() -> PathBuf {
     }
 }
 
+/// The DNS libraries log every query (the name asked) at info level, which
+/// would put the user's browsing into the journal; only warnings and errors
+/// of theirs are kept. `RUST_LOG` can still override this when debugging.
+const DEFAULT_FILTER: &str =
+    "info,hickory_server=warn,hickory_proto=warn,hickory_resolver=warn,hickory_net=warn";
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(DEFAULT_FILTER)),
         )
         .init();
     if let Err(error) = run().await {
@@ -90,9 +96,20 @@ async fn run() -> Result<()> {
     )
     .with_context(|| format!("parsing {}", path.display()))?;
 
+    settings.validate()?;
     let resolver = build_resolver(&settings.servers)?;
+    let mut routes = Vec::new();
+    for route in &settings.routes {
+        let route_resolver = build_resolver(&route.servers)?;
+        for domain in &route.domains {
+            routes.push((
+                domain.trim_end_matches('.').to_ascii_lowercase(),
+                route_resolver.clone(),
+            ));
+        }
+    }
     let store = Arc::new(Store::new(lists::default_dir()));
-    let mut handler = Handler::new(build_policy(&settings, &store), resolver);
+    let mut handler = Handler::new(build_policy(&settings, &store), resolver).with_routes(routes);
     // Optional: without a listening core the sink just drops its datagrams.
     if let Ok(sink) = ibexwall_dns::answers::AnswerSink::new(names::dns_answers_socket()) {
         handler = handler.with_answer_sink(sink);
@@ -126,5 +143,21 @@ async fn run() -> Result<()> {
         result = server.block_until_done() => result.map_err(Into::into),
         _ = term.recv() => Ok(()),
         _ = int.recv() => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DEFAULT_FILTER;
+
+    #[test]
+    fn the_default_log_filter_keeps_the_libraries_that_log_query_names_quiet() {
+        for target in ["hickory_server", "hickory_proto", "hickory_resolver"] {
+            assert!(
+                DEFAULT_FILTER.contains(&format!("{target}=warn")),
+                "{target}"
+            );
+        }
+        assert!(tracing_subscriber::EnvFilter::try_new(DEFAULT_FILTER).is_ok());
     }
 }

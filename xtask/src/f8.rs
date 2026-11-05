@@ -54,7 +54,7 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
             "build",
             "--release",
             "-p",
-            "ibexwall-plugin-sysctl",
+            "ibexwall-plugins",
             "-p",
             "ibexwall-exec",
             "-p",

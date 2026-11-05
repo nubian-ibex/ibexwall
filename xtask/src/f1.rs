@@ -251,11 +251,26 @@ pub(crate) fn install_plugin(vm: &Vm, workspace: &Path, id: &str) -> Result<()> 
     );
     let target = format!("/usr/lib/ibexwall/plugins/{id}");
     vm.ssh(&format!("sudo mkdir -p {target}"))?;
-    install_binary(
-        vm,
-        &workspace.join("target/release").join(&bin),
-        &format!("{target}/{bin}"),
-    )?;
+    if id == "dev.echo" {
+        install_binary(
+            vm,
+            &workspace.join("target/release").join(&bin),
+            &format!("{target}/{bin}"),
+        )?;
+    } else {
+        // The official plugins are one multicall binary (ADR-0041), reached
+        // through a link named after the plugin. Written beside and renamed
+        // into place: a running plugin cannot be overwritten (ETXTBSY).
+        let shared = "/usr/lib/ibexwall/ibexwall-plugins";
+        pipe_file(
+            vm,
+            &workspace.join("target/release/ibexwall-plugins"),
+            &format!(
+                "sudo tee {shared}.new >/dev/null && sudo chmod 755 {shared}.new && sudo mv -f {shared}.new {shared}"
+            ),
+        )?;
+        vm.ssh(&format!("sudo ln -sf {shared} {target}/{bin}"))?;
+    }
     pipe_file(
         vm,
         &dir.join("plugin.toml"),

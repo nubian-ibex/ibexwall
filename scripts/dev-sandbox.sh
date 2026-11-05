@@ -11,7 +11,7 @@ export IBEXWALL_ROOT="$root"
 # The desktop binary must carry the built frontend (a plain debug build
 # looks for the Vite dev server instead and shows "connection refused"):
 #   (cd ui && pnpm build) && cargo build -p ibexwall-core -p ibexwall-cli \
-#     -p ibexwall-plugin-posture -p ibexwall-plugin-ports -p ibexwall-plugin-dns
+#     -p ibexwall-plugins
 #   cargo build --manifest-path ui/src-tauri/Cargo.toml --features custom-protocol
 for bin in ibexwalld ibexwall-desktop; do
     [ -x "$repo/target/debug/$bin" ] || {
@@ -26,7 +26,11 @@ for id in system.posture system.ports net.dns; do
     bin="ibexwall-plugin-${id#*.}"
     # Copy then rename: a running plugin binary cannot be overwritten in
     # place (ETXTBSY) but it can be replaced.
-    for file in "$repo/target/debug/$bin" "$repo/plugins/$id/plugin.toml" \
+    # The official plugins are one multicall binary reached through a link.
+    cp "$repo/target/debug/ibexwall-plugins" "$root/usr/lib/ibexwall/.plugins.new"
+    mv -f "$root/usr/lib/ibexwall/.plugins.new" "$root/usr/lib/ibexwall/ibexwall-plugins"
+    ln -sf "$root/usr/lib/ibexwall/ibexwall-plugins" "$plugins/$id/$bin"
+    for file in "$repo/plugins/$id/plugin.toml" \
         "$repo/plugins/$id/plugin.toml.sig"; do
         name=$(basename -- "$file")
         cp "$file" "$plugins/$id/.$name.new"

@@ -438,6 +438,18 @@ pub fn group_allowed(group: &str) -> bool {
     group == "root" || NAMED_GROUPS.contains(&group) || group.parse::<u32>().is_ok()
 }
 
+/// File ownership a plugin may set: `root` or unset, nothing else.
+pub fn owner_allowed(owner: &str) -> bool {
+    owner.is_empty() || owner == "root"
+}
+
+/// File group a plugin may set: `root`, unset, or one of IbexWall's own
+/// groups. An arbitrary numeric gid would let a plugin hand a file to
+/// any group on the machine.
+pub fn named_group_allowed(group: &str) -> bool {
+    group.is_empty() || group == "root" || NAMED_GROUPS.contains(&group)
+}
+
 fn gid_in(group_file: &str, name: &str) -> Option<u32> {
     group_file.lines().find_map(|line| {
         let mut fields = line.split(':');

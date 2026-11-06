@@ -46,15 +46,41 @@ pub fn validate(ops: &[Op], manifest: &Manifest) -> Result<Vec<RiskFlag>, OpErro
 
 fn validate_one(op: &Op, manifest: &Manifest) -> Result<(), OpError> {
     match op {
-        Op::FileWrite { path, mode, .. } => {
+        Op::FileWrite {
+            path,
+            mode,
+            owner,
+            group,
+            ..
+        } => {
             validate_path(path, "file.write.path")?;
             if !path_under_any(path, &manifest.privileges.write_paths) {
                 return Err(OpError::PathNotWritable { path: path.clone() });
             }
-            parse_mode(mode).ok_or_else(|| OpError::Invalid {
+            let parsed = parse_mode(mode).ok_or_else(|| OpError::Invalid {
                 field: "mode",
                 reason: format!("`{mode}` is not an octal mode like 0644"),
             })?;
+            // A plugin file must never be setuid/setgid or writable by
+            // another user: it ends up under root ownership in /etc.
+            if parsed & 0o6000 != 0 || parsed & 0o022 != 0 {
+                return Err(OpError::Invalid {
+                    field: "mode",
+                    reason: "refusing setuid/setgid or group/world-writable mode".into(),
+                });
+            }
+            if !ibexwall_sys::ops::owner_allowed(owner) {
+                return Err(OpError::Invalid {
+                    field: "owner",
+                    reason: "only `root` or empty".into(),
+                });
+            }
+            if !ibexwall_sys::ops::named_group_allowed(group) {
+                return Err(OpError::Invalid {
+                    field: "group",
+                    reason: "only `root`, empty or IbexWall's own groups".into(),
+                });
+            }
             Ok(())
         }
         Op::FileRemove { path } => {
@@ -1005,6 +1031,37 @@ reversible = "immediate"
         assert!(
             validate(
                 std::slice::from_ref(&write("/etc/sysctl.d/99-ibexwall.conf")),
+                &manifest
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn writable_or_setuid_modes_and_arbitrary_ownership_are_refused() {
+        let manifest = manifest();
+        let write = |mode: &str, owner: &str, group: &str| Op::FileWrite {
+            path: "/etc/sysctl.d/x".into(),
+            content: "x".into(),
+            mode: mode.into(),
+            owner: owner.into(),
+            group: group.into(),
+        };
+        for (mode, owner, group) in [
+            ("0666", "", ""),  // world writable
+            ("0664", "", ""),  // group writable
+            ("04755", "", ""), // setuid
+            ("0644", "1000", ""),
+            ("0644", "", "10"), // arbitrary numeric gid
+        ] {
+            assert!(
+                validate(std::slice::from_ref(&write(mode, owner, group)), &manifest).is_err(),
+                "{mode} {owner} {group} must be refused"
+            );
+        }
+        assert!(
+            validate(
+                std::slice::from_ref(&write("0644", "root", "root")),
                 &manifest
             )
             .is_ok()

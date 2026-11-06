@@ -128,11 +128,28 @@ impl Handler for Api {
                     }
                 }
                 let mut receiver = core.events.subscribe();
-                while let Ok(event) = receiver.recv().await {
-                    let frame =
-                        Reply::result_continues(serde_json::to_value(&event).unwrap_or_default());
-                    if out.send(frame).await.is_err() {
-                        break; // client gone
+                loop {
+                    match receiver.recv().await {
+                        Ok(event) => {
+                            let frame = Reply::result_continues(
+                                serde_json::to_value(&event).unwrap_or_default(),
+                            );
+                            if out.send(frame).await.is_err() {
+                                break; // client gone
+                            }
+                        }
+                        // A subscriber that fell behind still deserves a
+                        // final frame instead of a hung connection.
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                            let _ = out
+                                .send(Reply::error(
+                                    "com.ibexwall.Core.Lagged",
+                                    json!({ "reason": "events were dropped for this subscriber" }),
+                                ))
+                                .await;
+                            break;
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                     }
                 }
                 return;
@@ -653,10 +670,14 @@ async fn plan_change(core: &Arc<Core>, parameters: &Value) -> Result<Reply, Varl
 
 async fn apply(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkError> {
     let plan_id = str_field(parameters, "plan_id")?;
+    // The confirmation window is bounded: a negative value would roll
+    // back at once, a huge one would disable the safety net, and the
+    // addition would overflow.
     let confirm_timeout_s = parameters
         .get("confirm_timeout_s")
         .and_then(Value::as_i64)
-        .unwrap_or(CONFIRM_TIMEOUT_S);
+        .unwrap_or(CONFIRM_TIMEOUT_S)
+        .clamp(1, 3_600);
 
     let plan = core
         .state

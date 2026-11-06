@@ -117,9 +117,9 @@ pub fn create(
     if name.is_empty()
         || name.len() > 60
         || name.chars().any(char::is_control)
-        || name.contains('"')
+        || name.contains(['"', '\\'])
     {
-        return Err("the name is 1 to 60 characters, without quotes".into());
+        return Err("the name is 1 to 60 characters, without quotes or backslashes".into());
     }
     if client.is_empty()
         || !client
@@ -155,15 +155,34 @@ pub fn create(
 
 pub fn valid_day(day: &str) -> bool {
     let b = day.as_bytes();
-    b.len() == 10
+    let digits_ok = b.len() == 10
         && b[4] == b'-'
         && b[7] == b'-'
         && day
             .bytes()
             .enumerate()
-            .all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit())
-        && (1..=12).contains(&day[5..7].parse::<u32>().unwrap_or(0))
-        && (1..=31).contains(&day[8..10].parse::<u32>().unwrap_or(0))
+            .all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit());
+    if !digits_ok {
+        return false;
+    }
+    let year = day[0..4].parse::<u32>().unwrap_or(0);
+    let month = day[5..7].parse::<u32>().unwrap_or(0);
+    let day_num = day[8..10].parse::<u32>().unwrap_or(0);
+    (1..=12).contains(&month) && day_num >= 1 && day_num <= days_in_month(year, month)
+}
+
+fn days_in_month(year: u32, month: u32) -> u32 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if is_leap(year) => 29,
+        2 => 28,
+        _ => 0,
+    }
+}
+
+fn is_leap(year: u32) -> bool {
+    (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400)
 }
 
 #[cfg(test)]
@@ -261,5 +280,13 @@ mod tests {
         assert_eq!(base64url(b"fo"), "Zm8");
         assert_eq!(base64url(b"foo"), "Zm9v");
         assert_eq!(base64url(b"foobar"), "Zm9vYmFy");
+    }
+    #[test]
+    fn a_backslash_name_or_an_impossible_date_is_refused() {
+        assert!(create("k1x", "bad\\name", "claude-code", None, None).is_err());
+        assert!(create("k1x", "ok", "claude-code", Some("2026-02-31"), None).is_err());
+        assert!(create("k1x", "ok", "claude-code", Some("2026-02-28"), None).is_ok());
+        assert!(create("k1x", "ok", "claude-code", Some("2024-02-29"), None).is_ok());
+        assert!(create("k1x", "ok", "claude-code", Some("2025-02-29"), None).is_err());
     }
 }

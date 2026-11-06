@@ -145,6 +145,85 @@ PYEOF
     );
 
     scenario!(
+        "d0c a running dnscrypt-proxy is recognised: no change is offered and the check passes",
+        r#"
+set -e
+if command -v dnf >/dev/null; then sudo dnf install -y -q dnscrypt-proxy >/dev/null
+elif command -v apt-get >/dev/null; then sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install -y -qq dnscrypt-proxy >/dev/null
+else sudo pacman -S --noconfirm --needed dnscrypt-proxy >/dev/null; fi
+CONF=/etc/dnscrypt-proxy/dnscrypt-proxy.toml
+sudo test -f $CONF || { echo "NO CONFIG AT $CONF"; exit 1; }
+# A self-contained setup (one static resolver, no list to download, no probe
+# of the network) so the proxy starts the same way on every distribution and
+# sends no clear DNS of its own. Where the package starts it by its socket
+# (Debian, Ubuntu, Arch), that is how it runs here, and the system resolver
+# is pointed at the socket's address.
+sudo cp $CONF /tmp/dnscrypt-proxy.toml.orig
+SOCKET_ADDR=$(systemctl show dnscrypt-proxy.socket -p Listen --value 2>/dev/null | head -1 | sed -E 's/ \(.*//')
+if [ -n "$SOCKET_ADDR" ]; then LISTEN="[]"; ADDR=${SOCKET_ADDR%:*}; else LISTEN="['127.0.0.1:53']"; ADDR=127.0.0.1; fi
+sudo tee $CONF >/dev/null <<TOMLEOF
+listen_addresses = $LISTEN
+server_names = ['cf']
+ignore_system_dns = true
+netprobe_timeout = -1
+require_dnssec = true
+require_nolog = true
+require_nofilter = true
+[static.'cf']
+stamp = 'sdns://AgcAAAAAAAAABzEuMC4wLjEAEmRucy5jbG91ZGZsYXJlLmNvbQovZG5zLXF1ZXJ5'
+TOMLEOF
+if [ -n "$SOCKET_ADDR" ]; then
+  sudo systemctl stop dnscrypt-proxy.service
+  sudo systemctl enable --now dnscrypt-proxy.socket >/dev/null 2>&1
+  # A first query starts the proxy through its socket.
+  python3 - "$ADDR" <<'PYEOF' || true
+import socket, sys
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.settimeout(3)
+q = b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x07example\x03com\x00\x00\x01\x00\x01"
+try:
+    s.sendto(q, (sys.argv[1], 53))
+    s.recv(512)
+except OSError:
+    pass
+PYEOF
+else
+  sudo systemctl restart dnscrypt-proxy.service
+fi
+sleep 4
+systemctl is-active --quiet dnscrypt-proxy.service || systemctl is-active --quiet dnscrypt-proxy.socket || { echo "dnscrypt-proxy DID NOT STAY UP"; systemctl status dnscrypt-proxy.service --no-pager | head -8; sudo journalctl -u dnscrypt-proxy -n 12 --no-pager | cut -c1-200; exit 1; }
+sudo mkdir -p /etc/systemd/resolved.conf.d
+printf "[Resolve]\nDNS=$ADDR\nDomains=~.\n" | sudo tee /etc/systemd/resolved.conf.d/90-test-dnscrypt.conf >/dev/null
+sudo systemctl restart systemd-resolved
+cleanup() {
+  sudo rm -f /etc/systemd/resolved.conf.d/90-test-dnscrypt.conf
+  sudo systemctl restart systemd-resolved
+  sudo systemctl disable --now dnscrypt-proxy.service dnscrypt-proxy.socket >/dev/null 2>&1 || true
+  sudo cp /tmp/dnscrypt-proxy.toml.orig $CONF
+}
+trap cleanup EXIT
+sudo ibexctl plugins enable net.dns >/dev/null
+sudo ibexctl check net.dns --json >/tmp/detect-proxy.json 2>&1 || true
+python3 - <<'PYEOF'
+import json
+d = json.JSONDecoder().raw_decode(open("/tmp/detect-proxy.json").read())[0]
+n = [x for x in d["findings"] if x["id"] == "detect.dns"]
+assert len(n) == 1, [x["id"] for x in d["findings"]]
+a = n[0]["args"]
+assert a["case"] == "proxy", a
+assert a["proxy"] == "dnscrypt-proxy" and "patch" not in a, a
+assert "dns.secure_resolver" not in [x["id"] for x in d["findings"]], d["findings"]
+print("METRIC: dnscrypt-proxy recognised, resolvers", a["resolvers"])
+PYEOF
+if sudo ibexctl plan net.dns --set provider=quad9 --set transport=tls --json >/tmp/plan-proxy.json 2>&1; then
+  echo "A PLAN WAS OFFERED OVER DNSCRYPT"; cat /tmp/plan-proxy.json; exit 1
+fi
+grep -q dnscrypt-proxy /tmp/plan-proxy.json || { echo "THE REFUSAL DOES NOT NAME THE PROXY"; cat /tmp/plan-proxy.json; exit 1; }
+echo "METRIC: a plan over dnscrypt-proxy is refused with a reason"
+"#
+    );
+
+    scenario!(
         "d1 plan and apply: resolver up, resolved points at it",
         &format!(
             r#"

@@ -9,7 +9,9 @@ use ibexwall_proto::Finding;
 use ibexwall_sdk::{Sandbox, detect::detected};
 use serde_json::json;
 
-use super::{Backend, backend, dropin_points_at_resolver, network_servers, resolver_listening};
+use super::{
+    Backend, backend, dropin_points_at_resolver, network_servers, proxy, resolver_listening,
+};
 
 /// Whether systemd-resolved is told to use TLS (`yes` or `opportunistic`).
 fn resolved_uses_tls(sandbox: &Sandbox) -> bool {
@@ -51,9 +53,32 @@ fn other_stack(sandbox: &Sandbox) -> &'static str {
 pub fn dns(sandbox: &Sandbox, at: &str) -> Finding {
     let servers = network_servers(sandbox).join(", ");
     let mut args = BTreeMap::from([("servers".to_string(), servers)]);
+    let local_proxy = proxy::local_encrypting_proxy(sandbox);
     let case = match backend::detect(sandbox) {
         Backend::Resolved if dropin_points_at_resolver(sandbox) && resolver_listening(sandbox) => {
             "ibexwall"
+        }
+        _ if local_proxy.is_some() => {
+            let proxy = local_proxy.as_ref().expect("checked above");
+            let yes_no = |v: Option<bool>| match v {
+                Some(true) => "yes",
+                Some(false) => "no",
+                None => "unknown",
+            };
+            args.insert("proxy".into(), proxy.name.into());
+            args.insert("listen".into(), proxy.listen.join(", "));
+            args.insert(
+                "resolvers".into(),
+                if proxy.servers.is_empty() {
+                    "automatic".into()
+                } else {
+                    proxy.servers.join(", ")
+                },
+            );
+            args.insert("dnssec".into(), yes_no(proxy.dnssec).into());
+            args.insert("nolog".into(), yes_no(proxy.no_log).into());
+            args.insert("nofilter".into(), yes_no(proxy.no_filter).into());
+            if proxy.in_use { "proxy" } else { "proxy-idle" }
         }
         Backend::Resolved if resolved_uses_tls(sandbox) => {
             args.insert("stack".into(), "systemd-resolved".into());
@@ -160,5 +185,55 @@ mod tests {
         for r in [root, root2] {
             std::fs::remove_dir_all(r).unwrap();
         }
+    }
+
+    #[test]
+    fn a_dnscrypt_proxy_in_use_is_named_and_nothing_is_suggested() {
+        let (root, sandbox) = machine(
+            "proxy",
+            true,
+            &[
+                (
+                    "/etc/dnscrypt-proxy/dnscrypt-proxy.toml",
+                    "server_names = ['quad9-doh']\nlisten_addresses = ['127.0.0.1:53']\nrequire_dnssec = true\nrequire_nolog = true\nrequire_nofilter = false\n",
+                ),
+                ("/run/systemd/units/invocation:dnscrypt-proxy.socket", ""),
+                ("/run/systemd/resolve/resolv.conf", "nameserver 127.0.0.1\n"),
+            ],
+        );
+        let note = dns(&sandbox, "x");
+        assert_eq!(note.summary_key, "detect-dns-proxy");
+        assert_eq!(note.args["proxy"], "dnscrypt-proxy");
+        assert_eq!(note.args["resolvers"], "quad9-doh");
+        assert_eq!(
+            (
+                note.args["dnssec"].as_str(),
+                note.args["nolog"].as_str(),
+                note.args["nofilter"].as_str()
+            ),
+            ("yes", "yes", "no")
+        );
+        assert!(!note.args.contains_key("patch"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_dnscrypt_proxy_the_system_does_not_use_is_said_to_be_idle() {
+        let (root, sandbox) = machine(
+            "idle",
+            true,
+            &[
+                (
+                    "/etc/dnscrypt-proxy/dnscrypt-proxy.toml",
+                    "listen_addresses = ['127.0.0.1:53']\n",
+                ),
+                ("/run/systemd/units/invocation:dnscrypt-proxy.service", ""),
+            ],
+        );
+        let note = dns(&sandbox, "x");
+        assert_eq!(note.summary_key, "detect-dns-proxy-idle");
+        assert_eq!(note.args["resolvers"], "automatic");
+        assert!(!note.args.contains_key("patch"));
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

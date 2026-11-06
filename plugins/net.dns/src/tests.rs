@@ -432,3 +432,52 @@ fn check_is_not_assessed_on_an_unsupported_stack() {
 fn the_listening_address_matches_the_proc_encoding() {
     assert_eq!(listening_hex(), "9900007F:0035");
 }
+
+fn with_dnscrypt(name: &str) -> (PathBuf, Sandbox) {
+    let (root, sandbox) = resolved_tree(name);
+    put(
+        &root,
+        "/etc/dnscrypt-proxy/dnscrypt-proxy.toml",
+        "listen_addresses = ['127.0.0.1:53']\nserver_names = ['quad9-doh']\n",
+    );
+    put(
+        &root,
+        "/run/systemd/units/invocation:dnscrypt-proxy.socket",
+        "",
+    );
+    put(
+        &root,
+        "/run/systemd/resolve/resolv.conf",
+        "nameserver 127.0.0.1\n",
+    );
+    (root, sandbox)
+}
+
+#[test]
+fn dns_already_encrypted_by_dnscrypt_passes_and_is_not_offered_a_change() {
+    let (root, sandbox) = with_dnscrypt("dnscrypt");
+    let report = evaluate(&sandbox);
+    assert_eq!(report.results[0].outcome, CheckOutcome::Pass);
+    assert!(problems(&report).is_empty());
+    let config = Config::parse(json!({ "provider": "quad9" })).unwrap();
+    let error = plan(&sandbox, config).unwrap_err().to_string();
+    assert!(error.contains("dnscrypt-proxy"), "{error}");
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_dnscrypt_proxy_nobody_asks_does_not_count_as_protection() {
+    let (root, sandbox) = resolved_tree("dnscrypt-idle");
+    put(
+        &root,
+        "/etc/dnscrypt-proxy/dnscrypt-proxy.toml",
+        "listen_addresses = ['127.0.0.1:53']\n",
+    );
+    put(
+        &root,
+        "/run/systemd/units/invocation:dnscrypt-proxy.service",
+        "",
+    );
+    assert_eq!(evaluate(&sandbox).results[0].outcome, CheckOutcome::Fail);
+    std::fs::remove_dir_all(root).unwrap();
+}

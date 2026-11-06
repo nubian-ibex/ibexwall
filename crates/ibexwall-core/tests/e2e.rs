@@ -341,6 +341,62 @@ async fn full_flow_plan_apply_rollback_confirm_and_gates() {
 }
 
 #[tokio::test]
+async fn an_uninstall_undoes_every_change_newest_first_and_keeps_the_users_data() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let (core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+    client
+        .call(
+            "com.ibexwall.Core.SetPluginEnabled",
+            json!({ "id": "dev.echo", "enabled": true }),
+        )
+        .await
+        .unwrap();
+    let target = sandbox.root.join("etc/sysctl.d/90-ibexwall-test.conf");
+    let before = std::fs::read_to_string(&target).unwrap();
+    let plan = plan_with(&mut client, "dropin").await;
+    let value = client
+        .call(
+            "com.ibexwall.Core.Apply",
+            json!({ "plan_id": plan["id"].as_str().unwrap() }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(value["transaction"]["state"], "committed");
+    assert_ne!(std::fs::read_to_string(&target).unwrap(), before);
+
+    let report = core.cleanup().unwrap();
+    assert_eq!(report.rolled_back, 1);
+    assert!(report.failed.is_empty(), "{report:?}");
+    assert_eq!(
+        std::fs::read_to_string(&target).unwrap(),
+        before,
+        "the file is as it was"
+    );
+    let history = serde_json::to_string(
+        &client
+            .call("com.ibexwall.Core.History", json!({}))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(history.contains("rolled_back"), "{history}");
+    // The user's data is still there; a second run has nothing to do.
+    assert!(sandbox.root.join("var/lib/ibexwall/state.db").exists());
+    assert_eq!(
+        core.cleanup().unwrap(),
+        ibexwall_core::CleanupReport::default()
+    );
+    assert!(matches!(
+        core.audit_verify(),
+        ibexwall_core::audit::Verification::Valid { .. }
+    ));
+}
+
+#[tokio::test]
 async fn confirmation_timeout_rolls_back_automatically() {
     if plugin_binary().is_none() {
         eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");

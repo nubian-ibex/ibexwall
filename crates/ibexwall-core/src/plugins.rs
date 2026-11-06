@@ -18,6 +18,10 @@ use minisign_verify::{PublicKey, Signature};
 use ibexwall_proto::names;
 use ibexwall_proto::{Manifest, Op, PluginOrigin};
 
+/// The public key packages sign official and community manifests with,
+/// embedded by `build.rs`; empty in a development build.
+const EMBEDDED_RELEASE_KEY: &str = include_str!(concat!(env!("OUT_DIR"), "/release.pub"));
+
 pub struct PluginEntry {
     pub manifest: Manifest,
     pub binary: PathBuf,
@@ -106,19 +110,12 @@ impl Supervisor {
         let manifest_path = dir.join("plugin.toml");
         let sig_path = dir.join("plugin.toml.sig");
 
-        let anchor = match (&self.dev_key, entry.manifest.origin) {
-            // Dev builds accept every origin against the dev key.
-            (Some(path), _) => std::fs::read_to_string(path)
-                .with_context(|| format!("reading dev key {}", path.display()))?,
-            (None, PluginOrigin::Local) => {
-                bail!("local plugin `{id}` requires explicit trust: start ibexwalld with --dev-key")
-            }
-            (None, PluginOrigin::Official | PluginOrigin::Community) => {
-                // The official release key is embedded with packaging
-                // (F10); until then non-dev builds refuse everything.
-                bail!("no embedded release key yet; use --dev-key in dev builds")
-            }
-        };
+        let anchor = trust_anchor(
+            self.dev_key.as_deref(),
+            entry.manifest.origin,
+            EMBEDDED_RELEASE_KEY,
+            id,
+        )?;
         let public_key =
             PublicKey::decode(&anchor).map_err(|e| anyhow::anyhow!("bad public key: {e:?}"))?;
         let signature_text = std::fs::read_to_string(&sig_path)
@@ -308,6 +305,32 @@ fn units_installed(manifest: &Manifest) -> bool {
     .any(|dir| Path::new(dir).join(format!("{name}.socket")).exists())
 }
 
+/// The public key a plugin's manifest signature is checked against: the dev
+/// key when one was given (development), the key embedded by the package
+/// build for official and community plugins, and nothing for a local plugin
+/// unless the person trusts it explicitly with `--dev-key`.
+fn trust_anchor(
+    dev_key: Option<&Path>,
+    origin: PluginOrigin,
+    embedded: &str,
+    id: &str,
+) -> Result<String> {
+    match (dev_key, origin) {
+        // Dev builds accept every origin against the dev key.
+        (Some(path), _) => std::fs::read_to_string(path)
+            .with_context(|| format!("reading dev key {}", path.display())),
+        (None, PluginOrigin::Local) => {
+            bail!("local plugin `{id}` requires explicit trust: start ibexwalld with --dev-key")
+        }
+        (None, PluginOrigin::Official | PluginOrigin::Community) => {
+            if embedded.trim().is_empty() {
+                bail!("this build has no release key; start with --dev-key in development")
+            }
+            Ok(embedded.to_string())
+        }
+    }
+}
+
 /// Generates both units from the manifest (spec 4.2 sandbox rules).
 /// Packaging writes them under `/usr/lib/systemd/system`.
 pub fn generate_units(manifest: &Manifest) -> PluginUnits {
@@ -454,6 +477,44 @@ reversible = "immediate"
                 .contains("ListenStream=/run/ibexwall/plugins/dev.echo.sock")
         );
         assert!(units.socket.contains("SocketMode=0600"));
+    }
+
+    #[test]
+    fn the_trust_anchor_is_the_dev_key_the_embedded_release_key_or_nothing() {
+        let dir = std::env::temp_dir().join(format!("ibx-anchor-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let dev = dir.join("dev.pub");
+        std::fs::write(&dev, "DEV KEY").unwrap();
+        // A dev key wins for every origin.
+        for origin in [
+            PluginOrigin::Official,
+            PluginOrigin::Community,
+            PluginOrigin::Local,
+        ] {
+            assert_eq!(
+                trust_anchor(Some(&dev), origin, "RELEASE", "x").unwrap(),
+                "DEV KEY"
+            );
+        }
+        // Without one, a package build's embedded key covers official and community plugins.
+        assert_eq!(
+            trust_anchor(None, PluginOrigin::Official, "RELEASE", "x").unwrap(),
+            "RELEASE"
+        );
+        assert_eq!(
+            trust_anchor(None, PluginOrigin::Community, "RELEASE\n", "x").unwrap(),
+            "RELEASE\n"
+        );
+        // A local plugin is never trusted by the release key.
+        assert!(trust_anchor(None, PluginOrigin::Local, "RELEASE", "x").is_err());
+        // A build with no key trusts nothing by itself.
+        for origin in [PluginOrigin::Official, PluginOrigin::Community] {
+            let error = trust_anchor(None, origin, " \n", "x")
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains("no release key"), "{error}");
+        }
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

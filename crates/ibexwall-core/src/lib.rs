@@ -157,6 +157,21 @@ fn service_info() -> ServiceInfo {
     }
 }
 
+/// What an uninstall undid.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct CleanupReport {
+    pub rolled_back: usize,
+    /// `(transaction, why)` for each one that could not be undone.
+    pub failed: Vec<(String, String)>,
+    pub chains_removed: usize,
+}
+
+/// Opens the state under `root` and undoes IbexWall's changes: the body of
+/// `ibexwalld --cleanup`, run by the package before it removes the files.
+pub async fn cleanup(root: PathBuf, dev_key: Option<PathBuf>) -> Result<CleanupReport> {
+    Core::open(root, dev_key).await?.cleanup()
+}
+
 impl Core {
     /// Opens state, recovers crashed transactions, loads plugins.
     pub async fn open(root: PathBuf, dev_key: Option<PathBuf>) -> Result<Self> {
@@ -223,6 +238,39 @@ impl Core {
             });
         }
         Ok(())
+    }
+
+    /// Undoes everything IbexWall changed on this machine, for an
+    /// uninstall (spec §4.15): every transaction still in effect is rolled
+    /// back, newest first, through the snapshot it took before it ran, and
+    /// whatever is left of IbexWall's nftables table is removed. The user's
+    /// data (state, audit log, settings) stays until a purge. A transaction
+    /// that cannot be undone is reported and does not stop the rest.
+    pub fn cleanup(&self) -> Result<CleanupReport> {
+        let mut report = CleanupReport::default();
+        for tx in self.state.list_active_transactions()? {
+            let ops: Vec<Op> = self
+                .state
+                .load_plan(&tx.plan_id)
+                .ok()
+                .flatten()
+                .and_then(|p| serde_json::from_str(&p.ops_json).ok())
+                .unwrap_or_default();
+            match self.rollback_transaction(&tx.id, &ops) {
+                Ok(()) => {
+                    self.state.mark_transaction(&tx.id, TxStatus::RolledBack)?;
+                    self.audit("system", &tx.plugin, Some(&tx.id), "", "uninstall-rollback");
+                    report.rolled_back += 1;
+                }
+                Err(error) => {
+                    tracing::error!(transaction = %tx.id, %error, "uninstall: rollback failed");
+                    report.failed.push((tx.id.clone(), error.to_string()));
+                }
+            }
+        }
+        report.chains_removed = self.engine.remove_nft_table()?;
+        let _ = std::fs::remove_file(self.nft_file());
+        Ok(report)
     }
 
     /// Applies the snapshot inverses for `tx` (no status marking; callers

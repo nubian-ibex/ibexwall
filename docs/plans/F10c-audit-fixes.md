@@ -4,9 +4,10 @@
 # F10c: the 2026-11-06 audit and what it fixes
 
 Requested by the maintainer on 2026-11-06: validate the project and its
-code so far, then fix what a review finds. Status: M1, M2 and M3 are done
-and committed; M4 is in flight. The maintainer approved the plan and the
-Compliance naming on 2026-11-06.
+code so far, then fix what a review finds. Status: M1 through M4 are
+done, except the two items noted below (config hot-reload and FakeFs
+symlink semantics). The maintainer approved the plan and the Compliance
+naming on 2026-11-06.
 
 ## Method and scope
 
@@ -216,8 +217,18 @@ review belongs to M4.
    above, and the fuzz decision. Verify: findings folded in, battery and
    matrix green. The weak tests now assert, and the fuzz decision is to
    defer the cargo-fuzz targets and nightly job to after v1.0 (they need
-   a nightly toolchain); the README says so. The deep plugin, DNS and
-   MCP pass and `FakeFs` symlink semantics are still open.
+   a nightly toolchain); the README says so. The deep pass found and
+   fixed two false passes (vuln.cves reading an unrecognized output as
+   patched, and net.nts claiming authenticated time with chronyd
+   stopped), the MCP server logging a denied VPN profile's key, a
+   non-loopback DNS listen, a missed `Defaults !authenticate` in
+   system.posture, and a catalog vs sysctl disagreement on ptrace_scope
+   and tcp_syncookies. The WireGuard, OpenVPN, blocklist, MCP HTTP, nfq
+   and net-common parsers are clean. One item is recorded as a design
+   limitation rather than fixed: net.dns cannot see the nft enforcement
+   guard from its sandbox, so a future core-side enforcement check should
+   report it. `FakeFs` symlink semantics are still open test
+   infrastructure.
 
 ## Clean areas, for the record
 

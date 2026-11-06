@@ -100,6 +100,45 @@ pub fn evaluate(sandbox: &Sandbox, detected_at: &str) -> CheckReport {
         }
     }
     report
+        .findings
+        .push(mandatory_access_note(sandbox, detected_at));
+    report
+}
+
+/// Which mandatory access control the machine has and how it is set.
+fn mandatory_access_note(sandbox: &Sandbox, at: &str) -> Finding {
+    use ibexwall_sdk::detect::{detected, install_command};
+    let selinux = sandbox.read("/sys/fs/selinux/enforce");
+    let apparmor = sandbox.read("/sys/module/apparmor/parameters/enabled");
+    let mut args = BTreeMap::new();
+    let case = if selinux.as_deref().map(str::trim) == Some("1") {
+        "selinux-enforcing"
+    } else if apparmor.as_deref().map(str::trim) == Some("Y") {
+        "apparmor"
+    } else if selinux.as_deref().map(str::trim) == Some("0") {
+        "selinux-permissive"
+    } else if sandbox
+        .read("/etc/selinux/config")
+        .is_some_and(|c| c.lines().any(|l| l.trim() == "SELINUX=disabled"))
+    {
+        "selinux-disabled"
+    } else {
+        // Fedora ships SELinux, the others AppArmor; IbexWall installs
+        // nothing and a boot setting is the person's to change.
+        let release = sandbox.read("/etc/os-release").unwrap_or_default();
+        let package = if release.contains("fedora") || release.contains("rhel") {
+            "selinux-policy-targeted"
+        } else {
+            "apparmor"
+        };
+        args.insert(
+            "install".into(),
+            install_command(sandbox, package)
+                .unwrap_or_else(|| format!("your package manager: {package}")),
+        );
+        "none"
+    };
+    detected("system.posture", "mac", case, args, None, at)
 }
 
 fn secure_boot(sandbox: &Sandbox) -> Check {
@@ -512,6 +551,44 @@ mod tests {
         for r in [r1, r2, r3, r4] {
             let _ = std::fs::remove_dir_all(r);
         }
+    }
+
+    #[test]
+    fn the_mac_note_tells_each_case_and_gives_the_install_command_only_when_there_is_none() {
+        let case = |files: &[(&str, &[u8])], name: &str| {
+            let (root, sandbox) = tree(files, name);
+            let note = mandatory_access_note(&sandbox, "x");
+            let _ = std::fs::remove_dir_all(root);
+            note
+        };
+        assert_eq!(
+            case(&[("/sys/fs/selinux/enforce", b"1")], "n1").summary_key,
+            "detect-mac-selinux-enforcing"
+        );
+        assert_eq!(
+            case(&[("/sys/module/apparmor/parameters/enabled", b"Y\n")], "n2").summary_key,
+            "detect-mac-apparmor"
+        );
+        assert_eq!(
+            case(&[("/sys/fs/selinux/enforce", b"0")], "n3").summary_key,
+            "detect-mac-selinux-permissive"
+        );
+        assert_eq!(
+            case(&[("/etc/selinux/config", b"SELINUX=disabled\n")], "n4").summary_key,
+            "detect-mac-selinux-disabled"
+        );
+        let fedora = case(&[("/etc/os-release", b"ID=fedora\n")], "n5");
+        assert_eq!(fedora.summary_key, "detect-mac-none");
+        assert_eq!(
+            fedora.args["install"],
+            "sudo dnf install selinux-policy-targeted"
+        );
+        let ubuntu = case(&[("/etc/os-release", b"ID=ubuntu\nID_LIKE=debian\n")], "n6");
+        assert_eq!(ubuntu.args["install"], "sudo apt install apparmor");
+        assert!(
+            !fedora.args.contains_key("patch"),
+            "a boot setting is never changed for the person"
+        );
     }
 
     #[test]

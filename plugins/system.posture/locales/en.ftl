@@ -53,3 +53,9 @@ posture-updates-automatic-summary = Not checked yet: this arrives with the updat
 posture-firmware-hsi-name = Firmware security
 posture-firmware-hsi-title = Firmware security
 posture-firmware-hsi-summary = Not checked yet: this arrives with the firmware plugin.
+detect-mac-title = Mandatory access control today
+detect-mac-selinux-enforcing = SELinux is enforcing: programs are confined to what their policy allows.
+detect-mac-apparmor = AppArmor is on: programs with a profile are confined to it.
+detect-mac-selinux-permissive = SELinux is on but only logs what it would block. To enforce it, check the logs for denials of programs you use, then set SELINUX=enforcing in /etc/selinux/config and restart.
+detect-mac-selinux-disabled = SELinux is installed but turned off in /etc/selinux/config. Turning it on relabels the files at the next restart, which can take a while; start with permissive mode.
+detect-mac-none = No mandatory access control is active. IbexWall installs nothing; to get its packages, run: { $install }. It then needs a boot setting, so follow your distribution's guide.

@@ -432,14 +432,11 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
                     .with_context(|| format!("--set expects KEY=VALUE, got `{set}`"))
                     .map_err(CliError::Other)?;
                 // Numbers and booleans arrive as JSON, everything else as a
-                // string: plugins declare real types for their config.
+                // string: plugins declare real types for their config. A
+                // value may contain `=` (a padded base64, an assignment);
+                // only the first `=` separates the key.
                 let parsed = serde_json::from_str::<serde_json::Value>(value)
                     .unwrap_or(serde_json::Value::String(value.to_string()));
-                if parsed.is_string() && value.contains('=') {
-                    return Err(CliError::Other(anyhow::anyhow!(
-                        "--set expects KEY=VALUE, got `{set}`"
-                    )));
-                }
                 config.insert(key.into(), parsed);
             }
             let params = serde_json::json!({ "plugin": plugin, "patch": config });

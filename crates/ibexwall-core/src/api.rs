@@ -589,6 +589,19 @@ async fn build_plan(
 ) -> Result<(Plan, Vec<Op>), VarlinkError> {
     authorize_plugin_change(core, &plugin)?;
 
+    // The organization layer can lock a setting; a plan that touches a
+    // locked key is refused whoever asks for it.
+    if let Some(keys) = patch.as_object() {
+        for key in keys.keys() {
+            if let Some(pattern) = core.config.is_locked(&plugin, key) {
+                return Err(err(
+                    "Conflict",
+                    json!({ "reason": format!("`{plugin}.{key}` is locked by the organization layer ({pattern})") }),
+                ));
+            }
+        }
+    }
+
     // Ask the plugin for its proposed operations.
     let ops = core
         .plugins

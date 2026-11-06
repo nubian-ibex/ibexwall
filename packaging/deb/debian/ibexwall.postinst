@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+case "$1" in
+configure)
+    # shellcheck disable=SC1091
+    . /usr/lib/ibexwall/package-scripts.sh
+    if [ -n "$2" ]; then
+        post_upgrade
+    else
+        post_install
+    fi
+    ;;
+esac
+exit 0

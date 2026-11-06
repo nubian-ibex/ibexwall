@@ -1,0 +1,35 @@
+Source: ibexwall
+Section: admin
+Priority: optional
+Maintainer: Nubian Ibex <maintainers@nubian-ibex.invalid>
+Build-Depends: debhelper-compat (= 13)
+Build-Depends-Arch: cargo
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+Homepage: https://github.com/nubian-ibex/ibexwall
+
+Package: ibexwall
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, nftables, polkitd | policykit-1, systemd
+Suggests: chrony, ufw | firewalld
+Description: Security center for Linux
+ IbexWall shows how secure a Linux computer is, explains what to fix, and
+ fixes it with changes you review first and can undo. This package holds the
+ daemon, the command line, the resolver and the plugins; nothing it does is
+ applied without a plan, a snapshot and your approval.
+
+Package: ibexwall-desktop
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ibexwall (= ${binary:Version}), libwebkit2gtk-4.1-0, libgtk-3-0
+Recommends: libayatana-appindicator3-1
+Description: IbexWall desktop app and session agent
+ The IbexWall window and tray icon, and the agent that asks you about a held
+ connection.
+
+Package: ibexwall-mcp
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ibexwall (= ${binary:Version})
+Description: IbexWall MCP server for AI assistants
+ The MCP server that lets an AI assistant read your security status and
+ suggest changes. It can never apply one. The HTTPS mode is off until you
+ turn it on.

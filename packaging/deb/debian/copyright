@@ -1,0 +1,10 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: ibexwall
+Source: https://github.com/nubian-ibex/ibexwall
+
+Files: *
+Copyright: 2026 Nubian Ibex and IbexWall contributors
+License: GPL-3.0-or-later
+ On Debian systems the full text of the GNU General Public License version 3
+ is in /usr/share/common-licenses/GPL-3, and in
+ /usr/share/doc/ibexwall/LICENSE.

@@ -1,0 +1,40 @@
+#!/usr/bin/make -f
+# Two ways to build, as for the rpm: from source (`cargo xtask stage`), or from
+# a staged tree a release has already built: IBEXWALL_STAGE=/path/to/stage.
+# The stage holds root/ (the installed layout) and stage-lists/ (who owns what).
+
+STAGE := $(if $(IBEXWALL_STAGE),$(IBEXWALL_STAGE),$(CURDIR)/stage)
+PACKAGES := ibexwall ibexwall-desktop ibexwall-mcp
+
+%:
+	dh $@
+
+override_dh_auto_build:
+ifndef IBEXWALL_STAGE
+	cargo xtask stage --destdir $(STAGE)/root
+endif
+
+override_dh_auto_install:
+	for pkg in $(PACKAGES); do \
+	    mkdir -p debian/$$pkg; \
+	    sed 's#^/##' $(STAGE)/stage-lists/$$pkg.list | \
+	        tar -C $(STAGE)/root -cf - -T - | tar -C debian/$$pkg -xf -; \
+	done
+
+# The desktop app's libraries are only on a machine with the -dev packages; a
+# build from a staged tree has none, and the package names them in Depends.
+override_dh_shlibdeps:
+ifdef IBEXWALL_STAGE
+	dh_shlibdeps -pibexwall -pibexwall-mcp
+else
+	dh_shlibdeps
+endif
+
+# The binaries are stripped by the release profile; the units are managed by
+# the maintainer scripts (the plugins' sockets are generated, not listed).
+override_dh_strip:
+override_dh_dwz:
+override_dh_installsystemd:
+override_dh_installsystemduser:
+override_dh_auto_clean:
+	rm -rf stage

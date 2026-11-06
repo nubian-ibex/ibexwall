@@ -104,6 +104,28 @@ impl RealFs {
     }
 }
 
+/// The last gate before the host: only absolute, normalized paths are
+/// ever translated and touched. `..`, `.` and empty segments are refused
+/// so a crafted path cannot walk out of the sandbox root or of a prefix
+/// check; `write_atomic` already refuses them, and this extends the rule
+/// to every read-side operation. Segment-wise, because
+/// `Path::components` silently normalizes `.` away.
+fn checked(path: &Path) -> io::Result<&Path> {
+    let normalized = path.to_str().is_some_and(|s| {
+        let mut segments = s.split('/');
+        segments.next() == Some("")
+            && segments.all(|seg| !seg.is_empty() && seg != "." && seg != "..")
+    });
+    if normalized {
+        Ok(path)
+    } else {
+        Err(io::Error::other(format!(
+            "refusing a non-normalized path: `{}`",
+            path.display()
+        )))
+    }
+}
+
 impl Fs for RealFs {
     fn exists(&self, path: &Path) -> bool {
         self.translate(path).exists()
@@ -111,12 +133,12 @@ impl Fs for RealFs {
 
     fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
         let mut buf = Vec::new();
-        File::open(self.translate(path))?.read_to_end(&mut buf)?;
+        File::open(self.translate(checked(path)?))?.read_to_end(&mut buf)?;
         Ok(buf)
     }
 
     fn metadata(&self, path: &Path) -> io::Result<FileMeta> {
-        let meta = std::fs::metadata(self.translate(path))?;
+        let meta = std::fs::metadata(self.translate(checked(path)?))?;
         Ok(FileMeta {
             mode: meta.mode() & 0o7777,
             uid: meta.uid(),
@@ -187,7 +209,7 @@ impl Fs for RealFs {
     }
 
     fn remove(&self, path: &Path) -> io::Result<()> {
-        match std::fs::remove_file(self.translate(path)) {
+        match std::fs::remove_file(self.translate(checked(path)?)) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
             Err(e) => Err(e),
@@ -195,7 +217,7 @@ impl Fs for RealFs {
     }
 
     fn create_dir_all(&self, path: &Path) -> io::Result<()> {
-        std::fs::create_dir_all(self.translate(path))
+        std::fs::create_dir_all(self.translate(checked(path)?))
     }
 }
 
@@ -356,6 +378,24 @@ mod tests {
         let err = RealFs::new().write_atomic(&link.join("evil.conf"), b"x\n", 0o644, None);
         assert!(err.is_err(), "writing through a symlinked parent must fail");
         assert!(!real.join("evil.conf").exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn real_fs_refuses_non_normalized_paths() {
+        let dir = tempdir();
+        let fs = RealFs::with_root(dir.clone());
+        fs.create_dir_all(Path::new("/etc/inside")).unwrap();
+        // A `..` walk would translate out of the sandbox root and reach
+        // the real filesystem; every entry point must refuse it.
+        assert!(fs.read(Path::new("/etc/inside/../../../etc/passwd")).is_err());
+        assert!(fs.metadata(Path::new("/etc/inside/..")).is_err());
+        assert!(fs.remove(Path::new("/etc/inside/../../outside")).is_err());
+        assert!(fs.create_dir_all(Path::new("/etc/walk/../out")).is_err());
+        // Relative paths never reach the translator either.
+        assert!(fs.read(Path::new("etc/inside")).is_err());
+        // The clean path inside the root still works.
+        assert!(fs.metadata(Path::new("/etc/inside")).is_ok());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

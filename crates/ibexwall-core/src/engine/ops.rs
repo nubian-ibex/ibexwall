@@ -5,6 +5,8 @@
 //! The core refuses any operation the manifest did not declare; this is
 //! the "plugins propose, the core executes" gate.
 
+use std::path::Path;
+
 use ibexwall_proto::{Manifest, Op, RiskFlag, UnitAction};
 
 #[derive(Debug, thiserror::Error, PartialEq)]
@@ -45,6 +47,7 @@ pub fn validate(ops: &[Op], manifest: &Manifest) -> Result<Vec<RiskFlag>, OpErro
 fn validate_one(op: &Op, manifest: &Manifest) -> Result<(), OpError> {
     match op {
         Op::FileWrite { path, mode, .. } => {
+            validate_path(path, "file.write.path")?;
             if !path_under_any(path, &manifest.privileges.write_paths) {
                 return Err(OpError::PathNotWritable { path: path.clone() });
             }
@@ -55,6 +58,7 @@ fn validate_one(op: &Op, manifest: &Manifest) -> Result<(), OpError> {
             Ok(())
         }
         Op::FileRemove { path } => {
+            validate_path(path, "file.remove.path")?;
             if !path_under_any(path, &manifest.privileges.write_paths) {
                 return Err(OpError::PathNotWritable { path: path.clone() });
             }
@@ -68,6 +72,7 @@ fn validate_one(op: &Op, manifest: &Manifest) -> Result<(), OpError> {
             key_group,
         } => {
             for path in [cert_path, key_path] {
+                validate_path(path, "tls.keypair.path")?;
                 if !path_under_any(path, &manifest.privileges.write_paths) {
                     return Err(OpError::PathNotWritable { path: path.clone() });
                 }
@@ -168,6 +173,7 @@ fn validate_one(op: &Op, manifest: &Manifest) -> Result<(), OpError> {
                     reason: "only --unshare=network may be applied".into(),
                 });
             }
+            validate_path(&path, "flatpak.override")?;
             if !path_under_any(&path, &manifest.privileges.write_paths) {
                 return Err(OpError::PathNotWritable { path });
             }
@@ -250,9 +256,38 @@ fn validate_nft(fragment: &serde_json::Value, manifest: &Manifest) -> Result<(),
 }
 
 fn path_under_any(path: &str, roots: &[String]) -> bool {
-    roots
-        .iter()
-        .any(|root| path == root || path.starts_with(&format!("{root}/")))
+    // Component-wise, so `/etc/x` is under `/etc` but `/etcx` is not,
+    // and the gate cannot be fooled by how the strings happen to spell
+    // the prefix.
+    let path = Path::new(path);
+    roots.iter().any(|root| {
+        let root = Path::new(root);
+        path == root || path.starts_with(root)
+    })
+}
+
+/// Paths that reach a file operation must be absolute, normalized (no
+/// `..`, no `.`, no empty segment) and free of whitespace and control
+/// characters: they end up in a unit's `ReadWritePaths` and in argv, and
+/// a `..` segment would walk out of every gate that checks the prefix.
+/// The check is spelled out over segments because `Path::components`
+/// silently normalizes `.` away.
+fn validate_path(path: &str, field: &'static str) -> Result<(), OpError> {
+    let refuse = || OpError::Invalid {
+        field,
+        reason: format!("`{path}` is not an absolute, normalized path"),
+    };
+    let mut segments = path.split('/');
+    let absolute = segments.next() == Some("");
+    if !absolute
+        || path
+            .bytes()
+            .any(|b| b.is_ascii_whitespace() || b.is_ascii_control())
+        || !segments.all(|seg| !seg.is_empty() && seg != "." && seg != "..")
+    {
+        return Err(refuse());
+    }
+    Ok(())
 }
 
 fn parse_mode(mode: &str) -> Option<u32> {
@@ -893,5 +928,62 @@ reversible = "immediate"
         assert!(risk_flags(&[op("firewalld", allow)]).is_empty());
         let remove = serde_json::json!({"action": "remove_port", "port": 22, "proto": "tcp"});
         assert!(risk_flags(&[op("firewalld", remove)]).contains(&RiskFlag::Network));
+    }
+
+    #[test]
+    fn non_normalized_paths_are_refused_before_the_prefix_gate() {
+        let manifest = manifest();
+        let write = |path: &str| Op::FileWrite {
+            path: path.into(),
+            content: "x".into(),
+            mode: "0644".into(),
+            owner: String::new(),
+            group: String::new(),
+        };
+        // A `..` walk that would land outside every declared root, a
+        // relative path, and a path with whitespace or a NUL must never
+        // pass, even though the string starts with a writable prefix.
+        for path in [
+            "/etc/sysctl.d/../../../outside.txt",
+            "/etc/sysctl.d/./x",
+            "etc/sysctl.d/x",
+            "/etc/sysctl.d/sp ace",
+            "/etc/sysctl.d/x\0y",
+        ] {
+            assert!(
+                matches!(
+                    validate(std::slice::from_ref(&write(path)), &manifest),
+                    Err(OpError::Invalid { field, .. }) if field.contains("path")
+                ),
+                "`{path}` must be refused"
+            );
+        }
+        // A clean path inside a declared root still passes.
+        assert!(
+            validate(
+                std::slice::from_ref(&write("/etc/sysctl.d/99-ibexwall.conf")),
+                &manifest
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn the_prefix_gate_is_component_wise() {
+        let manifest = manifest();
+        let write = |path: &str| Op::FileWrite {
+            path: path.into(),
+            content: "x".into(),
+            mode: "0644".into(),
+            owner: String::new(),
+            group: String::new(),
+        };
+        // `/etcx` shares a string prefix with `/etc` but is not under it.
+        for path in ["/etcx/file", "/etc/sysctl.d-x"] {
+            assert!(matches!(
+                validate(std::slice::from_ref(&write(path)), &manifest),
+                Err(OpError::PathNotWritable { .. })
+            ));
+        }
     }
 }

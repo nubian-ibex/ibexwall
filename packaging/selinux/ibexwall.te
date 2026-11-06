@@ -1,0 +1,167 @@
+# SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+policy_module(ibexwall, 1.0.0)
+
+require {
+	type init_t;
+	type proc_security_t;
+	type unconfined_service_t;
+}
+
+########################################
+#
+# Declarations
+#
+
+# The secure DNS resolver.
+type ibexwall_dns_t;
+type ibexwall_dns_exec_t;
+init_daemon_domain(ibexwall_dns_t, ibexwall_dns_exec_t)
+
+# The MCP server for AI assistants.
+type ibexwall_mcp_t;
+type ibexwall_mcp_exec_t;
+init_daemon_domain(ibexwall_mcp_t, ibexwall_mcp_exec_t)
+
+# The plugins: one multicall binary, one unit each.
+type ibexwall_plugin_t;
+type ibexwall_plugin_exec_t;
+init_daemon_domain(ibexwall_plugin_t, ibexwall_plugin_exec_t)
+
+# The units set NoNewPrivileges, and a transition under it needs this.
+allow init_t ibexwall_dns_t:process2 { nnp_transition nosuid_transition };
+allow init_t ibexwall_mcp_t:process2 { nnp_transition nosuid_transition };
+allow init_t ibexwall_plugin_t:process2 { nnp_transition nosuid_transition };
+
+# IbexWall's own files.
+type ibexwall_conf_t;
+files_config_file(ibexwall_conf_t)
+
+type ibexwall_var_lib_t;
+files_type(ibexwall_var_lib_t)
+
+type ibexwall_var_run_t;
+files_pid_file(ibexwall_var_run_t)
+
+type ibexwall_plugin_var_run_t;
+files_pid_file(ibexwall_plugin_var_run_t)
+
+########################################
+#
+# The resolver
+#
+
+allow ibexwall_dns_t self:capability { net_bind_service setuid setgid };
+allow ibexwall_dns_t self:process { signal_perms getsched };
+allow ibexwall_dns_t self:fifo_file rw_fifo_file_perms;
+allow ibexwall_dns_t self:unix_stream_socket create_stream_socket_perms;
+allow ibexwall_dns_t self:udp_socket create_socket_perms;
+allow ibexwall_dns_t self:tcp_socket create_stream_socket_perms;
+
+read_files_pattern(ibexwall_dns_t, ibexwall_conf_t, ibexwall_conf_t)
+list_dirs_pattern(ibexwall_dns_t, ibexwall_conf_t, ibexwall_conf_t)
+manage_files_pattern(ibexwall_dns_t, ibexwall_var_lib_t, ibexwall_var_lib_t)
+manage_dirs_pattern(ibexwall_dns_t, ibexwall_var_lib_t, ibexwall_var_lib_t)
+manage_files_pattern(ibexwall_dns_t, ibexwall_var_run_t, ibexwall_var_run_t)
+manage_dirs_pattern(ibexwall_dns_t, ibexwall_var_run_t, ibexwall_var_run_t)
+files_search_var_lib(ibexwall_dns_t)
+files_search_pids(ibexwall_dns_t)
+
+corenet_all_recvfrom_unlabeled(ibexwall_dns_t)
+corenet_all_recvfrom_netlabel(ibexwall_dns_t)
+corenet_tcp_sendrecv_generic_if(ibexwall_dns_t)
+corenet_udp_sendrecv_generic_if(ibexwall_dns_t)
+corenet_tcp_sendrecv_generic_node(ibexwall_dns_t)
+corenet_udp_sendrecv_generic_node(ibexwall_dns_t)
+corenet_udp_bind_generic_node(ibexwall_dns_t)
+corenet_tcp_bind_generic_node(ibexwall_dns_t)
+corenet_udp_bind_dns_port(ibexwall_dns_t)
+corenet_tcp_bind_dns_port(ibexwall_dns_t)
+corenet_tcp_connect_all_ports(ibexwall_dns_t)
+corenet_udp_sendrecv_all_ports(ibexwall_dns_t)
+
+dev_read_urand(ibexwall_dns_t)
+kernel_read_system_state(ibexwall_dns_t)
+miscfiles_read_localization(ibexwall_dns_t)
+miscfiles_read_generic_certs(ibexwall_dns_t)
+sysnet_read_config(ibexwall_dns_t)
+auth_use_nsswitch(ibexwall_dns_t)
+logging_send_syslog_msg(ibexwall_dns_t)
+
+########################################
+#
+# The MCP server
+#
+
+allow ibexwall_mcp_t self:process { signal_perms getsched };
+allow ibexwall_mcp_t self:fifo_file rw_fifo_file_perms;
+allow ibexwall_mcp_t self:unix_stream_socket create_stream_socket_perms;
+allow ibexwall_mcp_t self:tcp_socket create_stream_socket_perms;
+
+read_files_pattern(ibexwall_mcp_t, ibexwall_conf_t, ibexwall_conf_t)
+list_dirs_pattern(ibexwall_mcp_t, ibexwall_conf_t, ibexwall_conf_t)
+manage_files_pattern(ibexwall_mcp_t, ibexwall_var_lib_t, ibexwall_var_lib_t)
+manage_dirs_pattern(ibexwall_mcp_t, ibexwall_var_lib_t, ibexwall_var_lib_t)
+manage_files_pattern(ibexwall_mcp_t, ibexwall_var_run_t, ibexwall_var_run_t)
+manage_sock_files_pattern(ibexwall_mcp_t, ibexwall_var_run_t, ibexwall_var_run_t)
+files_search_var_lib(ibexwall_mcp_t)
+files_search_pids(ibexwall_mcp_t)
+
+# The control socket of the daemon.
+stream_connect_pattern(ibexwall_mcp_t, ibexwall_var_run_t, ibexwall_var_run_t, unconfined_service_t)
+
+corenet_all_recvfrom_unlabeled(ibexwall_mcp_t)
+corenet_all_recvfrom_netlabel(ibexwall_mcp_t)
+corenet_tcp_sendrecv_generic_if(ibexwall_mcp_t)
+corenet_tcp_sendrecv_generic_node(ibexwall_mcp_t)
+corenet_tcp_bind_generic_node(ibexwall_mcp_t)
+corenet_tcp_bind_all_unreserved_ports(ibexwall_mcp_t)
+
+dev_read_urand(ibexwall_mcp_t)
+kernel_read_system_state(ibexwall_mcp_t)
+miscfiles_read_localization(ibexwall_mcp_t)
+miscfiles_read_generic_certs(ibexwall_mcp_t)
+sysnet_read_config(ibexwall_mcp_t)
+logging_send_syslog_msg(ibexwall_mcp_t)
+
+########################################
+#
+# The plugins
+#
+
+allow ibexwall_plugin_t self:process { signal_perms getsched };
+allow ibexwall_plugin_t self:fifo_file rw_fifo_file_perms;
+allow ibexwall_plugin_t self:unix_stream_socket create_stream_socket_perms;
+allow ibexwall_plugin_t self:capability { dac_read_search sys_ptrace };
+
+# Their own socket under /run/ibexwall/plugins.
+manage_sock_files_pattern(ibexwall_plugin_t, ibexwall_plugin_var_run_t, ibexwall_plugin_var_run_t)
+search_dirs_pattern(ibexwall_plugin_t, ibexwall_var_run_t, ibexwall_var_run_t)
+files_search_pids(ibexwall_plugin_t)
+
+# The daemon connects to the plugin's socket.
+allow ibexwall_plugin_t unconfined_service_t:unix_stream_socket { accept getattr getopt read write shutdown };
+
+# They look at the whole system and change none of it.
+files_read_all_files(ibexwall_plugin_t)
+files_list_all(ibexwall_plugin_t)
+files_read_all_symlinks(ibexwall_plugin_t)
+kernel_read_system_state(ibexwall_plugin_t)
+kernel_read_network_state(ibexwall_plugin_t)
+kernel_read_all_sysctls(ibexwall_plugin_t)
+domain_read_all_domains_state(ibexwall_plugin_t)
+sysnet_read_config(ibexwall_plugin_t)
+allow ibexwall_plugin_t proc_security_t:file { getattr open read };
+dbus_system_bus_client(ibexwall_plugin_t)
+
+# The update check asks the package manager what is pending. The manager
+# opens its database in a way that touches the journal files beside it, so
+# those, and only those operations, are allowed on the database.
+rpm_exec(ibexwall_plugin_t)
+rpm_read_db(ibexwall_plugin_t)
+allow ibexwall_plugin_t rpm_var_lib_t:file { write setattr map };
+dev_read_sysfs(ibexwall_plugin_t)
+dev_read_urand(ibexwall_plugin_t)
+miscfiles_read_localization(ibexwall_plugin_t)
+logging_send_syslog_msg(ibexwall_plugin_t)

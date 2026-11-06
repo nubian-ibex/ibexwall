@@ -106,3 +106,26 @@ apparmor_remove() {
     done
     rm -f /etc/apparmor.d/ibexwall
 }
+
+# SELinux (Fedora and the like, package ibexwall-selinux). The policy module
+# gives the resolver, the MCP server and the plugins domains of their own; the
+# files are labelled by it, and the services already running are restarted so
+# they start in their domains.
+selinux_paths="/usr/bin/ibexwall-dns /usr/bin/ibexwall-mcp /usr/libexec/ibexwall /etc/ibexwall /var/lib/ibexwall /var/lib/ibexwall-mcp /run/ibexwall"
+
+selinux_install() {
+    # shellcheck disable=SC2086
+    restorecon -R $selinux_paths >/dev/null 2>&1 || true
+    if have_systemd; then
+        systemctl try-restart ibexwalld.service ibexwall-dns.service ibexwall-mcp.service >/dev/null 2>&1 || true
+        systemctl try-restart 'ibexwall-plugin-*.service' >/dev/null 2>&1 || true
+    fi
+}
+
+# Run before the module is removed: the processes leave their domains.
+selinux_remove() {
+    if have_systemd; then
+        systemctl stop ibexwall-dns.service ibexwall-mcp.service >/dev/null 2>&1 || true
+        systemctl stop 'ibexwall-plugin-*.service' >/dev/null 2>&1 || true
+    fi
+}

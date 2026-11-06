@@ -379,23 +379,45 @@ impl Engine {
 
     /// Writes the ops where the helper can read them and launches it in a
     /// transient unit with `ReadWritePaths` limited to this transaction.
+    /// The ops can hold secrets (a VPN profile's private key), so the
+    /// work directory is private to the daemon and removed when the run
+    /// ends.
     fn execute_via_transient_unit(&self, tx: &str, ops: &[Op]) -> Result<()> {
         use std::io::Write as _;
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
         let dirs = self.writable_ancestors(ibexwall_sys::write_directories(ops));
-        let work = ibexwall_proto::names::runtime_dir()
-            .join("executor")
-            .join(tx);
+        let base = self
+            .sys
+            .executor_work_dir
+            .clone()
+            .unwrap_or_else(ibexwall_proto::names::runtime_dir);
+        let work = base.join("executor").join(tx);
         std::fs::create_dir_all(&work).with_context(|| format!("creating {}", work.display()))?;
+        std::fs::set_permissions(&work, std::fs::Permissions::from_mode(0o700))
+            .with_context(|| format!("closing {}", work.display()))?;
         let ops_file = work.join("ops.json");
-        let mut file = std::fs::File::create(&ops_file)?;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&ops_file)?;
         file.write_all(&serde_json::to_vec(ops)?)?;
         drop(file);
 
         let exec_args = vec!["apply".to_string(), ops_file.to_string_lossy().into_owned()];
-        self.sys
-            .systemd
-            .run_transient_executor(&format!("ibexwall-exec-{tx}-apply"), &exec_args, &dirs)
-            .with_context(|| format!("starting the executor unit for {tx}"))?;
+        let run = self.sys.systemd.run_transient_executor(
+            &format!("ibexwall-exec-{tx}-apply"),
+            &exec_args,
+            &dirs,
+        );
+        // Secrets must not outlive the run, not even until the next boot
+        // (`RuntimeDirectoryPreserve=yes` keeps /run/ibexwall).
+        if let Err(error) = std::fs::remove_dir_all(&work)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::warn!(error = %error, "removing the executor work dir failed");
+        }
+        run.with_context(|| format!("starting the executor unit for {tx}"))?;
         Ok(())
     }
 

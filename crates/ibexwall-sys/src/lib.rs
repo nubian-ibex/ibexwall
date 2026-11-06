@@ -42,6 +42,11 @@ pub struct SysBundle {
     /// transient executor unit (ADR-0026). False under a sandbox root
     /// and in tests with fakes.
     pub use_transient_executor: bool,
+    /// Where the executor work directory lives. Production leaves it
+    /// None (the real `/run/ibexwall`, a tmpfs, so a plan's secrets
+    /// never reach disk); tests point it at a temp directory so nothing
+    /// ever touches `/run` on the developer's machine.
+    pub executor_work_dir: Option<std::path::PathBuf>,
 }
 
 impl Default for SysBundle {
@@ -75,6 +80,7 @@ impl SysBundle {
             },
             allow_system_executors: real_root,
             use_transient_executor: real_root,
+            executor_work_dir: None,
         }
     }
 }

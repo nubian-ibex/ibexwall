@@ -47,6 +47,7 @@ fn rig(name: &str, allow_system: bool) -> Rig {
         allow_system_executors: allow_system,
         nft: nft.clone(),
         use_transient_executor: false,
+        executor_work_dir: None,
     });
     Rig {
         engine,
@@ -729,4 +730,86 @@ fn default_engine_is_bound_to_the_real_root_or_sandbox() {
     );
     let sandboxed = ibexwall_sys::SysBundle::real_under(Path::new("/tmp/some-root"));
     assert!(!sandboxed.allow_system_executors);
+}
+
+/// The executor work file can carry secrets (a VPN profile's private
+/// key): it must be owner-only and must not outlive the run.
+struct InspectingExecutor {
+    seen: std::sync::Mutex<Option<(u32, u32, bool)>>,
+}
+
+impl Default for InspectingExecutor {
+    fn default() -> Self {
+        Self {
+            seen: std::sync::Mutex::new(None),
+        }
+    }
+}
+
+impl ibexwall_sys::systemd::Systemd for InspectingExecutor {
+    fn snapshot(&self, _unit: &str) -> anyhow::Result<UnitSnapshot> {
+        Ok(UnitSnapshot::default())
+    }
+    fn apply(&self, _unit: &str, _action: UnitAction, _now: bool) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn run_transient_executor(
+        &self,
+        _unit: &str,
+        exec_args: &[String],
+        _dirs: &[String],
+    ) -> anyhow::Result<()> {
+        use std::os::unix::fs::PermissionsExt;
+        let ops_file = Path::new(&exec_args[1]);
+        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        let parsed: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(ops_file).unwrap()).unwrap();
+        *self.seen.lock().unwrap() = Some((
+            mode(ops_file),
+            mode(ops_file.parent().unwrap()),
+            parsed.is_array(),
+        ));
+        Ok(())
+    }
+}
+
+#[test]
+fn the_executor_work_file_is_private_and_removed_after_the_run() {
+    let dir = std::env::temp_dir().join(format!("ibx-exec-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let inspector = Arc::new(InspectingExecutor::default());
+    let engine = Engine::with(SysBundle {
+        fs: Arc::new(FakeFs::new()),
+        runner: Arc::new(ibexwall_sys::firewall::FakeRunner::new()),
+        systemd: inspector.clone(),
+        sysctl: Arc::new(FakeSysctl::new()),
+        clock: Arc::new(FakeClock::new(1_793_534_400)),
+        nft: Arc::new(FakeNft::new()),
+        allow_system_executors: true,
+        use_transient_executor: true,
+        executor_work_dir: Some(dir.clone()),
+    });
+    let ops = [Op::FileWrite {
+        path: "/etc/ibexwall-tests/secret.conf".into(),
+        content: "private-key = zzz".into(),
+        mode: "0600".into(),
+        owner: String::new(),
+        group: String::new(),
+    }];
+    engine.execute(Some("tx-private"), &ops).unwrap();
+
+    let (file_mode, dir_mode, valid) = inspector
+        .seen
+        .lock()
+        .unwrap()
+        .expect("the executor unit ran");
+    assert_eq!(file_mode, 0o600, "ops.json must be owner-only");
+    assert_eq!(dir_mode, 0o700, "the work directory must be owner-only");
+    assert!(valid, "the executor received the ops as a JSON array");
+    assert!(
+        !dir.join("executor/tx-private").exists(),
+        "the work directory must be removed after the run"
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
 }

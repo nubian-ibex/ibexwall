@@ -42,9 +42,13 @@ SystemCallArchitectures=native
 SystemCallFilter=@system-service
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_CHOWN CAP_FOWNER CAP_DAC_READ_SEARCH
 StateDirectory=ibexwall
+StateDirectoryMode=0750
 RuntimeDirectory=ibexwall
 RuntimeDirectoryPreserve=yes
 ConfigurationDirectory=ibexwall
+# Plans can carry secrets (a VPN profile's private key): nothing the
+# daemon writes may be readable by another local user.
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target

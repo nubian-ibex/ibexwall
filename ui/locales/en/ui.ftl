@@ -154,8 +154,6 @@ history-view = View
 
 settings-title = Settings
 settings-subtitle = Appearance and language
-language-en = English
-language-pt-BR = Portuguese (Brazil)
 
 nav-dns = Secure DNS
 dns-title = Secure DNS
@@ -496,3 +494,4 @@ hardening-keep = Keep the changes
 hardening-undo = Undo all
 hardening-undone = All changes were undone.
 hardening-stopped = The change for { $plugin } did not stay, so the rest was not applied.
+language-system = System language ({ $language })

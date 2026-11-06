@@ -1,13 +1,56 @@
 import { FluentResource } from '@fluent/bundle';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { has, i18n, messageKeys, t } from './i18n.svelte';
+import {
+  has,
+  i18n,
+  languageName,
+  LOCALES,
+  messageKeys,
+  negotiate,
+  SOURCE_LOCALE,
+  t,
+} from './i18n.svelte';
 import { relativeTime } from './time';
 
 describe('i18n', () => {
   beforeEach(() => i18n.set('en'));
 
-  it('ships the same message keys in English and Portuguese', () => {
-    expect(messageKeys('pt-BR')).toEqual(messageKeys('en'));
+  it('ships English, Portuguese, Spanish, French and German', () => {
+    expect(LOCALES).toEqual(['en', 'de', 'es', 'fr', 'pt-BR']);
+  });
+
+  it('ships the same message keys in every language', () => {
+    for (const locale of LOCALES) {
+      expect(messageKeys(locale), locale).toEqual(messageKeys(SOURCE_LOCALE));
+    }
+  });
+
+  it('follows the language the system asks for, then the same language, then English', () => {
+    expect(negotiate(['pt-BR'])).toBe('pt-BR');
+    expect(negotiate(['pt-PT'])).toBe('pt-BR');
+    expect(negotiate(['es-MX', 'en'])).toBe('es');
+    expect(negotiate(['de_DE'])).toBe('de');
+    expect(negotiate(['fr-CA'])).toBe('fr');
+    // The first language that is shipped wins, in the system's order.
+    expect(negotiate(['ja', 'fr', 'de'])).toBe('fr');
+    expect(negotiate(['ja', 'ko'])).toBe('en');
+    expect(negotiate([])).toBe('en');
+    // A language added later is found without code: only the list changes.
+    expect(negotiate(['it-IT'], ['en', 'it'])).toBe('it');
+  });
+
+  it('names each language in itself', () => {
+    expect(languageName('de')).toBe('Deutsch');
+    expect(languageName('es')).toBe('Español');
+    expect(languageName('pt-BR')).toMatch(/^Português/);
+    expect(languageName('not a tag')).toBe('not a tag');
+  });
+
+  it('shows plugin messages in every language', () => {
+    for (const locale of LOCALES) {
+      i18n.set(locale);
+      expect(has('posture-disk-encryption-title'), locale).toBe(true);
+    }
   });
 
   it('formats named arguments and selects plurals', () => {
@@ -63,7 +106,7 @@ describe('i18n', () => {
       const keys: string[] = [];
       const block = /may_affect = \[([^\]]*)\]/s.exec(text)?.[1] ?? '';
       for (const match of block.matchAll(/"([^"]+)"/g)) keys.push(match[1]!);
-      for (const locale of ['en', 'pt-BR'] as const) {
+      for (const locale of LOCALES) {
         i18n.set(locale);
         for (const key of keys) expect(has(key), `${id}: ${key} (${locale})`).toBe(true);
       }

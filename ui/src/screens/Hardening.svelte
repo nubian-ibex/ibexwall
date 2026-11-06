@@ -31,7 +31,7 @@
   }
   load();
 
-  const text = (value: { en: string; 'pt-BR': string }) => value[i18n.locale];
+  const text = (value: { en: string } & Record<string, string>) => value[i18n.locale] ?? value.en;
   const chosen = $derived(CATALOG.items.filter((i) => ticked.includes(i.id)));
   const applied = $derived([...statuses.values()].filter((s) => s === 'applied').length);
 

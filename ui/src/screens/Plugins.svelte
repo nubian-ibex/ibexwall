@@ -1,6 +1,6 @@
 <script lang="ts">
   import { app } from '../lib/app.svelte';
-  import { t } from '../lib/i18n.svelte';
+  import { i18n, t } from '../lib/i18n.svelte';
   import type { PluginInfo } from '../gen/contracts';
   import Button from '../components/Button.svelte';
   import ChangeFlow from '../components/ChangeFlow.svelte';
@@ -14,6 +14,8 @@
   let manifest = $state<Record<string, unknown> | null>(null);
   let busy = $state(false);
 
+  /** The plugin's name in the active language, or the English one. */
+  const pluginName = (plugin: PluginInfo) => plugin.names?.[i18n.locale] ?? plugin.name;
   const plugins = $derived(app.plugins.status === 'ready' ? app.plugins.data : []);
   const findings = $derived.by(() => {
     const current = selected;
@@ -95,7 +97,7 @@
       <li>
         <article class="row" class:open={selected?.id === plugin.id}>
           <div class="id">
-            <h3>{plugin.name}</h3>
+            <h3>{pluginName(plugin)}</h3>
             <span class="mono">{plugin.id} · {plugin.version}</span>
           </div>
           <div class="meta">
@@ -115,7 +117,7 @@
         </article>
 
         {#if selected?.id === plugin.id}
-          <section class="detail" aria-label={plugin.name}>
+          <section class="detail" aria-label={pluginName(plugin)}>
             <h2>{t('plugins-permissions')}</h2>
             <ul class="permissions">
               {#each permissions as permission (permission.text)}

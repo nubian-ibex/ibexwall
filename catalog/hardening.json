@@ -276,11 +276,11 @@
         "de": "userfaultfd einschränken"
       },
       "summary": {
-        "en": "A system call that attackers use to freeze the kernel at a chosen moment while they exploit a race. Only privileged programs keep it.",
-        "pt-BR": "Uma chamada de sistema que atacantes usam para congelar o kernel num momento escolhido enquanto exploram uma corrida. Só programas privilegiados a mantêm.",
-        "es": "Una llamada al sistema que los atacantes usan para congelar el kernel en un momento elegido mientras explotan una condición de carrera. Solo los programas con privilegios la conservan.",
-        "fr": "Un appel système que les attaquants utilisent pour figer le noyau à un moment choisi pendant qu'ils exploitent une situation de concurrence. Seuls les programmes privilégiés le conservent.",
-        "de": "Ein Systemaufruf, mit dem Angreifer den Kernel zu einem gewählten Zeitpunkt anhalten, während sie eine Race Condition ausnutzen. Nur privilegierte Programme behalten ihn."
+        "en": "An ordinary program can no longer use the kernel side of this interface, which attackers have used to time their moves precisely. Programs that handle their own memory in user space still work.",
+        "pt-BR": "Um programa comum não pode mais usar o lado do kernel desta interface, que atacantes usaram para cronar seus movimentos com precisão. Programas que tratam a própria memória em espaço de usuário continuam funcionando.",
+        "es": "Un programa normal ya no puede usar el lado del kernel de esta interfaz, que atacantes han usado para cronometrar sus movimientos con precisión. Los programas que gestionan su propia memoria en espacio de usuario siguen funcionando.",
+        "fr": "Un programme ordinaire ne peut plus utiliser le versant noyau de cette interface, dont des attaquants se sont servis pour chronométer leurs coups. Les programmes qui gèrent leur mémoire en espace utilisateur continuent de fonctionner.",
+        "de": "Ein gewöhnliches Programm kann die Kernel-Seite dieser Schnittstelle nicht mehr nutzen, die Angreifer zum präzisen Timing ihrer Schritte benutzt haben. Programme, die ihren Speicher im Userspace selbst verwalten, funktionieren weiter."
       },
       "breaks": null,
       "sources": [
@@ -323,11 +323,11 @@
         "de": "Leistungsereignisse einschränken"
       },
       "summary": {
-        "en": "Profiling hooks add a lot of kernel code that ordinary users can reach. This limits most of it to administrators.",
-        "pt-BR": "Os ganchos de profiling acrescentam muito código do kernel ao alcance de usuários comuns. Isto limita a maior parte aos administradores.",
-        "es": "Los ganchos de perfilado añaden mucho código del kernel al que pueden acceder los usuarios normales. Esto limita la mayor parte a los administradores.",
-        "fr": "Les points d'analyse de performance ajoutent beaucoup de code noyau accessible aux utilisateurs ordinaires. Ce réglage en limite la plus grande partie aux administrateurs.",
-        "de": "Profiling-Hooks fügen viel Kernel-Code hinzu, den gewöhnliche Benutzer erreichen können. Dies beschränkt das meiste davon auf Administratoren."
+        "en": "Only administrators can observe the whole system. What the CPU and kernel do stays measurable for your own programs, but a program of yours can no longer reach the kernel's measuring machinery.",
+        "pt-BR": "Só administradores podem observar o sistema inteiro. O que a CPU e o kernel fazem continua medível para os seus próprios programas, mas um programa seu não alcança mais a maquinaria de medição do kernel.",
+        "es": "Solo los administradores pueden observar todo el sistema. Lo que hacen la CPU y el kernel sigue siendo medible para tus propios programas, pero un programa tuyo ya no alcanza la maquinaria de medición del kernel.",
+        "fr": "Seuls les administrateurs peuvent observer tout le système. Ce que font le processeur et le noyau reste mesurable pour vos propres programmes, mais un de vos programmes ne peut plus atteindre la machinerie de mesure du noyau.",
+        "de": "Nur Administratoren können das ganze System beobachten. Was CPU und Kernel tun, bleibt für Ihre eigenen Programme messbar, aber eines Ihrer Programme erreicht die Messmaschinerie des Kernels nicht mehr."
       },
       "breaks": {
         "en": "Developers can no longer profile their own programs with perf without extra rights.",

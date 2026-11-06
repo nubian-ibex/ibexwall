@@ -18,7 +18,7 @@ use super::vm::Vm;
 /// Shared by the scenarios: which package family this machine is, and where
 /// the built packages are.
 const LIB: &str = r#"
-set -e
+set -eE
 if command -v dnf >/dev/null; then FAM=rpm
 elif command -v apt-get >/dev/null; then FAM=deb
 elif command -v pacman >/dev/null; then FAM=arch
@@ -26,14 +26,17 @@ else echo "UNKNOWN PACKAGE FAMILY"; exit 1; fi
 OUT1=/tmp/ibx/out1
 OUT2=/tmp/ibx/out2
 JSON_ID="python3 -c 'import json,sys;t=sys.stdin.read();i=t.find(\"{\");d=json.JSONDecoder().raw_decode(t[i:])[0] if i>=0 else {};t=d.get(\"plan\") or d.get(\"transaction\");print(t[\"id\"] if isinstance(t,dict) else t)'"
+# What AppArmor refused, newest last, for a scenario that failed.
+aa_dump() { sudo journalctl --no-pager 2>/dev/null | grep 'apparmor="DENIED"' | grep ibexwall | tail -25 | sed -E 's/.*(operation=)/\1/' | cut -c1-260; }
+trap 'aa_dump' ERR
 # Plan and apply, leaving the transaction in TX.
 change() {
   PLUGIN=$1; shift
-  P=$(sudo ibexctl plan "$PLUGIN" "$@" --json 2>/tmp/plan.err | eval "$JSON_ID") || { echo "PLAN FAILED: $(cat /tmp/plan.err)"; return 1; }
+  P=$(sudo ibexctl plan "$PLUGIN" "$@" --json 2>/tmp/plan.err | eval "$JSON_ID") || { echo "PLAN FAILED: $(cat /tmp/plan.err)"; aa_dump; return 1; }
   OUT=$(sudo ibexctl apply "$P" --confirm-timeout 300 --json 2>&1 || true)
   TX=$(echo "$OUT" | eval "$JSON_ID")
-  [ -n "$TX" ] || { echo "APPLY FAILED: $OUT"; sudo journalctl -u ibexwalld -n 20 --no-pager; return 1; }
-  if echo "$OUT" | grep -Eq '"state": "(failed|rolled_back)"'; then echo "THE CHANGE DID NOT STAY: $OUT"; return 1; fi
+  [ -n "$TX" ] || { echo "APPLY FAILED: $OUT"; aa_dump; sudo journalctl -u ibexwalld -n 20 --no-pager; return 1; }
+  if echo "$OUT" | grep -Eq '"state": "(failed|rolled_back)"'; then echo "THE CHANGE DID NOT STAY: $OUT"; aa_dump; return 1; fi
   if echo "$OUT" | grep -q pending_confirm; then sudo ibexctl confirm "$TX" >/dev/null || { echo "CONFIRM FAILED"; return 1; }; fi
 }
 # Everything the packages put or leave on the machine that carries the name.
@@ -152,7 +155,7 @@ done
 /// Real changes through the packaged daemon: a kernel setting, a module
 /// group and the inbound firewall.
 const USE: &str = r#"
-for p in system.sysctl system.modules net.firewall; do sudo ibexctl plugins enable $p >/dev/null; done
+for p in system.sysctl system.modules net.firewall; do sudo ibexctl plugins enable $p >/dev/null 2>/tmp/enable.err || { echo "ENABLING $p FAILED: $(cat /tmp/enable.err)"; aa_dump; sudo journalctl -u ibexwalld -n 8 --no-pager | cut -c1-240; exit 1; }; done
 sudo sh -c 'command -v nft' >/dev/null || { echo "nft IS MISSING (a dependency)"; exit 1; }
 RFC_BEFORE=$(cat /proc/sys/net/ipv4/tcp_rfc1337)
 echo "$RFC_BEFORE" > /tmp/rfc-before
@@ -176,6 +179,85 @@ if [ "$(cat /tmp/fw-applied)" = yes ]; then
   sudo nft list table inet ibexwall >/dev/null || { echo "THE FIREWALL TABLE IS MISSING"; exit 1; }
 fi
 echo "METRIC: changes applied through the packaged daemon (sysctl, modules, firewall: $(cat /tmp/fw-applied))"
+"#;
+
+/// AppArmor: the profiles load, the services run under them, and an ordinary
+/// workload (every plugin checked, three changes made and undone) draws no
+/// denial. Skipped where AppArmor is not the machine's access control.
+const APPARMOR: &str = r#"
+if [ "$(cat /sys/module/apparmor/parameters/enabled 2>/dev/null)" != Y ] || ! command -v apparmor_parser >/dev/null 2>&1; then
+  echo "METRIC: AppArmor is not active on this machine: skipped"; exit 0
+fi
+[ "$FAM" = deb ] && dpkg -s ibexwall-apparmor >/dev/null 2>&1 || { echo "ibexwall-apparmor IS NOT INSTALLED"; exit 1; }
+for f in usr.bin.ibexwalld usr.bin.ibexwall-dns usr.bin.ibexwall-mcp usr.libexec.ibexwall.ibexwall-plugins; do
+  [ -L /etc/apparmor.d/$f ] || { echo "$f IS NOT LINKED INTO /etc/apparmor.d"; exit 1; }
+done
+sudo aa-status 2>/dev/null | grep -q ibexwalld || sudo cat /sys/kernel/security/apparmor/profiles | grep -q '^ibexwalld ' || { echo "THE PROFILES ARE NOT LOADED"; exit 1; }
+sudo systemctl restart ibexwalld.service || { sudo journalctl -u ibexwalld -n 15 --no-pager | cut -c1-250; sudo journalctl -k -n 10 --no-pager | grep -i apparmor | cut -c1-300; exit 1; }
+for u in $(systemctl list-units 'ibexwall-plugin-*.service' --no-legend | awk '{print $1}'); do sudo systemctl restart $u 2>/dev/null || true; done
+sudo dmesg -C 2>/dev/null || true
+MARK=$(date '+%Y-%m-%d %H:%M:%S')
+# Every plugin answers a check.
+for p in $(sudo ibexctl plugins list --json | python3 -c 'import json,sys;d=json.JSONDecoder().raw_decode(sys.stdin.read())[0];print(" ".join(p["id"] for p in (d["plugins"] if isinstance(d,dict) else d)))'); do
+  sudo ibexctl plugins enable $p >/dev/null 2>&1 || true
+  sudo ibexctl check $p --json >/dev/null 2>&1 || true
+done
+# Plan, apply and confirm; the transaction is left in TX.
+apply_change() {
+  PLUGIN=$1; shift
+  P=$(sudo ibexctl plan "$PLUGIN" "$@" --json 2>/dev/null | python3 -c 'import json,sys;t=sys.stdin.read();i=t.find("{");d=json.JSONDecoder().raw_decode(t[i:])[0];print(d["plan"]["id"] if "plan" in d else d["id"])') || return 1
+  OUT=$(sudo ibexctl apply "$P" --confirm-timeout 300 --json 2>&1 || true)
+  TX=$(echo "$OUT" | python3 -c 'import json,sys;t=sys.stdin.read();i=t.find("{");d=json.JSONDecoder().raw_decode(t[i:])[0];print(d["transaction"]["id"])' 2>/dev/null) || return 1
+  echo "$OUT" | grep -q pending_confirm && sudo ibexctl confirm "$TX" >/dev/null 2>&1
+  return 0
+}
+change() { apply_change "$@" && sudo ibexctl rollback "$TX" >/dev/null 2>&1; true; }
+change system.sysctl --set 'keys={"net.ipv4.tcp_rfc1337":"1"}'
+change system.modules --set 'block=["vivid"]'
+change net.firewall --set enable_basic=true
+# What runs under which profile, read from the kernel.
+confined() {
+  PID=$(pgrep -x "$1" | head -1)
+  [ -n "$PID" ] || { echo "$1 IS NOT RUNNING"; return 1; }
+  echo "METRIC: $1 runs as: $(sudo cat /proc/$PID/attr/current)"
+  sudo cat /proc/$PID/attr/current | grep -qE "^$2( |//)" || { echo "$1 IS NOT UNDER THE $2 PROFILE"; return 1; }
+}
+confined ibexwalld ibexwalld
+# The resolver answers a few queries while it is on.
+if apply_change net.dns --set provider=quad9 --set transport=tls; then
+  for i in 1 2 3; do resolvectl query example.com >/dev/null 2>&1 || true; sleep 1; done
+  confined ibexwall-dns ibexwall-dns
+  sudo ibexctl rollback "$TX" >/dev/null 2>&1 || true
+else
+  echo "THE RESOLVER COULD NOT BE TURNED ON"; aa_dump; exit 1
+fi
+# The MCP server, as an assistant's client would start it, answers a request
+# under its profile (the HTTPS mode is the same binary and is off here).
+( printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"a1","version":"1"}}}'; sleep 6 ) | sudo systemd-run --wait --pipe -q -p User=ibexwall-mcp -p SupplementaryGroups=ibexwall-assistants -p StateDirectory=ibexwall-mcp -p AppArmorProfile=ibexwall-mcp /usr/bin/ibexwall-mcp --client a1 --state-dir /var/lib/ibexwall-mcp > /tmp/a1-mcp.out 2>/tmp/a1-mcp.err &
+sleep 3
+confined ibexwall-mcp ibexwall-mcp
+wait
+grep -q '"result"' /tmp/a1-mcp.out || { echo "THE MCP SERVER DID NOT ANSWER: $(cat /tmp/a1-mcp.out /tmp/a1-mcp.err | head -5)"; exit 1; }
+# A plugin runs under its own profile.
+sudo ibexctl check system.posture --json >/dev/null 2>&1 || true
+PLUGIN_PID=$(systemctl show ibexwall-plugin-posture.service -p MainPID --value)
+echo "METRIC: a plugin runs as: $(sudo cat /proc/$PLUGIN_PID/attr/current)"
+sudo cat /proc/$PLUGIN_PID/attr/current | grep -qE "^ibexwall-plugins( |//)" || { echo "A PLUGIN IS NOT UNDER ITS PROFILE"; exit 1; }
+sleep 2
+sudo journalctl --since "$MARK" --no-pager 2>/dev/null | grep -E 'apparmor="(ALLOWED|DENIED)"' | grep ibexwall > /tmp/aa.log || true
+N=$(wc -l < /tmp/aa.log)
+python3 - <<'PYEOF'
+import re, collections
+seen = collections.OrderedDict()
+for line in open('/tmp/aa.log'):
+    f = dict(re.findall(r'(\w+)="([^"]*)"', line))
+    key = (f.get('profile'), f.get('operation'), f.get('name') or f.get('family', '') + ':' + f.get('sock_type', ''), f.get('requested_mask') or f.get('capname', ''), f.get('apparmor'))
+    seen[key] = seen.get(key, 0) + 1
+for (profile, op, name, mask, status), n in sorted(seen.items(), key=lambda kv: [str(x) for x in kv[0]]):
+    print(f"METRIC: AA {status} {profile} {op} {name} {mask}")
+PYEOF
+echo "METRIC: $N AppArmor events for the ibexwall profiles"
+test "$N" = 0 || { echo "THE PROFILES LOGGED $N EVENTS"; exit 1; }
 "#;
 
 /// Upgrade: a higher version over the installed one; the changes made, the
@@ -302,6 +384,10 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     );
     scenario!("i3 every unit, rated by systemd", SECURITY);
     scenario!("u1 changes made through the packaged daemon", USE);
+    scenario!(
+        "a1 the AppArmor profiles load and the workload draws no event",
+        APPARMOR
+    );
     scenario!(
         "u2 an upgrade keeps the changes, the history and the firewall, and runs the new files",
         UPGRADE

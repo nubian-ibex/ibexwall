@@ -183,6 +183,7 @@ async fn dispatch(
     })?;
 
     let identity = identity_of(peer);
+    let actor = identity.actor();
     if polkit
         .check(action.to_string(), identity)
         .await
@@ -218,7 +219,7 @@ async fn dispatch(
             }
             crate::monitor::set_app_mode(core, &app, mode).map_err(internal)?;
             core.audit(
-                "user",
+                &actor,
                 "core",
                 None,
                 "",
@@ -236,7 +237,7 @@ async fn dispatch(
             let patch = parameters.get("patch").cloned().unwrap_or(Value::Null);
             let justification = str_field(&parameters, "justification")?;
             let client = opt_str_field(&parameters, "client")?.unwrap_or_else(|| "unknown".into());
-            let (plan, ops) = build_plan(core, plugin, patch.clone()).await?;
+            let (plan, ops) = build_plan(core, plugin, patch.clone(), &actor).await?;
             let digest = crate::audit::ops_digest(&ops);
             let proposal = core
                 .create_proposal(&client, &plan, patch, &justification, &digest)
@@ -263,23 +264,28 @@ async fn dispatch(
             }
             match decision.as_str() {
                 "reject" => {
-                    core.audit("user", &proposal.plugin, None, &digest, "proposal-rejected");
+                    core.audit(&actor, &proposal.plugin, None, &digest, "proposal-rejected");
                     core.publish_proposal_event("proposals.decided", &proposal);
                     Ok(Reply::result(json!({ "transaction": null })))
                 }
                 "approve" => {
                     // Plan again from what the client asked for, and apply
                     // only if the operations are the ones that were reviewed.
-                    let (plan, ops) =
-                        build_plan(core, proposal.plugin.clone(), proposal.patch.clone()).await?;
+                    let (plan, ops) = build_plan(
+                        core,
+                        proposal.plugin.clone(),
+                        proposal.patch.clone(),
+                        &actor,
+                    )
+                    .await?;
                     if crate::audit::ops_digest(&ops) != digest {
                         return Err(err("ProposalStale", json!({ "id": id })));
                     }
-                    let reply = apply(core, &json!({ "plan_id": plan.id })).await;
+                    let reply = apply(core, &json!({ "plan_id": plan.id }), &actor).await;
                     match &reply {
                         Ok(_) => {
                             core.audit(
-                                "user",
+                                &actor,
                                 &proposal.plugin,
                                 None,
                                 &digest,
@@ -289,7 +295,7 @@ async fn dispatch(
                         }
                         Err(_) => {
                             core.audit(
-                                "user",
+                                &actor,
                                 &proposal.plugin,
                                 None,
                                 &digest,
@@ -312,7 +318,7 @@ async fn dispatch(
                 .map_err(internal)?;
             core.monitor.refresh_policy(core).map_err(internal)?;
             core.audit(
-                "user",
+                &actor,
                 "core",
                 None,
                 "",
@@ -341,7 +347,7 @@ async fn dispatch(
                 return Err(not_found("prompt", &id));
             }
             core.audit(
-                "user",
+                &actor,
                 "core",
                 None,
                 "",
@@ -367,7 +373,7 @@ async fn dispatch(
                 .set_plugin_enabled(&id, enabled)
                 .map_err(internal)?;
             core.audit(
-                "user",
+                &actor,
                 "core",
                 None,
                 "",
@@ -389,7 +395,14 @@ async fn dispatch(
                 json!({ "plugin": info, "manifest": manifest }),
             ))
         }
-        "RunChecks" => run_checks(core, opt_str_field(&parameters, "plugin")?.as_deref()).await,
+        "RunChecks" => {
+            run_checks(
+                core,
+                opt_str_field(&parameters, "plugin")?.as_deref(),
+                &actor,
+            )
+            .await
+        }
         "ListFindings" => {
             let plugin = opt_str_field(&parameters, "plugin")?.unwrap_or_default();
             let findings = core
@@ -424,10 +437,10 @@ async fn dispatch(
                 "reversible": manifest.risk.reversible,
             })))
         }
-        "PlanChange" => plan_change(core, &parameters).await,
-        "Apply" => apply(core, &parameters).await,
-        "Confirm" => confirm(core, &parameters).await,
-        "Rollback" => rollback(core, &parameters).await,
+        "PlanChange" => plan_change(core, &parameters, &actor).await,
+        "Apply" => apply(core, &parameters, &actor).await,
+        "Confirm" => confirm(core, &parameters, &actor).await,
+        "Rollback" => rollback(core, &parameters, &actor).await,
         "History" => {
             let limit = parameters
                 .get("limit")
@@ -552,7 +565,11 @@ fn authorize_plugin_change(core: &Arc<Core>, id: &str) -> Result<(), VarlinkErro
     Ok(())
 }
 
-async fn run_checks(core: &Arc<Core>, plugin: Option<&str>) -> Result<Reply, VarlinkError> {
+async fn run_checks(
+    core: &Arc<Core>,
+    plugin: Option<&str>,
+    actor: &str,
+) -> Result<Reply, VarlinkError> {
     let targets: Vec<String> = match plugin {
         Some(one) => vec![one.to_string()],
         None => core
@@ -577,7 +594,7 @@ async fn run_checks(core: &Arc<Core>, plugin: Option<&str>) -> Result<Reply, Var
             .map_err(internal)?;
         findings.extend(report.findings);
     }
-    core.audit("user", "core", None, "", "run-checks");
+    core.audit(actor, "core", None, "", "run-checks");
     Ok(Reply::result(json!({ "findings": findings })))
 }
 
@@ -586,6 +603,7 @@ async fn build_plan(
     core: &Arc<Core>,
     plugin: String,
     patch: Value,
+    actor: &str,
 ) -> Result<(Plan, Vec<Op>), VarlinkError> {
     authorize_plugin_change(core, &plugin)?;
 
@@ -665,7 +683,7 @@ async fn build_plan(
         expires_at,
     };
     core.audit(
-        "user",
+        actor,
         &persisted.plugin,
         None,
         &crate::audit::ops_digest(&ops),
@@ -674,14 +692,18 @@ async fn build_plan(
     Ok((plan, ops))
 }
 
-async fn plan_change(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkError> {
+async fn plan_change(
+    core: &Arc<Core>,
+    parameters: &Value,
+    actor: &str,
+) -> Result<Reply, VarlinkError> {
     let plugin = str_field(parameters, "plugin")?;
     let patch = parameters.get("patch").cloned().unwrap_or(Value::Null);
-    let (plan, _) = build_plan(core, plugin, patch).await?;
+    let (plan, _) = build_plan(core, plugin, patch, actor).await?;
     Ok(Reply::result(json!({ "plan": plan })))
 }
 
-async fn apply(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkError> {
+async fn apply(core: &Arc<Core>, parameters: &Value, actor: &str) -> Result<Reply, VarlinkError> {
     let plan_id = str_field(parameters, "plan_id")?;
     // The confirmation window is bounded: a negative value would roll
     // back at once, a huge one would disable the safety net, and the
@@ -746,7 +768,7 @@ async fn apply(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkErr
         .insert_transaction(&row, &now)
         .map_err(internal)?;
     core.audit(
-        "user",
+        actor,
         &plan.plugin,
         Some(&tx_id),
         &crate::audit::ops_digest(&ops),
@@ -797,7 +819,7 @@ async fn apply(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkErr
                 )
                 .map_err(internal)?;
             core.audit(
-                "user",
+                actor,
                 &plan.plugin,
                 Some(&tx_id),
                 &crate::audit::ops_digest(&ops),
@@ -827,7 +849,7 @@ async fn apply(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkErr
             )
             .map_err(internal)?;
         core.audit(
-            "user",
+            actor,
             &plan.plugin,
             Some(&tx_id),
             &crate::audit::ops_digest(&ops),
@@ -845,7 +867,7 @@ async fn apply(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkErr
             .set_confirm_deadline(&tx_id, deadline)
             .map_err(internal)?;
         core.audit(
-            "user",
+            actor,
             &plan.plugin,
             Some(&tx_id),
             &crate::audit::ops_digest(&ops),
@@ -865,7 +887,7 @@ async fn apply(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkErr
             .mark_transaction(&tx_id, TxStatus::Committed)
             .map_err(internal)?;
         core.audit(
-            "user",
+            actor,
             &plan.plugin,
             Some(&tx_id),
             &crate::audit::ops_digest(&ops),

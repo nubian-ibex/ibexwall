@@ -5,7 +5,11 @@
 
 use super::*;
 
-pub(crate) async fn confirm(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkError> {
+pub(crate) async fn confirm(
+    core: &Arc<Core>,
+    parameters: &Value,
+    actor: &str,
+) -> Result<Reply, VarlinkError> {
     let tx_id = str_field(parameters, "transaction_id")?;
     let _permit = core
         .tx_sem
@@ -27,7 +31,7 @@ pub(crate) async fn confirm(core: &Arc<Core>, parameters: &Value) -> Result<Repl
     core.state
         .mark_transaction(&tx_id, TxStatus::Committed)
         .map_err(internal)?;
-    core.audit("user", &row.plugin, Some(&tx_id), "", "confirmed");
+    core.audit(actor, &row.plugin, Some(&tx_id), "", "confirmed");
     Ok(Reply::result(Value::Null))
 }
 
@@ -57,7 +61,11 @@ fn newer_overlap(core: &Core, target: &str, ops: &[Op]) -> anyhow::Result<Option
     Ok(None)
 }
 
-pub(crate) async fn rollback(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkError> {
+pub(crate) async fn rollback(
+    core: &Arc<Core>,
+    parameters: &Value,
+    actor: &str,
+) -> Result<Reply, VarlinkError> {
     let target = str_field(parameters, "target")?;
     let _permit = core
         .tx_sem
@@ -100,7 +108,7 @@ pub(crate) async fn rollback(core: &Arc<Core>, parameters: &Value) -> Result<Rep
         .mark_transaction(&target, TxStatus::RolledBack)
         .map_err(internal)?;
     core.audit(
-        "user",
+        actor,
         &row.plugin,
         Some(&target),
         &crate::audit::ops_digest(&ops),

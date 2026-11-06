@@ -2220,7 +2220,7 @@ name = "ibexwall-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
+ "base64 0.23.1",
  "blake2",
  "ed25519-dalek",
  "hex",
@@ -2381,7 +2381,7 @@ dependencies = [
 name = "ibexwall-plugin-assistant"
 version = "0.1.0"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "ibexwall-proto",
  "ibexwall-sdk",
  "ibexwall-sys",
@@ -2461,16 +2461,6 @@ dependencies = [
  "serde_json",
  "tokio",
  "toml 0.9.12+spec-1.1.0",
-]
-
-[[package]]
-name = "ibexwall-plugin-echo"
-version = "0.1.0"
-dependencies = [
- "ibexwall-proto",
- "ibexwall-sdk",
- "serde_json",
- "tokio",
 ]
 
 [[package]]
@@ -7438,7 +7428,7 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
+ "base64 0.23.1",
  "blake2",
  "ed25519-dalek",
  "ibexwall-core",

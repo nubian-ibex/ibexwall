@@ -49,7 +49,7 @@ if ! [ -S "$root/run/ibexwall/core.sock" ] ||
     # First run: the check plugins start disabled; enable them so the
     # screens have data. Safe to repeat.
     if [ -x "$repo/target/debug/ibexctl" ]; then
-        for id in system.posture system.ports net.dns net.nts net.firewall; do
+        for id in system.posture system.ports net.dns net.nts net.firewall system.hardening system.assistant system.modules; do
             "$repo/target/debug/ibexctl" plugins enable "$id" >/dev/null 2>&1 || true
         done
     fi

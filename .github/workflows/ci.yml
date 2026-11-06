@@ -39,7 +39,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - uses: taiki-e/install-action@899b013517f9e7774591216672bf75a46bb9a481 # v2.9.4
         with:
-          tool: cargo-nextest
+          tool: cargo-nextest,cargo-deny
       - name: system libraries for the desktop crate
         run: |
           sudo apt-get update -qq

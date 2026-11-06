@@ -21,6 +21,7 @@ mod f8;
 mod f9;
 mod fixtures;
 mod idl;
+mod mac;
 mod plugin_units;
 mod schemas;
 mod stage;

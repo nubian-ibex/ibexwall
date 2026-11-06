@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The daemon: applies the changes the person approved, through plans with a
+# snapshot. It reads the system, keeps its own state, and writes only the
+# paths the plugin manifests declare (the generated include below), running
+# only the commands they declare plus the tools it drives.
+include <tunables/global>
+
+profile ibexwalld flags=(attach_disconnected) {
+  include <abstractions/base>
+
+  capability net_admin,
+  capability chown,
+  capability fowner,
+  capability dac_read_search,
+  capability dac_override,
+
+  network unix stream,
+  network unix dgram,
+  network netlink raw,
+
+  /usr/bin/ibexwalld mr,
+  /usr/lib/ibexwall/** r,
+  /usr/libexec/ibexwall/ibexwall-plugins r,
+
+  # Reads: the system it looks after.
+  /etc/** r,
+  /proc/** r,
+  /sys/** r,
+  /run/** r,
+  /usr/** r,
+  /boot/** r,
+  /var/lib/** r,
+
+  # Its own state, settings and sockets.
+  /var/lib/ibexwall/ rw,
+  /var/lib/ibexwall/** rwkl,
+  /etc/ibexwall/ rw,
+  /etc/ibexwall/** rwkl,
+  /run/ibexwall/ rw,
+  /run/ibexwall/** rwklm,
+  /run/systemd/notify w,
+  /run/dbus/system_bus_socket rw,
+  /run/systemd/private rw,
+
+  # systemd, polkit and the other system services it asks, over the bus.
+  dbus bus=system,
+
+  # The tools it drives; each runs under this profile.
+  /usr/{,s}bin/nft ix,
+  /usr/bin/systemctl ix,
+  /usr/bin/systemd-run ix,
+  /usr/{,s}bin/ufw ix,
+  /usr/bin/firewall-cmd ix,
+
+  # What the plugins' manifests declare (generated).
+  include <ibexwall/plugin-paths>
+
+  # Never the person's keys or files.
+  deny /home/** w,
+  deny /root/** w,
+}

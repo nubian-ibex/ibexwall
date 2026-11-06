@@ -363,7 +363,10 @@ pub fn generate_units(manifest: &Manifest) -> PluginUnits {
         "DynamicUser={}\n",
         if dynamic { "yes" } else { "no" }
     ));
-    service.push_str("NoNewPrivileges=yes\nProtectSystem=strict\n");
+    // The profile of the plugins where the machine has loaded it; the dash
+    // ignores a machine that does not use AppArmor.
+    service
+        .push_str("NoNewPrivileges=yes\nAppArmorProfile=-ibexwall-plugins\nProtectSystem=strict\n");
     service.push_str(if reads_home {
         "ProtectHome=read-only\n"
     } else {

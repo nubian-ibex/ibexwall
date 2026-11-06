@@ -68,8 +68,10 @@ stage=%{prebuilt_stage}
 %else
 stage=%{_builddir}/stage
 %endif
-cp -a "$stage/root/." %{buildroot}/
+# Only what each RPM package owns: the staged tree also holds the AppArmor
+# profiles, which are for Debian and Ubuntu.
 for pkg in ibexwall ibexwall-desktop ibexwall-mcp; do
+    sed 's#^/##' "$stage/stage-lists/$pkg.list" | tar -C "$stage/root" -cf - -T - | tar -C %{buildroot} -xf -
     { sed 's/^/%dir /' "$stage/stage-lists/$pkg.dirs"; cat "$stage/stage-lists/$pkg.list"; } > %{_builddir}/$pkg.files
 done
 

@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+case "$1" in
+remove)
+    # shellcheck disable=SC1091
+    . /usr/lib/ibexwall/package-scripts.sh
+    apparmor_remove
+    # The services leave their profiles.
+    if [ -d /run/systemd/system ]; then
+        systemctl try-restart ibexwalld.service ibexwall-dns.service ibexwall-mcp.service >/dev/null 2>&1 || true
+    fi
+    ;;
+esac
+exit 0

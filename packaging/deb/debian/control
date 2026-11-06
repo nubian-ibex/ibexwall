@@ -33,3 +33,11 @@ Description: IbexWall MCP server for AI assistants
  The MCP server that lets an AI assistant read your security status and
  suggest changes. It can never apply one. The HTTPS mode is off until you
  turn it on.
+
+Package: ibexwall-apparmor
+Architecture: all
+Depends: ${misc:Depends}, ibexwall (>= ${source:Version}), apparmor
+Description: IbexWall AppArmor profiles
+ Profiles that confine the IbexWall daemon, the secure DNS resolver, the MCP
+ server and the plugins to what they need. They are loaded when the package
+ is installed and unloaded when it is removed.

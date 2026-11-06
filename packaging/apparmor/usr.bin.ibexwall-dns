@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The secure DNS resolver: answers on loopback, talks to the upstream servers
+# over TLS, keeps counters and block lists in its own directories.
+include <tunables/global>
+
+profile ibexwall-dns flags=(attach_disconnected) {
+  include <abstractions/base>
+  include <abstractions/nameservice>
+  include <abstractions/ssl_certs>
+
+  capability net_bind_service,
+  capability setuid,
+  capability setgid,
+
+  network inet stream,
+  network inet6 stream,
+  network inet dgram,
+  network inet6 dgram,
+  network unix stream,
+  network unix dgram,
+
+  /usr/bin/ibexwall-dns mr,
+  /etc/ibexwall/dns/** r,
+  /var/lib/ibexwall/blocklists/** rwk,
+  /run/ibexwall/dns/** rwk,
+  /run/ibexwall/dns/ rw,
+  @{PROC}/sys/net/core/somaxconn r,
+  @{PROC}/@{pid}/cgroup r,
+  /sys/fs/cgroup/** r,
+}

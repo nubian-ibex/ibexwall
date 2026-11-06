@@ -19,6 +19,9 @@ StateDirectory=ibexwall-mcp
 StateDirectoryMode=0700
 Restart=on-failure
 NoNewPrivileges=yes
+# The AppArmor profile of this name, where the machine uses AppArmor and has
+# loaded it (ibexwall-apparmor); the leading dash ignores a machine without.
+AppArmorProfile=-ibexwall-mcp
 CapabilityBoundingSet=
 AmbientCapabilities=
 ProtectSystem=strict

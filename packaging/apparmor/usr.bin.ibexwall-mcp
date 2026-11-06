@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The MCP server for AI assistants: reads through the control socket and never
+# applies a change; the HTTPS mode listens only when the person turns it on.
+include <tunables/global>
+
+profile ibexwall-mcp flags=(attach_disconnected) {
+  include <abstractions/base>
+  include <abstractions/ssl_certs>
+
+  network inet stream,
+  network inet6 stream,
+  network unix stream,
+
+  /usr/bin/ibexwall-mcp mr,
+  @{PROC}/sys/kernel/hostname r,
+  /etc/ibexwall/mcp.toml r,
+  /etc/ibexwall/mcp/** r,
+  /var/lib/ibexwall-mcp/** rwk,
+  /run/ibexwall/core.sock rw,
+  /run/ibexwall/mcp/** rwk,
+}

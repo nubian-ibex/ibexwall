@@ -14,6 +14,9 @@ ExecStart=/usr/bin/ibexwalld
 Restart=on-failure
 WatchdogSec=30s
 NoNewPrivileges=yes
+# The AppArmor profile of this name, where the machine uses AppArmor and has
+# loaded it (ibexwall-apparmor); the leading dash ignores a machine without.
+AppArmorProfile=-ibexwalld
 ProtectSystem=strict
 # ADR-0026: /etc is written only by ibexwall-exec inside transient units
 # whose ReadWritePaths match one transaction.

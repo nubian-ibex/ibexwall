@@ -36,6 +36,8 @@ pub enum Package {
     Core,
     Desktop,
     Mcp,
+    /// AppArmor profiles, for Debian and Ubuntu.
+    AppArmor,
 }
 
 impl Package {
@@ -44,6 +46,7 @@ impl Package {
             Package::Core => "ibexwall",
             Package::Desktop => "ibexwall-desktop",
             Package::Mcp => "ibexwall-mcp",
+            Package::AppArmor => "ibexwall-apparmor",
         }
     }
 }
@@ -326,6 +329,33 @@ pub fn run_stage(options: &Options) -> Result<()> {
         Package::Core,
     )?;
 
+    // AppArmor: the profiles, and the include the manifests generate.
+    let apparmor = pk.join("apparmor");
+    let mut profiles: Vec<_> = std::fs::read_dir(&apparmor)?
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with("usr."))
+        .collect();
+    profiles.sort();
+    for name in &profiles {
+        put(
+            dest,
+            &mut files,
+            &format!("/usr/share/ibexwall/apparmor/{name}"),
+            &apparmor.join(name),
+            0o644,
+            Package::AppArmor,
+        )?;
+    }
+    let include = "/usr/share/ibexwall/apparmor/ibexwall/plugin-paths";
+    let target = dest.join(include.trim_start_matches('/'));
+    std::fs::create_dir_all(target.parent().expect("a parent"))?;
+    std::fs::write(
+        &target,
+        crate::mac::apparmor_plugin_paths(&crate::mac::manifests(&root)?),
+    )?;
+    files.insert(include.to_string(), Package::AppArmor);
+
     // The steps every package format runs on install, upgrade and removal;
     // installed so a scriptlet can source them on the target machine.
     put(
@@ -361,7 +391,12 @@ pub fn run_stage(options: &Options) -> Result<()> {
     // One list per package, for the packaging tools.
     let lists = dest.join("../stage-lists");
     std::fs::create_dir_all(&lists)?;
-    for package in [Package::Core, Package::Desktop, Package::Mcp] {
+    for package in [
+        Package::Core,
+        Package::Desktop,
+        Package::Mcp,
+        Package::AppArmor,
+    ] {
         let text: String = files
             .iter()
             .filter(|(_, p)| **p == package)
@@ -393,7 +428,8 @@ pub fn run_stage(options: &Options) -> Result<()> {
 /// The directories under IbexWall's own roots that hold these files,
 /// parents first.
 fn owned_directories<'a>(paths: impl Iterator<Item = &'a str>) -> Vec<String> {
-    const ROOTS: [&str; 3] = [
+    const ROOTS: [&str; 4] = [
+        "/usr/share/ibexwall",
         "/usr/lib/ibexwall",
         "/usr/libexec/ibexwall",
         "/usr/share/doc/ibexwall",

@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The official plugins, one multicall binary started by a unit per plugin.
+# A plugin reads the system and proposes; it writes nothing, runs nothing and
+# opens no network connection. The daemon, not the plugin, applies changes.
+include <tunables/global>
+
+profile ibexwall-plugins flags=(attach_disconnected) {
+  include <abstractions/base>
+
+  capability sys_ptrace,
+  capability dac_read_search,
+  ptrace (read),
+
+  network unix stream,
+
+  /usr/libexec/ibexwall/ibexwall-plugins mr,
+  /usr/lib/ibexwall/plugins/** r,
+  /run/ibexwall/plugins/*.sock rw,
+  /run/dbus/system_bus_socket rw,
+
+  # The update check asks the package manager what is pending; the manager
+  # runs under this same read-only profile.
+  /usr/bin/apt-get ix,
+  /usr/bin/dpkg ix,
+  /usr/bin/ischroot ix,
+  /usr/lib/apt/methods/* ix,
+  @{PROC}/ r,
+
+  # It reads what it checks; the checks look at the whole system.
+  /etc/** r,
+  /proc/** r,
+  /sys/** r,
+  /run/** r,
+  /usr/** r,
+  /boot/** r,
+  /var/** r,
+  /home/ r,
+  /home/** r,
+  /root/ r,
+  /root/** r,
+
+  # But not the keys a person keeps for themselves.
+  deny /home/*/.ssh/** r,
+  deny /home/*/.gnupg/** r,
+  deny /root/.ssh/** r,
+  deny /root/.gnupg/** r,
+}

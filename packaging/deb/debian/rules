@@ -4,7 +4,7 @@
 # The stage holds root/ (the installed layout) and stage-lists/ (who owns what).
 
 STAGE := $(if $(IBEXWALL_STAGE),$(IBEXWALL_STAGE),$(CURDIR)/stage)
-PACKAGES := ibexwall ibexwall-desktop ibexwall-mcp
+PACKAGES := ibexwall ibexwall-desktop ibexwall-mcp ibexwall-apparmor
 
 %:
 	dh $@

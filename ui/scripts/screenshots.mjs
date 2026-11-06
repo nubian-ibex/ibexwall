@@ -26,10 +26,14 @@ const label = (locale, key) => {
   return match[1].trim();
 };
 
-const server = spawn('pnpm', ['exec', 'vite', 'preview', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
-  cwd: ui,
-  stdio: 'ignore',
-});
+const server = spawn(
+  'pnpm',
+  ['exec', 'vite', 'preview', '--host', '127.0.0.1', '--port', String(port), '--strictPort'],
+  {
+    cwd: ui,
+    stdio: 'ignore',
+  },
+);
 const stop = () => server.kill();
 process.on('exit', stop);
 
@@ -70,7 +74,10 @@ for (const locale of locales) {
   await page.goto(`http://127.0.0.1:${port}/?scenario=attention`);
   await page.getByRole('heading', { level: 1 }).first().waitFor();
   for (const [name, key] of screens) {
-    await page.getByRole('button', { name: label(locale, key), exact: true }).first().click();
+    await page
+      .getByRole('button', { name: label(locale, key), exact: true })
+      .first()
+      .click();
     await page.getByRole('heading', { level: 1 }).first().waitFor();
     await page.waitForTimeout(250);
     await page.screenshot({ path: join(dir, `${name}.png`) });

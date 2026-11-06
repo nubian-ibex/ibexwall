@@ -436,7 +436,25 @@ pub async fn serve_monitor(core: Arc<Core>, path: PathBuf) -> Result<()> {
     let own_uid = ibexwall_sys::current_uid();
     let active = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     loop {
-        let (stream, _) = listener.accept().await?;
+        let (stream, _) = match listener.accept().await {
+            Ok(accepted) => accepted,
+            Err(error) => {
+                // An exhausted file table must not end the monitor
+                // socket (same pattern as the varlink serve loop).
+                let code = error.raw_os_error();
+                if matches!(error.kind(), std::io::ErrorKind::ConnectionAborted)
+                    || code == Some(24)
+                    || code == Some(23)
+                {
+                    tracing::warn!(%error, "monitor accept failed; backing off");
+                    if code.is_some() {
+                        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                    }
+                    continue;
+                }
+                return Err(error.into());
+            }
+        };
         let allowed = stream
             .peer_cred()
             .map(|cred| cred.uid() == 0 || cred.uid() == own_uid)

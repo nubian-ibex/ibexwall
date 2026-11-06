@@ -144,21 +144,100 @@ pub mod futures_handle {
 
 use futures_handle::BoxHandle;
 
+/// Resource limits for the accept loop. The defaults are generous for
+/// the real clients (the app, the agent, the tray and short CLI calls)
+/// and hostile to a local socket flood.
+#[derive(Debug, Clone)]
+pub struct ServeLimits {
+    /// Concurrent connections kept open; extras are closed at accept.
+    pub max_connections: usize,
+    /// How long a connection may stay silent before its first complete
+    /// frame. After the first frame there is no timeout: subscriptions
+    /// are meant to stay open for as long as they are wanted.
+    pub first_frame: std::time::Duration,
+}
+
+impl Default for ServeLimits {
+    fn default() -> Self {
+        Self {
+            max_connections: 64,
+            first_frame: std::time::Duration::from_secs(120),
+        }
+    }
+}
+
+// Linux errno values (there is no stable ErrorKind for them).
+const EMFILE: i32 = 24;
+const ENFILE: i32 = 23;
+
 /// Serves `listener` forever with `info` and `handler`.
 pub async fn serve(
     listener: UnixListener,
     info: ServiceInfo,
     handler: Arc<dyn Handler>,
 ) -> anyhow::Result<()> {
+    serve_limited(listener, info, handler, ServeLimits::default()).await
+}
+
+/// Serves with explicit resource limits (tests use small ones).
+pub async fn serve_limited(
+    listener: UnixListener,
+    info: ServiceInfo,
+    handler: Arc<dyn Handler>,
+    limits: ServeLimits,
+) -> anyhow::Result<()> {
+    let active = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     loop {
-        let (stream, _addr) = listener.accept().await?;
+        let (stream, _addr) = match listener.accept().await {
+            Ok(accepted) => accepted,
+            Err(error) => {
+                // An exhausted file table is a local denial-of-service
+                // pattern, not a reason for the daemon to die: back off
+                // and keep serving. A reset connection is noise.
+                let code = error.raw_os_error();
+                if matches!(error.kind(), std::io::ErrorKind::ConnectionAborted)
+                    || code == Some(EMFILE)
+                    || code == Some(ENFILE)
+                {
+                    tracing::warn!(%error, "accept failed; backing off");
+                    if code.is_some() {
+                        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                    }
+                    continue;
+                }
+                return Err(error.into());
+            }
+        };
+        if active.fetch_add(1, std::sync::atomic::Ordering::AcqRel) >= limits.max_connections {
+            active.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+            // Dropping the stream closes it; the peer sees a short read.
+            tracing::warn!("connection cap reached; closing an extra connection");
+            continue;
+        }
+        let limits_for_task = limits.clone();
+        let guard = ConnectionGuard {
+            active: Arc::clone(&active),
+        };
         let info = info.clone();
         let handler = Arc::clone(&handler);
         tokio::spawn(async move {
-            if let Err(err) = connection(stream, info, handler).await {
+            let _guard = guard;
+            if let Err(err) = connection(stream, info, handler, limits_for_task.clone()).await {
                 tracing::debug!(error = %err, "varlink connection ended");
             }
         });
+    }
+}
+
+/// Returns the slot when the connection task ends.
+struct ConnectionGuard {
+    active: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl Drop for ConnectionGuard {
+    fn drop(&mut self) {
+        self.active
+            .fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
     }
 }
 
@@ -180,6 +259,7 @@ async fn connection(
     stream: UnixStream,
     info: ServiceInfo,
     handler: Arc<dyn Handler>,
+    limits: ServeLimits,
 ) -> anyhow::Result<()> {
     // Fail closed: a connection whose credentials cannot be read gets no
     // default identity (least of all uid 0).
@@ -193,8 +273,23 @@ async fn connection(
     let (mut reader, mut writer) = stream.into_split();
     // One read may deliver several frames; the framer buffers the rest.
     let mut framer = wire::Framer::new();
+    let mut got_first = false;
     loop {
-        let raw = match framer.read_message(&mut reader).await {
+        let read = framer.read_message(&mut reader);
+        let raw = if got_first {
+            read.await
+        } else {
+            // A connection that never completes a first frame only holds
+            // a slot and buffer; past this deadline it is closed quietly.
+            match tokio::time::timeout(limits.first_frame, read).await {
+                Ok(outcome) => {
+                    got_first = true;
+                    outcome
+                }
+                Err(_elapsed) => return Ok(()),
+            }
+        };
+        let raw = match raw {
             Ok(raw) => raw,
             Err(TransportError::Closed) => return Ok(()),
             Err(TransportError::TooLarge | TransportError::Malformed(_)) => {
@@ -494,6 +589,90 @@ mod tests {
                 panic!("server should not answer after a protocol violation, got {value}")
             }
         }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn a_silent_connection_is_closed_after_the_first_frame_deadline() {
+        let path = tmp_socket().with_extension("idle");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+        let info = ServiceInfo {
+            vendor: "t".into(),
+            product: "t".into(),
+            version: "0".into(),
+            url: "".into(),
+            interfaces: HashMap::new(),
+        };
+        let limits = ServeLimits {
+            max_connections: 8,
+            first_frame: Duration::from_millis(150),
+        };
+        tokio::spawn(serve_limited(listener, info, Arc::new(Echo), limits));
+        use tokio::io::AsyncReadExt as _;
+
+        // A raw connection that never speaks: the server must close it
+        // once the deadline passes, not hold the slot forever.
+        let mut silent = tokio::net::UnixStream::connect(&path).await.unwrap();
+        let mut buf = [0u8; 8];
+        let read = tokio::time::timeout(Duration::from_secs(3), silent.read(&mut buf)).await;
+        match read {
+            Ok(Ok(0)) | Ok(Err(_)) => { /* closed by the server: defended */ }
+            Ok(Ok(n)) => panic!("expected a close, read {n} bytes"),
+            Err(_) => panic!("the silent connection was never closed"),
+        }
+
+        // A client that speaks at once is served normally.
+        let mut prompt = client::Client::connect(&path).await.unwrap();
+        let value = prompt
+            .call("com.test.Echo", serde_json::json!({"n": 5}))
+            .await
+            .unwrap();
+        assert_eq!(value["n"], 5);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn a_connection_cap_closes_extras_and_frees_slots() {
+        let path = tmp_socket().with_extension("cap");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+        let info = ServiceInfo {
+            vendor: "t".into(),
+            product: "t".into(),
+            version: "0".into(),
+            url: "".into(),
+            interfaces: HashMap::new(),
+        };
+        let limits = ServeLimits {
+            max_connections: 1,
+            first_frame: Duration::from_secs(60),
+        };
+        tokio::spawn(serve_limited(listener, info, Arc::new(Echo), limits));
+
+        let mut first = client::Client::connect(&path).await.unwrap();
+        let value = first
+            .call("com.test.Echo", serde_json::json!({"n": 1}))
+            .await
+            .unwrap();
+        assert_eq!(value["n"], 1);
+
+        // Over the cap: accepted then closed, never served.
+        let mut extra = client::Client::connect(&path).await.unwrap();
+        let over = extra
+            .call("com.test.Echo", serde_json::json!({"n": 2}))
+            .await;
+        assert!(over.is_err(), "an over-cap connection must not be served");
+
+        // Dropping the held connection frees the slot for the next one.
+        drop(first);
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let mut again = client::Client::connect(&path).await.unwrap();
+        let value = again
+            .call("com.test.Echo", serde_json::json!({"n": 3}))
+            .await
+            .unwrap();
+        assert_eq!(value["n"], 3);
         let _ = std::fs::remove_file(&path);
     }
 

@@ -70,7 +70,7 @@ pub const TABLE: &[Entry] = &[
         offer: Offer::Recommended,
         severity: Severity::Low,
         may_affect: Some("sysctl-may-affect-ptrace"),
-        at_least: false,
+        at_least: true,
     },
     Entry {
         key: "kernel.unprivileged_bpf_disabled",
@@ -166,7 +166,7 @@ pub const TABLE: &[Entry] = &[
         offer: Offer::Recommended,
         severity: Severity::Low,
         may_affect: None,
-        at_least: false,
+        at_least: true,
     },
     Entry {
         key: "dev.tty.ldisc_autoload",

@@ -92,6 +92,11 @@ fn chrony_installed(sandbox: &Sandbox) -> bool {
     sandbox.exists("/usr/sbin/chronyd") || sandbox.exists("/usr/bin/chronyd")
 }
 
+fn chronyd_running(sandbox: &Sandbox) -> bool {
+    // The same probe the plan uses to decide whether to restart chronyd.
+    sandbox.exists("/run/chrony/chronyd.pid") || sandbox.exists("/run/chronyd.pid")
+}
+
 fn main_config(sandbox: &Sandbox) -> Option<(&'static str, String)> {
     ["/etc/chrony.conf", "/etc/chrony/chrony.conf"]
         .into_iter()
@@ -169,7 +174,17 @@ pub fn evaluate(sandbox: &Sandbox, detected_at: &str) -> CheckReport {
     } else {
         match sources(sandbox) {
             None => CheckOutcome::NotAssessed,
-            Some(list) if list.iter().any(|(_, nts)| *nts) => CheckOutcome::Pass,
+            Some(list) if list.iter().any(|(_, nts)| *nts) => {
+                // An NTS source only protects the clock if chronyd is
+                // actually running; a stopped or disabled chronyd leaves
+                // the clock to unauthenticated time, so never claim Pass
+                // from the config alone.
+                if chronyd_running(sandbox) {
+                    CheckOutcome::Pass
+                } else {
+                    CheckOutcome::NotAssessed
+                }
+            }
             Some(_) => {
                 findings.push(finding(
                     "off",
@@ -362,6 +377,7 @@ mod tests {
     }
 
     const CHRONYD: (&str, &str) = ("/usr/sbin/chronyd", "");
+    const RUNNING: (&str, &str) = ("/run/chrony/chronyd.pid", "1234");
     const FEDORA_CONF: (&str, &str) = (
         "/etc/chrony.conf",
         "pool 2.fedora.pool.ntp.org iburst\nconfdir /etc/chrony.d\n",
@@ -393,7 +409,7 @@ mod tests {
             ),
             ("/etc/chrony.d/50-x.sources", "server ignored.example nts\n"),
         ] {
-            let (root, sandbox) = tree(&[CHRONYD, FEDORA_CONF, (path, content)]);
+            let (root, sandbox) = tree(&[CHRONYD, RUNNING, FEDORA_CONF, (path, content)]);
             let expected = if path.ends_with(".conf") {
                 CheckOutcome::Pass
             } else {
@@ -409,6 +425,7 @@ mod tests {
         // Debian: a sourcedir with .sources files.
         let (root, sandbox) = tree(&[
             CHRONYD,
+            RUNNING,
             (
                 "/etc/chrony/chrony.conf",
                 "confdir /etc/chrony/conf.d\nsourcedir /etc/chrony/sources.d\n",
@@ -421,6 +438,28 @@ mod tests {
         assert_eq!(
             evaluate(&sandbox, "now").results[0].outcome,
             CheckOutcome::Pass
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn an_nts_source_without_a_running_chronyd_is_not_a_pass() {
+        let (root, sandbox) = tree(&[
+            CHRONYD,
+            (
+                "/etc/chrony.conf",
+                "pool 2.fedora.pool.ntp.org iburst\nconfdir /etc/chrony.d\n",
+            ),
+            (
+                "/etc/chrony.d/50-x.conf",
+                "server time.cloudflare.com iburst nts\n",
+            ),
+        ]);
+        // Configured for NTS but chronyd is stopped: the clock is not
+        // actually authenticated, so this is not a pass.
+        assert_eq!(
+            evaluate(&sandbox, "now").results[0].outcome,
+            CheckOutcome::NotAssessed
         );
         std::fs::remove_dir_all(root).unwrap();
     }
@@ -583,6 +622,7 @@ mod tests {
             // Once in place, the check counts the wrapper's servers.
             let (root2, applied) = tree(&[
                 CHRONYD,
+                RUNNING,
                 ("/etc/chrony.conf", "pool x iburst\n"),
                 (
                     WRAPPER_CONF,

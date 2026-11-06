@@ -341,18 +341,27 @@ fn sudo_nopasswd(sandbox: &Sandbox) -> Check {
     let Some(main) = sandbox.read("/etc/sudoers") else {
         return Check::new(id, Severity::Medium, CheckOutcome::NotAssessed);
     };
-    let mut texts = vec![main];
-    if sandbox.is_unreadable_dir("/etc/sudoers.d") {
-        return Check::new(id, Severity::Medium, CheckOutcome::NotAssessed);
-    }
-    for name in sandbox.list("/etc/sudoers.d") {
-        // sudo ignores files with a dot or ending in '~'.
-        if name.contains('.') || name.ends_with('~') {
-            continue;
+    let mut texts = vec![main.clone()];
+    let mut dirs: Vec<String> = vec!["/etc/sudoers.d".to_string()];
+    // The sudoers file itself can point elsewhere via @includedir.
+    for dir in included_dirs(&main) {
+        if !dirs.contains(&dir) {
+            dirs.push(dir);
         }
-        match sandbox.read(&format!("/etc/sudoers.d/{name}")) {
-            Some(text) => texts.push(text),
-            None => return Check::new(id, Severity::Medium, CheckOutcome::NotAssessed),
+    }
+    for dir in dirs {
+        if sandbox.is_unreadable_dir(&dir) {
+            return Check::new(id, Severity::Medium, CheckOutcome::NotAssessed);
+        }
+        for name in sandbox.list(&dir) {
+            // sudo ignores files with a dot or ending in '~'.
+            if name.contains('.') || name.ends_with('~') {
+                continue;
+            }
+            match sandbox.read(&format!("{dir}/{name}")) {
+                Some(text) => texts.push(text),
+                None => return Check::new(id, Severity::Medium, CheckOutcome::NotAssessed),
+            }
         }
     }
     let found = texts.iter().any(|text| has_nopasswd(text));
@@ -364,11 +373,23 @@ fn sudo_nopasswd(sandbox: &Sandbox) -> Check {
     Check::new(id, Severity::Medium, outcome)
 }
 
+fn included_dirs(text: &str) -> Vec<String> {
+    text.lines()
+        .map(str::trim)
+        .filter_map(|line| {
+            line.strip_prefix("@includedir ")
+                .or_else(|| line.strip_prefix("#includedir "))
+                .map(str::trim)
+                .map(str::to_string)
+        })
+        .collect()
+}
+
 fn has_nopasswd(text: &str) -> bool {
     text.lines()
         .map(str::trim)
         .filter(|line| !line.starts_with('#') && !line.is_empty())
-        .any(|line| line.contains("NOPASSWD"))
+        .any(|line| line.contains("NOPASSWD") || line.contains("!authenticate"))
 }
 
 #[cfg(test)]
@@ -390,6 +411,33 @@ mod tests {
 
     fn outcome(report: &CheckReport, id: &str) -> CheckOutcome {
         report.results.iter().find(|r| r.id == id).unwrap().outcome
+    }
+
+    #[test]
+    fn sudo_nopasswd_detects_both_nopasswd_and_defaults_not_authenticate() {
+        let (root, sandbox) = tree(
+            &[(
+                "/etc/sudoers",
+                b"root ALL=(ALL:ALL) ALL\nalice ALL=(ALL) NOPASSWD: ALL\n",
+            )],
+            "sudonopw",
+        );
+        assert_eq!(sudo_nopasswd(&sandbox).outcome, CheckOutcome::Fail);
+        std::fs::remove_dir_all(&root).unwrap();
+
+        let (root, sandbox) = tree(
+            &[(
+                "/etc/sudoers",
+                b"Defaults !authenticate\nroot ALL=(ALL:ALL) ALL\n",
+            )],
+            "sudoauth",
+        );
+        assert_eq!(sudo_nopasswd(&sandbox).outcome, CheckOutcome::Fail);
+        std::fs::remove_dir_all(&root).unwrap();
+
+        let (root, sandbox) = tree(&[("/etc/sudoers", b"root ALL=(ALL:ALL) ALL\n")], "sudook");
+        assert_eq!(sudo_nopasswd(&sandbox).outcome, CheckOutcome::Pass);
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]

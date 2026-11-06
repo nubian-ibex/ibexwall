@@ -309,6 +309,31 @@ impl<B: Backend, W: Write> Server<B, W> {
             ));
         }
         self.refusing = false;
+        // A denied plugin's arguments can hold a secret (a VPN profile's
+        // private key). Refuse before running the tool, but still record
+        // the denial: the fact that it was attempted is worth an audit
+        // line, the patch is not.
+        if matches!(label, "dry_run" | "propose_change")
+            && let Some(plugin) = arguments.get("plugin").and_then(Value::as_str)
+            && let Err(message) = self.plugin_allowed(plugin)
+        {
+            let denied = json!({ "plugin": plugin, "patch": "[redacted: denied plugin]" });
+            let seq = self.audit.lock().expect("audit lock").call_via(
+                &now(),
+                &self.client,
+                &self.via,
+                label,
+                &denied,
+            );
+            if let Ok(seq) = seq {
+                let _ = self.audit.lock().expect("audit lock").result(
+                    &now(),
+                    seq,
+                    &format!("error: {message}"),
+                );
+            }
+            return Err(message);
+        }
         let mut logged = arguments.clone();
         self.redactor.value(&mut logged);
         let call = match self.audit.lock().expect("audit lock").call_via(

@@ -262,6 +262,10 @@ pub fn evaluate(sandbox: &Sandbox, runner: &dyn Runner, detected_at: &str) -> Ch
     };
 
     let total;
+    // Whether "zero updates" is positively confirmed: an empty or
+    // summary-bearing output, as opposed to a successful run whose format
+    // the parser no longer recognizes (which must not read as "patched").
+    let clean_confirmed;
     match family(sandbox) {
         "dnf" => {
             let Some(out) = runner.run(
@@ -272,6 +276,14 @@ pub fn evaluate(sandbox: &Sandbox, runner: &dyn Runner, detected_at: &str) -> Ch
             };
             let updates = parse_dnf(&out);
             total = updates.len();
+            // dnf5 prints a column header even when there are no updates,
+            // so "no updates" is either an empty body or the recognized
+            // header with nothing after it. Anything else that parsed no
+            // advisory is a format we no longer understand.
+            clean_confirmed = out.trim().is_empty()
+                || out
+                    .lines()
+                    .any(|l| l.contains("Severity") && l.contains("Package"));
             for u in updates.iter().take(MAX_FINDINGS) {
                 make(
                     "update",
@@ -291,6 +303,9 @@ pub fn evaluate(sandbox: &Sandbox, runner: &dyn Runner, detected_at: &str) -> Ch
             };
             let updates = parse_apt(&out);
             total = updates.len();
+            clean_confirmed = out
+                .lines()
+                .any(|l| l.starts_with("0 upgraded") || l.contains("0 upgraded,"));
             for u in updates.iter().take(MAX_FINDINGS) {
                 make(
                     "update",
@@ -313,6 +328,7 @@ pub fn evaluate(sandbox: &Sandbox, runner: &dyn Runner, detected_at: &str) -> Ch
             };
             let affected = parse_arch_audit(&out);
             total = affected.len();
+            clean_confirmed = out.trim().is_empty();
             for (package, cves, severity) in affected.iter().take(MAX_FINDINGS) {
                 make(
                     "affected",
@@ -334,7 +350,14 @@ pub fn evaluate(sandbox: &Sandbox, runner: &dyn Runner, detected_at: &str) -> Ch
     }
     CheckReport {
         results: result(if total == 0 {
-            CheckOutcome::Pass
+            if clean_confirmed {
+                CheckOutcome::Pass
+            } else {
+                // The command succeeded but the parser recognized no
+                // summary: the output format may have changed, so the
+                // machine is not honestly "patched".
+                CheckOutcome::NotAssessed
+            }
         } else {
             CheckOutcome::Fail
         }),
@@ -389,6 +412,21 @@ mod tests {
         assert_eq!(
             report.findings[0].args["advisory"],
             "FEDORA-2026-1a2b3c4d5e"
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn an_unrecognized_dnf_output_is_not_a_pass() {
+        // A successful run whose format the parser no longer recognizes
+        // must not read as "no security updates" (the false PASS case).
+        let text =
+            "1 security advisory affects these packages:\nopenssl-3.0.0 (CVE-2026-1000) Critical\n";
+        assert!(parse_dnf(text).is_empty());
+        let (root, sandbox) = tree("ID=fedora\n", &[]);
+        assert_eq!(
+            evaluate(&sandbox, &Fixed(Some(text)), "now").results[0].outcome,
+            CheckOutcome::NotAssessed
         );
         std::fs::remove_dir_all(root).unwrap();
     }

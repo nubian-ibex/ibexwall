@@ -182,6 +182,10 @@ pub enum ConfigError {
     PublicPlain(String),
     #[error("`{0}` is not a valid domain")]
     BadDomain(String),
+    #[error(
+        "`listen` must be a loopback address, got `{0}` (a non-loopback listen would make the resolver open)"
+    )]
+    BadListen(String),
     #[error("could not build the upstream resolver: {0}")]
     Resolver(String),
 }
@@ -219,6 +223,11 @@ impl Settings {
     /// The default servers and every route must be valid and local-only
     /// where they are plain.
     pub fn validate(&self) -> Result<(), ConfigError> {
+        // The resolver is a local stub; a non-loopback listen would turn
+        // it into an open resolver and an amplification source.
+        if !self.listen.ip().is_loopback() {
+            return Err(ConfigError::BadListen(self.listen.to_string()));
+        }
         if self.servers.is_empty() {
             return Err(ConfigError::NoUpstream);
         }

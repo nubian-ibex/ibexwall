@@ -1,0 +1,39 @@
+id = "net.exposure"
+version = "0.1.0"
+api = 1
+category = "net"
+kinds = ["check", "control"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-exposure"
+default_enabled = false
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "Open ports, seen with nmap"
+pt-BR = "Portas abertas, vistas com o nmap"
+
+[description]
+en = "Scans this computer's own addresses (never another machine) with nmap and lists which TCP ports answer, to compare with what you expect."
+pt-BR = "Varre os endereços do próprio computador (nunca outra máquina) com o nmap e lista quais portas TCP respondem, para comparar com o que você espera."
+
+[privileges]
+write_paths = ["/etc/systemd/system/ibexwall-exposure-scan.service", "/etc/systemd/system/ibexwall-exposure-scan.timer", "/var/lib/ibexwall/exposure/.managed"]
+units = ["ibexwall-exposure-scan.service", "ibexwall-exposure-scan.timer"]
+unit_actions = ["start", "enable", "disable"]
+
+[sandbox]
+user = "dynamic"
+capabilities = []
+read_paths = ["/var/lib/ibexwall/exposure", "/proc/net", "/usr/bin", "/etc/os-release", "/etc/systemd/system"]
+network = false
+
+[risk]
+affects = ["network"]
+reversible = "immediate"
+confirm_timeout = false
+may_affect = ["exposure-may-affect-logs"]
+
+[ui]
+icon = "radio"
+order = 94

@@ -10,7 +10,7 @@ use std::fs::File;
 use std::io::{self, Read, Write};
 use std::os::fd::AsFd;
 use std::os::unix::fs::MetadataExt;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 
 use rustix::fs::{self as rfs, Mode, OFlags};
@@ -227,13 +227,31 @@ struct FakeFile {
     meta: FileMeta,
 }
 
-/// In-memory filesystem with an operation log; paths are compared
-/// verbatim (callers build them via `names`, so sandboxed paths line
-/// up).
+/// In-memory filesystem with an operation log. Paths are normalized
+/// (`.` and `..` resolved) like a real filesystem, and a test can seed a
+/// symlink so the parent-link refusal `write_atomic` mirrors is exercised.
 #[derive(Debug, Default)]
 pub struct FakeFs {
     files: Mutex<BTreeMap<PathBuf, FakeFile>>,
+    /// A symlink (absolute link path) to its absolute target.
+    links: Mutex<BTreeMap<PathBuf, PathBuf>>,
     pub log: OpLog,
+}
+
+/// An absolute path with `.` and `..` resolved, the way the kernel would.
+fn normalize(path: &Path) -> PathBuf {
+    let mut out = PathBuf::from("/");
+    for component in path.components() {
+        match component {
+            Component::RootDir | Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            Component::Normal(segment) => out.push(segment),
+            Component::Prefix(_) => {}
+        }
+    }
+    out
 }
 
 impl FakeFs {
@@ -243,7 +261,7 @@ impl FakeFs {
 
     pub fn seed(&self, path: &Path, content: &[u8]) {
         self.files.lock().expect("lock poisoned").insert(
-            path.to_path_buf(),
+            normalize(path),
             FakeFile {
                 content: content.to_vec(),
                 meta: FileMeta {
@@ -254,27 +272,71 @@ impl FakeFs {
             },
         );
     }
+
+    /// Registers a symlink, so a test can exercise the parent-link
+    /// refusal that the real filesystem enforces with openat2.
+    pub fn symlink(&self, link: &Path, target: &Path) {
+        self.links
+            .lock()
+            .expect("lock poisoned")
+            .insert(normalize(link), normalize(target));
+    }
+
+    /// Follows the longest symlink prefix, bounded, so `read` behaves
+    /// like the real filesystem.
+    fn resolve(&self, path: &Path) -> PathBuf {
+        let mut current = normalize(path);
+        for _ in 0..40 {
+            let links = self.links.lock().expect("lock poisoned");
+            let mut prefix = PathBuf::from("/");
+            let mut matched: Option<(PathBuf, PathBuf)> = None;
+            for component in current.components() {
+                if let Component::Normal(segment) = component {
+                    prefix.push(segment);
+                    if let Some(target) = links.get(&prefix) {
+                        matched = Some((prefix.clone(), target.clone()));
+                    }
+                }
+            }
+            drop(links);
+            match matched {
+                None => return current,
+                Some((link, target)) => {
+                    let rest = current
+                        .strip_prefix(&link)
+                        .unwrap_or_else(|_| Path::new(""));
+                    current = normalize(&target.join(rest));
+                }
+            }
+        }
+        current
+    }
 }
 
 impl Fs for FakeFs {
     fn exists(&self, path: &Path) -> bool {
-        self.files.lock().expect("lock poisoned").contains_key(path)
-    }
-
-    fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
         self.files
             .lock()
             .expect("lock poisoned")
-            .get(path)
+            .contains_key(&self.resolve(path))
+    }
+
+    fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
+        let path = self.resolve(path);
+        self.files
+            .lock()
+            .expect("lock poisoned")
+            .get(&path)
             .map(|f| f.content.clone())
             .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))
     }
 
     fn metadata(&self, path: &Path) -> io::Result<FileMeta> {
+        let path = self.resolve(path);
         self.files
             .lock()
             .expect("lock poisoned")
-            .get(path)
+            .get(&path)
             .map(|f| f.meta)
             .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))
     }
@@ -286,9 +348,28 @@ impl Fs for FakeFs {
         mode: u32,
         owner: Option<(u32, u32)>,
     ) -> io::Result<()> {
+        let path = normalize(path);
+        // Refuse a symlinked parent, mirroring RealFs's RESOLVE_NO_SYMLINKS.
+        {
+            let links = self.links.lock().expect("lock poisoned");
+            let mut prefix = PathBuf::from("/");
+            if let Some(parent) = path.parent() {
+                for component in parent.components() {
+                    if let Component::Normal(segment) = component {
+                        prefix.push(segment);
+                        if links.contains_key(&prefix) {
+                            return Err(io::Error::other(format!(
+                                "refusing a symlinked parent `{}`",
+                                prefix.display()
+                            )));
+                        }
+                    }
+                }
+            }
+        }
         self.log.push(format!("write {}", path.display()));
         let mut files = self.files.lock().expect("lock poisoned");
-        let mut meta = files.get(path).map(|f| f.meta).unwrap_or(FileMeta {
+        let mut meta = files.get(&path).map(|f| f.meta).unwrap_or(FileMeta {
             mode: 0o644,
             uid: 0,
             gid: 0,
@@ -299,7 +380,7 @@ impl Fs for FakeFs {
             meta.gid = gid;
         }
         files.insert(
-            path.to_path_buf(),
+            path,
             FakeFile {
                 content: content.to_vec(),
                 meta,
@@ -309,8 +390,10 @@ impl Fs for FakeFs {
     }
 
     fn remove(&self, path: &Path) -> io::Result<()> {
+        let path = normalize(path);
         self.log.push(format!("remove {}", path.display()));
-        self.files.lock().expect("lock poisoned").remove(path);
+        self.files.lock().expect("lock poisoned").remove(&path);
+        self.links.lock().expect("lock poisoned").remove(&path);
         Ok(())
     }
 
@@ -388,7 +471,10 @@ mod tests {
         fs.create_dir_all(Path::new("/etc/inside")).unwrap();
         // A `..` walk would translate out of the sandbox root and reach
         // the real filesystem; every entry point must refuse it.
-        assert!(fs.read(Path::new("/etc/inside/../../../etc/passwd")).is_err());
+        assert!(
+            fs.read(Path::new("/etc/inside/../../../etc/passwd"))
+                .is_err()
+        );
         assert!(fs.metadata(Path::new("/etc/inside/..")).is_err());
         assert!(fs.remove(Path::new("/etc/inside/../../outside")).is_err());
         assert!(fs.create_dir_all(Path::new("/etc/walk/../out")).is_err());
@@ -397,6 +483,26 @@ mod tests {
         // The clean path inside the root still works.
         assert!(fs.metadata(Path::new("/etc/inside")).is_ok());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn fake_fs_normalizes_dotdot_and_refuses_a_symlinked_parent() {
+        let fs = FakeFs::new();
+        fs.seed(Path::new("/etc/base.conf"), b"base");
+        // `..` resolves like a real path.
+        assert_eq!(
+            fs.read(Path::new("/etc/other/../base.conf")).unwrap(),
+            b"base"
+        );
+        // A write through a symlinked parent is refused, mirroring RealFs.
+        fs.symlink(Path::new("/etc/link"), Path::new("/var/lib/ibexwall"));
+        assert!(
+            fs.write_atomic(Path::new("/etc/link/evil.conf"), b"x", 0o644, None)
+                .is_err()
+        );
+        // A read through a symlink follows it.
+        fs.seed(Path::new("/var/lib/ibexwall/data"), b"data");
+        assert_eq!(fs.read(Path::new("/etc/link/data")).unwrap(), b"data");
     }
 
     #[test]

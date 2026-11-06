@@ -20,13 +20,13 @@ commit history is signed and verified.
 Two plans are approved and in flight:
 
 - `docs/plans/F10c-audit-fixes.md`, from the 2026-11-06 validation pass.
-  The automated battery is green (664 Rust tests, 119 UI tests, clippy,
+  The automated battery is green (668 Rust tests, 119 UI tests, clippy,
   deny, no schema drift, 81% coverage), and the review found five P0,
-  fourteen P1 and twelve P2 issues. M1 (the five P0) is done and the
-  transaction-engine work (M2) is mostly landed, all with unit or e2e
-  tests and a green Fedora VM run; the remaining M2 items, M3 (the P2
-  set) and M4 (the rest of the audit) are still open. No v1.0 tag before
-  M1 and M2 are done and verified.
+  fourteen P1 and twelve P2 issues. M1 (the five P0), M2 (the
+  transaction engine) and part of M3 are done, all with unit or e2e
+  tests and a green Fedora VM run; the remaining M3 items and M4 (the
+  rest of the audit) are still open. No v1.0 tag before M1 and M2 are
+  done and verified.
 - `docs/plans/F11a-compliance.md`, the Compliance section the maintainer
   asked for: the machine against a named framework, with compliant,
   non-compliant, not-assessed, attestation and exception states, and a

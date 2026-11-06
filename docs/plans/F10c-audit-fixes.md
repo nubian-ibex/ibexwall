@@ -4,10 +4,10 @@
 # F10c: the 2026-11-06 audit and what it fixes
 
 Requested by the maintainer on 2026-11-06: validate the project and its
-code so far, then fix what a review finds. Status: M1 (the P0 set) and
-most of M2 (the transaction engine) are done and committed the same day.
-M3 and M4, and the rest of M2, are next. The maintainer approved the
-plan and the Compliance naming on 2026-11-06.
+code so far, then fix what a review finds. Status: M1 (the P0 set), M2
+(the transaction engine) and part of M3 are done and committed the same
+day; the rest of M3 and M4 are next. The maintainer approved the plan and
+the Compliance naming on 2026-11-06.
 
 ## Method and scope
 
@@ -191,14 +191,24 @@ review belongs to M4.
    have a deadline, the reload runs once, an nft familyless rule is
    refused, findings are keyed by plugin and id, list limits are clamped,
    reversibility comes from the ops and an irreversible plan is refused at
-   apply, and the firewall is restored before a broken config or plugin
-   file can stop the daemon.
-   Still open from M2: a transaction that failed at boot is not retried
-   on start, plans/events/snapshots are not pruned, the audit actor is
-   hard-coded, the chain head is not anchored (a deleted tail still
-   verifies), and the proposal approval shows no diff.
-3. M3, the P2 set plus the unit and permissions review. Verify: the full
+   apply, the firewall is restored before a broken config or plugin file
+   can stop the daemon, a failed rollback is retried on boot and included
+   in uninstall, a failed apply or verify records the real outcome, the
+   audit head is anchored so a deleted tail is detected, plans and events
+   are pruned, and a proposal approval shows the diff it reviews.
+   Still open from M2: the audit actor is hard-coded as `user` instead
+   of the caller identity, and orphaned snapshots are not yet pruned.
+3. M3, the P2 set plus the unit and permissions review. Partly landed on
+   2026-11-06: the confirmation window is bounded, a lagged subscriber
+   ends cleanly, tokens refuse a backslash name and an impossible date,
+   FileWrite modes and ownership are constrained, the organization locks
+   are enforced, a snapshot read error fails instead of reading as
+   absent, and `ibexctl --set` accepts any value. Verify: the full
    battery plus `--phase f0` to `--phase f10` on the five distros.
+   Still open from M3: the mask op has no working inverse, the DNS
+   answers socket and status file could be hardened, the manifest
+   `[privileges]` are unchecked beyond the prefix, and `core.config` is
+   never reloaded (one view helper also double-prefixed sandbox paths).
 4. M4, the rest of the audit: full-depth pass over every plugin and the
    DNS and MCP internals, `FakeFs` symlink semantics, the weak tests
    above, and the fuzz decision. Verify: findings folded in, battery and

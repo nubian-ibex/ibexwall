@@ -2,6 +2,7 @@
 # Opens the desktop app against a sandboxed daemon (IBEXWALL_ROOT), so the
 # development host is never modified: no polkit policy, units or nftables.
 # The sandbox daemon authorizes only the current user (see sandbox_polkit).
+# A daemon this script starts is stopped, with its plugins, when the window closes.
 set -eu
 
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
@@ -45,6 +46,7 @@ if ! [ -S "$root/run/ibexwall/core.sock" ] ||
     setsid "$repo/target/debug/ibexwalld" \
         "--dev-key=$repo/target/devkey/dev.pub" \
         >"$root/ibexwalld.log" 2>&1 </dev/null &
+    started=$!
     sleep 2
     # First run: the check plugins start disabled; enable them so the
     # screens have data. Safe to repeat.
@@ -55,4 +57,18 @@ if ! [ -S "$root/run/ibexwall/core.sock" ] ||
     fi
 fi
 
-exec "$repo/target/debug/ibexwall-desktop"
+# The daemon starts its plugins as children and they outlive it, so what this
+# run started is stopped with the window: the daemon, then the plugins of this
+# sandbox only (matched by their path under $root).
+cleanup() {
+    [ -z "${started:-}" ] || kill "$started" 2>/dev/null || true
+    for pid in $(pgrep -f "^$root/usr/" 2>/dev/null); do
+        kill "$pid" 2>/dev/null || true
+    done
+}
+if [ -n "${started:-}" ]; then
+    trap cleanup EXIT INT TERM
+    "$repo/target/debug/ibexwall-desktop"
+else
+    exec "$repo/target/debug/ibexwall-desktop"
+fi

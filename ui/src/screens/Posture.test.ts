@@ -35,4 +35,10 @@ describe('Posture detail', () => {
     expect(screen.getAllByText('In order').length).toBeGreaterThan(2);
     expect(screen.getAllByText('Not assessed yet').length).toBe(3);
   });
+
+  it('says which access-control system the machine has, as information', async () => {
+    await show();
+    expect(await screen.findByText(/mandatory access control today/i)).toBeVisible();
+    expect(screen.getByText(/selinux is on but only logs what it would block/i)).toBeVisible();
+  });
 });

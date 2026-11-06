@@ -126,6 +126,13 @@ function hardeningNote(): Finding {
   };
 }
 
+const MAC_NOTE: Finding = {
+  ...finding('detect.mac', 'system.posture', 'info', 'detect-mac', {
+    case: 'selinux-permissive',
+  }),
+  summary_key: 'detect-mac-selinux-permissive',
+};
+
 const ASSISTANT_NOTES: Finding[] = [
   finding('assistant.tls', 'system.assistant', 'info', 'assistant-tls', {
     fingerprint: 'AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99',
@@ -454,6 +461,7 @@ export class FixtureTransport implements Transport {
       if (plugin === 'net.dns') return this.scenario === 'attention' ? DNS_NOTES : [];
       if (plugin === 'system.assistant') return ASSISTANT_NOTES;
       if (plugin === 'system.hardening') return [hardeningNote()];
+      if (plugin === 'system.posture') return [MAC_NOTE];
       if (this.scenario === 'empty' || this.scenario === 'protected') return [];
       return plugin ? FINDINGS.filter((f) => f.plugin === plugin) : FINDINGS;
     });

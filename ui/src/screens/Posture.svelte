@@ -8,6 +8,7 @@
   import Icon from '../components/Icon.svelte';
   import FindingRow from '../components/FindingRow.svelte';
   import SeverityBadge from '../components/SeverityBadge.svelte';
+  import Detected from '../components/Detected.svelte';
   import StateMessage from '../components/StateMessage.svelte';
 
   const WEIGHTS: [CheckResult['severity'], string][] = [
@@ -35,6 +36,8 @@
     </p>
   </div>
 </header>
+
+<Detected plugin="system.posture" />
 
 {#if posture.status === 'loading'}
   <StateMessage kind="loading" />

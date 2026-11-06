@@ -4,10 +4,9 @@
 # F10c: the 2026-11-06 audit and what it fixes
 
 Requested by the maintainer on 2026-11-06: validate the project and its
-code so far, then fix what a review finds. Status: M1 (the P0 set), M2
-(the transaction engine) and part of M3 are done and committed the same
-day; the rest of M3 and M4 are next. The maintainer approved the plan and
-the Compliance naming on 2026-11-06.
+code so far, then fix what a review finds. Status: M1, M2 and M3 are done
+and committed; M4 is in flight. The maintainer approved the plan and the
+Compliance naming on 2026-11-06.
 
 ## Method and scope
 
@@ -198,21 +197,27 @@ review belongs to M4.
    are pruned, and a proposal approval shows the diff it reviews.
    Still open from M2: the audit actor is hard-coded as `user` instead
    of the caller identity, and orphaned snapshots are not yet pruned.
-3. M3, the P2 set plus the unit and permissions review. Partly landed on
+3. M3, the P2 set plus the unit and permissions review. Landed on
    2026-11-06: the confirmation window is bounded, a lagged subscriber
    ends cleanly, tokens refuse a backslash name and an impossible date,
    FileWrite modes and ownership are constrained, the organization locks
    are enforced, a snapshot read error fails instead of reading as
-   absent, and `ibexctl --set` accepts any value. Verify: the full
-   battery plus `--phase f0` to `--phase f10` on the five distros.
-   Still open from M3: the mask op has no working inverse, the DNS
-   answers socket and status file could be hardened, the manifest
-   `[privileges]` are unchecked beyond the prefix, and `core.config` is
-   never reloaded (one view helper also double-prefixed sandbox paths).
+   absent, `ibexctl --set` accepts any value, a masked unit is unmasked
+   before its enablement is restored, the manifest `write_paths` are
+   validated, and the DNS status path no longer double-prefixes under a
+   sandbox root. Verify: the full battery plus `--phase f0` to `--phase
+   f10` on the five distros.
+   Accepted, not fixed: the DNS answers socket chmod and the status file
+   read are unreachable to a local user because the runtime directory is
+   root-owned 0755. Still open: `core.config` is never reloaded, so a
+   config change only takes effect after a restart.
 4. M4, the rest of the audit: full-depth pass over every plugin and the
    DNS and MCP internals, `FakeFs` symlink semantics, the weak tests
    above, and the fuzz decision. Verify: findings folded in, battery and
-   matrix green.
+   matrix green. The weak tests now assert, and the fuzz decision is to
+   defer the cargo-fuzz targets and nightly job to after v1.0 (they need
+   a nightly toolchain); the README says so. The deep plugin, DNS and
+   MCP pass and `FakeFs` symlink semantics are still open.
 
 ## Clean areas, for the record
 

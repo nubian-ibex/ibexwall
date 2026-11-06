@@ -399,6 +399,38 @@ fn live(sandbox: &Sandbox, key: &str) -> Option<String> {
         .map(|v| v.trim().to_string())
 }
 
+/// How many of the recommended settings the kernel already has, and which
+/// are missing, said before anything is changed.
+fn survey(sandbox: &Sandbox, at: &str) -> Finding {
+    let (mut have, mut missing, mut total) = (0usize, Vec::new(), 0usize);
+    for entry in TABLE.iter().filter(|e| e.offer == Offer::Recommended) {
+        let Some(current) = live(sandbox, entry.key) else {
+            continue;
+        };
+        total += 1;
+        if meets(entry, &current) {
+            have += 1;
+        } else {
+            missing.push(entry.key);
+        }
+    }
+    let mut args = BTreeMap::from([
+        ("have".to_string(), have.to_string()),
+        ("total".to_string(), total.to_string()),
+    ]);
+    let (case, patch) = if total == 0 {
+        ("unreadable", None)
+    } else if missing.is_empty() {
+        ("ok", None)
+    } else {
+        let shown: Vec<&str> = missing.iter().copied().take(5).collect();
+        args.insert("missing".into(), shown.join(", "));
+        args.insert("more".into(), missing.len().saturating_sub(5).to_string());
+        ("open", Some(serde_json::json!({ "preset": "recommended" })))
+    };
+    ibexwall_sdk::detect::detected("system.sysctl", "sysctl", case, args, patch, at)
+}
+
 /// True when the live value already meets the reference (equal, or
 /// numerically above it for an `at_least` key).
 fn meets(entry: &Entry, current: &str) -> bool {
@@ -454,6 +486,7 @@ pub fn evaluate(sandbox: &Sandbox, detected_at: &str) -> CheckReport {
             detected_at: detected_at.into(),
         });
     }
+    findings.push(survey(sandbox, detected_at));
     CheckReport {
         results: vec![CheckResult {
             id: "sysctl.hardening".into(),
@@ -637,6 +670,15 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
+    /// The findings about something to fix; the "we found" note is information.
+    fn problems(report: &CheckReport) -> Vec<&Finding> {
+        report
+            .findings
+            .iter()
+            .filter(|f| !f.id.starts_with("detect."))
+            .collect()
+    }
+
     #[test]
     fn the_table_is_sane() {
         // Every key unique, every value numeric, and the manifest's
@@ -658,7 +700,7 @@ mod tests {
         let (root, sandbox) = tree(&TABLE.iter().map(|e| (e.key, e.value)).collect::<Vec<_>>());
         let report = evaluate(&sandbox, "now");
         assert_eq!(report.results[0].outcome, CheckOutcome::Pass);
-        assert!(report.findings.is_empty());
+        assert!(problems(&report).is_empty());
 
         // Two off, one of them opt-in: only the recommended one counts.
         std::fs::write(
@@ -673,7 +715,7 @@ mod tests {
         .unwrap();
         let report = evaluate(&sandbox, "now");
         assert_eq!(report.results[0].outcome, CheckOutcome::Fail);
-        assert_eq!(report.findings.len(), 1);
+        assert_eq!(problems(&report).len(), 1);
         let finding = &report.findings[0];
         assert_eq!(finding.id, "sysctl.kernel.kptr_restrict");
         assert_eq!(finding.severity, Severity::Low);
@@ -700,7 +742,7 @@ mod tests {
         ]);
         let report = evaluate(&sandbox, "now");
         assert_eq!(report.results[0].outcome, CheckOutcome::Pass);
-        assert!(report.findings.is_empty());
+        assert!(problems(&report).is_empty());
         std::fs::remove_dir_all(&root).unwrap();
     }
 
@@ -796,7 +838,7 @@ mod tests {
         // The check counts the stricter value as meeting the reference.
         let report = evaluate(&sandbox, "now");
         assert_eq!(report.results[0].outcome, CheckOutcome::Pass);
-        assert!(report.findings.is_empty());
+        assert!(problems(&report).is_empty());
         // The plan neither writes it nor puts it in the drop-in.
         let ops = plan(
             &sandbox,
@@ -849,5 +891,32 @@ mod tests {
         assert!(error.to_string().contains("only preset"));
         let error = plan(&sandbox, &Config::default()).unwrap_err();
         assert!(error.to_string().contains("nothing to do"));
+    }
+
+    #[test]
+    fn the_note_counts_what_is_in_place_and_suggests_the_recommended_preset_only_when_something_is_missing()
+     {
+        let all: Vec<(&str, &str)> = TABLE
+            .iter()
+            .filter(|e| e.offer == Offer::Recommended)
+            .map(|e| (e.key, e.value))
+            .collect();
+        let (r1, good) = tree(&all);
+        let note = survey(&good, "x");
+        assert_eq!(note.summary_key, "detect-sysctl-ok");
+        assert!(!note.args.contains_key("patch"));
+        let mut off = all.clone();
+        off[0].1 = "0";
+        off[1].1 = "0";
+        let (r2, partial) = tree(&off);
+        let note = survey(&partial, "x");
+        assert_eq!(note.summary_key, "detect-sysctl-open");
+        assert_eq!(note.args["have"], (all.len() - 2).to_string());
+        assert_eq!(note.args["patch"], r#"{"preset":"recommended"}"#);
+        let (r3, blind) = tree(&[]);
+        assert_eq!(survey(&blind, "x").summary_key, "detect-sysctl-unreadable");
+        for r in [r1, r2, r3] {
+            std::fs::remove_dir_all(r).unwrap();
+        }
     }
 }

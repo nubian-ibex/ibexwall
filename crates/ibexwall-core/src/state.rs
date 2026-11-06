@@ -294,10 +294,10 @@ impl State {
     }
 
     /// Bounds what grows without bound: expired plans no transaction
-    /// still references, and events beyond the most recent window. A plan
-    /// a transaction points at (for rollback) is never pruned, however
-    /// old. Snapshots are pruned elsewhere, where the transaction state
-    /// machine knows they are no longer needed.
+    /// still references, events beyond the most recent window, and
+    /// snapshots of transactions already rolled back (their prior state
+    /// is no longer needed). A plan a transaction points at (for
+    /// rollback) is never pruned, however old.
     pub fn prune(&self, now_unix: i64) -> Result<()> {
         self.with_conn(|conn| {
             conn.execute(
@@ -310,8 +310,27 @@ impl State {
                  (SELECT seq FROM events ORDER BY seq DESC LIMIT 2000)",
                 [],
             )?;
-            Ok(())
-        })
+            Ok::<(), rusqlite::Error>(())
+        })?;
+        // Snapshots exist per transaction; once a transaction is rolled
+        // back the machine is restored and its snapshot can go.
+        let keep: std::collections::HashSet<String> = self
+            .with_conn(|conn| {
+                let mut stmt =
+                    conn.prepare("SELECT id FROM transactions WHERE state != 'rolled_back'")?;
+                let ids = stmt.query_map([], |row| row.get::<_, String>(0))?;
+                ids.collect::<std::result::Result<std::collections::HashSet<_>, _>>()
+            })
+            .unwrap_or_default();
+        if let Ok(entries) = std::fs::read_dir(self.snapshots_dir()) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                if !keep.contains(name.to_string_lossy().as_ref()) {
+                    let _ = std::fs::remove_dir_all(entry.path());
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn set_confirm_deadline(&self, id: &str, deadline_unix: i64) -> Result<()> {
@@ -757,7 +776,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn prune_drops_expired_unreferenced_plans_and_old_events() {
         let (dir, state) = temp_state();
         let plan = |id: &str, expires: &str| crate::engine::PersistedPlan {
@@ -807,6 +825,35 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
+    #[test]
+    fn prune_removes_snapshots_of_rolled_back_transactions() {
+        let (dir, state) = temp_state();
+        let rolled = state.snapshots_dir().join("rolledtx");
+        let kept = state.snapshots_dir().join("committedtx");
+        std::fs::create_dir_all(&rolled).unwrap();
+        std::fs::create_dir_all(&kept).unwrap();
+        state
+            .with_conn(|conn| {
+                for (id, status) in [("rolledtx", "rolled_back"), ("committedtx", "committed")] {
+                    conn.execute(
+                        "INSERT INTO transactions (id, plan_id, plugin, state, restore_point, created_at) \
+                         VALUES (?1, 'p', 'dev.echo', ?2, 's', 'now')",
+                        rusqlite::params![id, status],
+                    )?;
+                }
+                Ok::<_, rusqlite::Error>(())
+            })
+            .unwrap();
+        state.prune(1_900_000_000).unwrap();
+        assert!(
+            !rolled.exists(),
+            "a rolled back snapshot is no longer needed"
+        );
+        assert!(kept.exists(), "a committed snapshot must survive");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn a_plan_is_consumed_exactly_once() {
         let (dir, state) = temp_state();
         let plan = crate::engine::PersistedPlan {

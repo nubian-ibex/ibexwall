@@ -551,7 +551,16 @@ pub fn apply_snapshot_inverses(
                         // enablement of a unit that was merely restarted would fail
                         // on units whose enablement the init scripts own (Ubuntu's
                         // `ssh.service`, with its socket) and gains nothing.
-                        let now = sys.systemd.snapshot(unit)?;
+                        let mut now = sys.systemd.snapshot(unit)?;
+                        // A masked unit refuses enable and disable, so
+                        // unmask it first when it is masked now but was
+                        // not before the transaction.
+                        if now.enabled == crate::Enabled::Masked
+                            && enabled != crate::Enabled::Masked
+                        {
+                            sys.systemd.apply(unit, UnitAction::Unmask, false)?;
+                            now = sys.systemd.snapshot(unit)?;
+                        }
                         let enable_differs = now.enabled != enabled;
                         match enabled {
                             crate::Enabled::Enabled if enable_differs => {
@@ -733,6 +742,43 @@ mod tests {
             b"later"
         );
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_masked_unit_is_unmasked_before_its_enablement_is_restored() {
+        use std::sync::Arc;
+        let sys = crate::SysBundle {
+            fs: Arc::new(crate::FakeFs::new()),
+            runner: Arc::new(crate::firewall::FakeRunner::new()),
+            systemd: Arc::new(crate::FakeSystemd::new()),
+            sysctl: Arc::new(crate::FakeSysctl::new()),
+            clock: Arc::new(crate::FakeClock::new(1_793_534_400)),
+            nft: Arc::new(crate::FakeNft::new()),
+            allow_system_executors: false,
+            use_transient_executor: false,
+            executor_work_dir: None,
+        };
+        // The forward op masked a unit that was enabled before.
+        sys.systemd
+            .apply("svc.service", UnitAction::Mask, false)
+            .unwrap();
+        let manifest = SnapshotManifest {
+            tx: "tx1".into(),
+            entries: vec![SnapshotEntry::Unit {
+                op_index: 0,
+                unit: "svc.service".into(),
+                enabled: serde_json::to_string(&crate::Enabled::Enabled).unwrap(),
+                active: false,
+                restarted: false,
+            }],
+        };
+        apply_snapshot_inverses(&sys, Path::new("/nonexistent"), &manifest).unwrap();
+        // Enable alone would have failed on a masked unit; the unmask
+        // step must leave it enabled.
+        assert_eq!(
+            sys.systemd.snapshot("svc.service").unwrap().enabled,
+            crate::Enabled::Enabled
+        );
     }
 
     fn sandbox(name: &str) -> (std::path::PathBuf, crate::SysBundle) {

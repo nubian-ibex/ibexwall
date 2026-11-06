@@ -124,6 +124,21 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0006_plan_consumed",
         "ALTER TABLE plans ADD COLUMN consumed INTEGER NOT NULL DEFAULT 0;",
     ),
+    (
+        "0007_findings_composite_key",
+        "CREATE TABLE findings_new (
+             plugin TEXT NOT NULL,
+             id TEXT NOT NULL,
+             severity TEXT NOT NULL,
+             json TEXT NOT NULL,
+             detected_at TEXT NOT NULL,
+             PRIMARY KEY (plugin, id)
+         );
+         INSERT INTO findings_new (plugin, id, severity, json, detected_at)
+             SELECT plugin, id, severity, json, detected_at FROM findings;
+         DROP TABLE findings;
+         ALTER TABLE findings_new RENAME TO findings;",
+    ),
 ];
 
 impl State {
@@ -401,8 +416,8 @@ impl State {
             }
             for finding in &report.findings {
                 tx.execute(
-                    // A plugin that repeats a finding id must not fail the
-                    // whole run: the first one is kept.
+                    // A finding id is unique per plugin: two plugins may
+                    // report the same id without one hiding the other.
                     "INSERT OR IGNORE INTO findings (id, plugin, severity, json, detected_at)
                      VALUES (?1, ?2, ?3, ?4, ?5)",
                     rusqlite::params![
@@ -680,6 +695,25 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn two_plugins_can_report_the_same_finding_id() {
+        let (dir, state) = temp_state();
+        state
+            .with_conn(|conn| {
+                for plugin in ["p.one", "p.two"] {
+                    conn.execute(
+                        "INSERT INTO findings (plugin, id, severity, json, detected_at) \
+                         VALUES (?1, 'dup', 'high', '{}', 't')",
+                        [plugin],
+                    )?;
+                }
+                Ok::<_, rusqlite::Error>(())
+            })
+            .unwrap();
+        assert_eq!(state.list_findings(None).unwrap().len(), 2);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     fn a_plan_is_consumed_exactly_once() {
         let (dir, state) = temp_state();
         let plan = crate::engine::PersistedPlan {

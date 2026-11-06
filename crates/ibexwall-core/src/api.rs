@@ -415,7 +415,8 @@ async fn dispatch(
             let limit = parameters
                 .get("limit")
                 .and_then(Value::as_u64)
-                .unwrap_or(50) as usize;
+                .unwrap_or(50)
+                .min(500) as usize;
             let rows = core.state.list_transactions(limit).map_err(internal)?;
             let entries: Vec<Value> = rows
                 .into_iter()
@@ -462,7 +463,8 @@ async fn dispatch(
             let limit = parameters
                 .get("limit")
                 .and_then(Value::as_u64)
-                .unwrap_or(50) as usize;
+                .unwrap_or(50)
+                .min(500) as usize;
             let events = core.state.list_events(limit).map_err(internal)?;
             Ok(Reply::result(json!({ "events": events })))
         }
@@ -612,7 +614,13 @@ async fn build_plan(
         plugin,
         ops: preview,
         risk: risk.clone(),
-        reversible: manifest.risk.reversible,
+        reversible: if risk.contains(&ibexwall_proto::RiskFlag::Irreversible) {
+            ibexwall_proto::Reversible::Irreversible
+        } else if risk.contains(&ibexwall_proto::RiskFlag::RebootToRevert) {
+            ibexwall_proto::Reversible::Reboot
+        } else {
+            ibexwall_proto::Reversible::Immediate
+        },
         may_affect_keys: {
             let mut keys = manifest.risk.may_affect.clone();
             // Only the keys of what this plan really does: the manifest
@@ -671,8 +679,13 @@ async fn apply(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkErr
         .manifest(&plan.plugin)
         .map_err(|_| not_found("plugin", &plan.plugin))?
         .clone();
-    crate::engine::ops::validate(&ops, &manifest)
+    let flags = crate::engine::ops::validate(&ops, &manifest)
         .map_err(|e| invalid_argument("ops", e.to_string()))?;
+    // The core never applies what it cannot undo. Reversibility comes
+    // from the operations, not from the manifest's claim.
+    if flags.contains(&ibexwall_proto::RiskFlag::Irreversible) {
+        return Err(err("Conflict", json!({ "reason": "irreversible plan" })));
+    }
 
     // One engine mutation at a time, and one shot per plan.
     let _permit = core

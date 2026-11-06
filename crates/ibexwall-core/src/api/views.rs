@@ -94,6 +94,7 @@ pub(crate) fn list_plugins(core: &Arc<Core>) -> Vec<PluginInfo> {
                 .get(names::LOCALE_SOURCE)
                 .cloned()
                 .unwrap_or_default(),
+            names: entry.manifest.name.clone(),
             version: entry.manifest.version.clone(),
             kinds: entry
                 .manifest

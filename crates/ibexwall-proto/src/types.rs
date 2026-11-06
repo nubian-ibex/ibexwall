@@ -313,7 +313,12 @@ pub fn posture_score(results: &[CheckResult]) -> Option<u8> {
 #[serde(deny_unknown_fields)]
 pub struct PluginInfo {
     pub id: String,
+    /// The name in the source language (English).
     pub name: String,
+    /// The name in every language the manifest has, by locale tag, so a
+    /// screen can show it in the person's language.
+    #[serde(default)]
+    pub names: std::collections::BTreeMap<String, String>,
     pub version: String,
     pub kinds: Vec<String>,
     pub enabled: bool,

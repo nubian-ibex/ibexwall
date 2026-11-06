@@ -38,7 +38,16 @@
       "type": "boolean"
     },
     "name": {
+      "description": "The name in the source language (English).",
       "type": "string"
+    },
+    "names": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {},
+      "description": "The name in every language the manifest has, by locale tag, so a\nscreen can show it in the person's language.",
+      "type": "object"
     },
     "origin": {
       "$ref": "#/$defs/PluginOrigin"

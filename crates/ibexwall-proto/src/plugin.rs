@@ -172,6 +172,8 @@ pub enum ManifestError {
     InvalidBinary { expected: String, actual: String },
     #[error("`version` must be a non-empty semver string")]
     InvalidVersion,
+    #[error("manifest `write_paths` entry `{0}` must be an absolute, normalized path below `/`")]
+    InvalidWritePath(String),
 }
 
 impl Manifest {
@@ -201,6 +203,21 @@ impl Manifest {
         }
         if self.version.is_empty() {
             return Err(ManifestError::InvalidVersion);
+        }
+        // A `write_paths` entry is where the core may let the plugin
+        // write; it must be a real, normalized path, and never `/` (which
+        // would match everything).
+        for path in &self.privileges.write_paths {
+            let normalized = path.starts_with('/')
+                && path != "/"
+                && !path.contains("..")
+                && !path
+                    .split('/')
+                    .skip(1)
+                    .any(|seg| seg.is_empty() || seg == ".");
+            if !normalized {
+                return Err(ManifestError::InvalidWritePath(path.clone()));
+            }
         }
         Ok(())
     }
@@ -316,5 +333,16 @@ order = 40
             manifest.validate(),
             Err(ManifestError::MissingSourceLocale("en".into()))
         );
+    }
+    #[test]
+    fn write_paths_must_be_absolute_normalized_and_below_root() {
+        let mut manifest: Manifest = toml::from_str(NTS_MANIFEST).unwrap();
+        manifest.validate().unwrap();
+        for bad in ["/", "relative", "/etc/../x", "/etc//x", "/etc/./x"] {
+            manifest.privileges.write_paths = vec![bad.into()];
+            assert!(manifest.validate().is_err(), "{bad} must be refused");
+        }
+        manifest.privileges.write_paths = vec!["/etc/ibexwall".into()];
+        manifest.validate().unwrap();
     }
 }

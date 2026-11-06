@@ -192,13 +192,22 @@ impl Core {
         // nftables keeps nothing across a reboot: put our chains back
         // first, so that recovering an interrupted transaction (which
         // restores chains to what they were) acts on the real state.
+        // A failed restore must not reach the persist step: persisting
+        // after a failure would see no chains and delete the saved
+        // firewall (kill switch included) for the next boot.
+        let mut restored_ok = true;
         match core.engine.restore_nft(&core.nft_file()) {
             Ok(0) => {}
             Ok(count) => tracing::info!(count, "restored nftables chains after a restart"),
-            Err(error) => tracing::error!(%error, "restoring nftables chains failed"),
+            Err(error) => {
+                restored_ok = false;
+                tracing::error!(%error, "restoring nftables chains failed");
+            }
         }
         core.recover_pending_transactions()?;
-        core.persist_nft();
+        if restored_ok {
+            core.persist_nft();
+        }
         Ok(core)
     }
 

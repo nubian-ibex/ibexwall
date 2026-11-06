@@ -8,7 +8,7 @@
 
 pub mod ops;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -309,21 +309,29 @@ impl Engine {
         if !self.sys.allow_system_executors {
             return Ok(());
         }
+        // One writer at a time: apply, the confirm watchdog and the Ask
+        // reconciler all land here, and a shared `.tmp` name would let
+        // them truncate each other.
+        static PERSIST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = PERSIST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut chains = serde_json::Map::new();
         for name in self.sys.nft.chains()? {
             if let Some(definition) = self.sys.nft.capture(&name)? {
                 chains.insert(name, definition);
             }
         }
+        let file = under_root(file);
         if chains.is_empty() {
-            return match std::fs::remove_file(file) {
+            return match self.sys.fs.remove(&file) {
                 Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
                 _ => Ok(()),
             };
         }
-        let temporary = file.with_extension("tmp");
-        std::fs::write(&temporary, serde_json::to_vec_pretty(&chains)?)?;
-        std::fs::rename(&temporary, file)?;
+        self.sys
+            .fs
+            .write_atomic(&file, &serde_json::to_vec_pretty(&chains)?, 0o600, None)?;
         Ok(())
     }
 
@@ -346,8 +354,13 @@ impl Engine {
         if !self.sys.allow_system_executors {
             return Ok(0);
         }
-        let Ok(bytes) = std::fs::read(file) else {
-            return Ok(0);
+        // A missing file is normal (nothing persisted yet); anything else
+        // (unreadable, a broken disk) must stop the boot path instead of
+        // reading as "nothing to restore".
+        let bytes = match self.sys.fs.read(&under_root(file)) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(e) => return Err(e.into()),
+            Ok(bytes) => bytes,
         };
         let chains: serde_json::Map<String, serde_json::Value> = serde_json::from_slice(&bytes)?;
         let mut restored = 0;
@@ -488,6 +501,20 @@ impl Default for Engine {
 }
 
 /// Parent directories the inverses of a snapshot will write to.
+/// `Core` builds its paths already prefixed with the sandbox root when
+/// one is active, while the `SysBundle` filesystem translates under its
+/// own root: strip the prefix here so the two never double up.
+fn under_root(path: &Path) -> PathBuf {
+    let root = ibexwall_proto::names::root();
+    if root == Path::new("/") {
+        return path.to_path_buf();
+    }
+    match path.strip_prefix(&root) {
+        Ok(rest) => Path::new("/").join(rest),
+        Err(_) => path.to_path_buf(),
+    }
+}
+
 fn snapshot_write_directories(manifest: &SnapshotManifest) -> Vec<String> {
     let mut dirs: std::collections::BTreeSet<String> = Default::default();
     for entry in &manifest.entries {

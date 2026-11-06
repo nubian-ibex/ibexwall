@@ -442,6 +442,14 @@ fn removal_commands(chain: &str) -> Vec<Value> {
 /// Real nftables through the `nft` binary (argv only, JSON on stdin).
 pub struct RealNft;
 
+/// A failed nft call only means "the object is absent" when nft itself
+/// says so. Any other failure (permissions, a broken install, netlink
+/// busy) must surface as an error: reading it as "IbexWall has no
+/// chains" once deleted the whole persisted firewall.
+fn absent_ok(stderr: &[u8]) -> bool {
+    String::from_utf8_lossy(stderr).contains("No such file")
+}
+
 impl Nft for RealNft {
     fn apply(&self, fragment: &Fragment) -> Result<()> {
         fragment.validate()?;
@@ -456,8 +464,14 @@ impl Nft for RealNft {
             .output()
             .context("spawning nft")?;
         if !output.status.success() {
-            // The chain (or the whole table) does not exist yet.
-            return Ok(None);
+            if absent_ok(&output.stderr) {
+                // The chain (or the whole table) does not exist yet.
+                return Ok(None);
+            }
+            anyhow::bail!(
+                "listing chain {chain} failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
         }
         let mut value: Value =
             serde_json::from_slice(&output.stdout).context("parsing nft output")?;
@@ -476,7 +490,13 @@ impl Nft for RealNft {
             Err(error) => return Err(error).context("spawning nft"),
         };
         if !output.status.success() {
-            return Ok(vec![]);
+            if absent_ok(&output.stderr) {
+                return Ok(vec![]);
+            }
+            anyhow::bail!(
+                "listing the table failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
         }
         let listing: Value =
             serde_json::from_slice(&output.stdout).context("parsing nft output")?;
@@ -544,6 +564,10 @@ fn table_is_empty() -> bool {
 pub struct FakeNft {
     chains: Mutex<BTreeMap<String, Value>>,
     pub log: crate::log::OpLog,
+    /// When set, `chains` and `capture` fail with this message: tests
+    /// simulate an nft error (permissions, netlink busy) that must not
+    /// read as "there are no chains".
+    pub fail_calls: Mutex<Option<String>>,
 }
 
 impl FakeNft {
@@ -572,6 +596,9 @@ impl Nft for FakeNft {
     }
 
     fn capture(&self, chain: &str) -> Result<Option<Value>> {
+        if let Some(reason) = self.fail_calls.lock().expect("lock poisoned").clone() {
+            anyhow::bail!(reason);
+        }
         Ok(self
             .chains
             .lock()
@@ -581,6 +608,9 @@ impl Nft for FakeNft {
     }
 
     fn chains(&self) -> Result<Vec<String>> {
+        if let Some(reason) = self.fail_calls.lock().expect("lock poisoned").clone() {
+            anyhow::bail!(reason);
+        }
         Ok(self
             .chains
             .lock()

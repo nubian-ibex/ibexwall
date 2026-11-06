@@ -293,9 +293,9 @@ fn nft_chains_survive_a_restart_through_the_persisted_file() {
     let rig = rig("nfp", true);
     let file = rig.dir.join("nft-active.json");
     // Nothing active: nothing to write, and a stale file is removed.
-    std::fs::write(&file, b"{}").unwrap();
+    rig.fs.write_atomic(&file, b"{}", 0o600, None).unwrap();
     rig.engine.persist_nft(&file).unwrap();
-    assert!(!file.exists());
+    assert!(!rig.fs.exists(&file));
 
     let fragment = serde_json::json!({ "chains": [
         { "name": "net_firewall_input", "rules": [] },
@@ -305,7 +305,7 @@ fn nft_chains_survive_a_restart_through_the_persisted_file() {
         .execute(None, &[Op::NftFragment { fragment }])
         .unwrap();
     rig.engine.persist_nft(&file).unwrap();
-    assert!(file.exists());
+    assert!(rig.fs.exists(&file));
 
     // A reboot empties nftables; the file brings the chains back.
     rig.nft.restore("net_firewall_input", None).unwrap();
@@ -324,12 +324,40 @@ fn nft_chains_survive_a_restart_through_the_persisted_file() {
 }
 
 #[test]
+fn a_failed_capture_keeps_the_persisted_chains() {
+    let rig = rig("nff", true);
+    let file = rig.dir.join("nft-active.json");
+    let fragment =
+        serde_json::json!({ "chains": [ { "name": "net_firewall_input", "rules": [] } ] });
+    rig.engine
+        .execute(None, &[Op::NftFragment { fragment }])
+        .unwrap();
+    rig.engine.persist_nft(&file).unwrap();
+    assert!(rig.fs.exists(&file));
+
+    // An nft error must surface as an error, never as "there are no
+    // chains": reading it that way once deleted the persisted firewall.
+    *rig.nft.fail_calls.lock().expect("lock poisoned") = Some("netlink busy".into());
+    assert!(rig.engine.persist_nft(&file).is_err());
+    assert!(
+        rig.fs.exists(&file),
+        "the persisted file must survive a failed capture"
+    );
+    *rig.nft.fail_calls.lock().expect("lock poisoned") = None;
+    // The persisted file still restores after a simulated reboot.
+    rig.nft.restore("net_firewall_input", None).unwrap();
+    assert_eq!(rig.engine.restore_nft(&file).unwrap(), 1);
+}
+
+#[test]
 fn a_sandbox_never_persists_or_restores_chains() {
     let rig = rig("nfs", false);
     let file = rig.dir.join("nft-active.json");
     rig.engine.persist_nft(&file).unwrap();
-    assert!(!file.exists());
-    std::fs::write(&file, b"{\"x\": {}}").unwrap();
+    assert!(!rig.fs.exists(&file));
+    rig.fs
+        .write_atomic(&file, b"{\"x\": {}}", 0o600, None)
+        .unwrap();
     assert_eq!(rig.engine.restore_nft(&file).unwrap(), 0);
 }
 

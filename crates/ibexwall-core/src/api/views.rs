@@ -52,7 +52,22 @@ pub(crate) fn dns_status(core: &Arc<Core>) -> Value {
                 "upstream_errors": 0,
             })
         });
-    json!({ "dns_status": status })
+    // The core owns nftables, so it is the one that can truthfully say
+    // whether the DNS enforcement guard is present: the net.dns plugin
+    // cannot see it from its sandbox, so this is reported here rather
+    // than in the plugin's own "secure resolver" check.
+    let enforcement_chain = core
+        .engine
+        .sys
+        .nft
+        .chains()
+        .map(|chains| {
+            chains
+                .iter()
+                .any(|c| c == ibexwall_proto::names::DNS_NFT_CHAIN)
+        })
+        .unwrap_or(false);
+    json!({ "dns_status": status, "enforcement_chain": enforcement_chain })
 }
 
 pub(crate) fn posture(core: &Arc<Core>) -> Value {

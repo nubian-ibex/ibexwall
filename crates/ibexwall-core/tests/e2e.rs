@@ -754,6 +754,7 @@ async fn a_config_change_takes_effect_without_a_restart() {
     assert_eq!(err.name, "com.ibexwall.Core.PlanStale");
 }
 
+#[tokio::test]
 async fn config_change_makes_a_plan_stale() {
     if plugin_binary().is_none() {
         eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");

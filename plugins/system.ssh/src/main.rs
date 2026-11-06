@@ -142,8 +142,48 @@ fn value<'a>(settings: &'a BTreeMap<String, String>, key: &str, default: &'a str
     settings.get(key).map(String::as_str).unwrap_or(default)
 }
 
+/// What the machine does with SSH today, said before anything changes.
+pub fn survey(settings: Option<&BTreeMap<String, String>>, at: &str) -> Finding {
+    let mut args = BTreeMap::new();
+    let mut patch = None;
+    let case = match settings {
+        None => "absent",
+        Some(settings) => {
+            let root = value(settings, "permitrootlogin", "prohibit-password");
+            let empty = value(settings, "permitemptypasswords", "no") == "yes";
+            let x11 = value(settings, "x11forwarding", "no") == "yes";
+            let password = value(settings, "passwordauthentication", "yes");
+            args.insert("root".into(), root.to_string());
+            args.insert("password".into(), password.to_string());
+            args.insert("port".into(), value(settings, "port", "22").to_string());
+            if root == "yes" || empty || x11 {
+                // The default plan closes root login, empty passwords and X11
+                // forwarding; it keeps password sign-in, which needs a key first.
+                patch = Some(serde_json::json!({}));
+                "weak"
+            } else if password == "yes" {
+                "hardened-password"
+            } else {
+                "hardened"
+            }
+        }
+    };
+    ibexwall_sdk::detect::detected("system.ssh", "ssh", case, args, patch, at)
+}
+
 pub fn evaluate(sandbox: &Sandbox, detected_at: &str) -> CheckReport {
-    let Some(settings) = effective(sandbox) else {
+    let settings = effective(sandbox);
+    let mut report = evaluate_settings(sandbox, settings.as_ref(), detected_at);
+    report.findings.push(survey(settings.as_ref(), detected_at));
+    report
+}
+
+fn evaluate_settings(
+    sandbox: &Sandbox,
+    settings: Option<&BTreeMap<String, String>>,
+    detected_at: &str,
+) -> CheckReport {
+    let Some(settings) = settings else {
         // No sshd_config: no SSH server to judge.
         let outcome = if sandbox.exists("/usr/sbin/sshd") {
             CheckOutcome::NotAssessed
@@ -159,9 +199,9 @@ pub fn evaluate(sandbox: &Sandbox, detected_at: &str) -> CheckReport {
             findings: vec![],
         };
     };
-    let root = value(&settings, "permitrootlogin", "prohibit-password");
-    let empty = value(&settings, "permitemptypasswords", "no") == "yes";
-    let x11 = value(&settings, "x11forwarding", "no") == "yes";
+    let root = value(settings, "permitrootlogin", "prohibit-password");
+    let empty = value(settings, "permitemptypasswords", "no") == "yes";
+    let x11 = value(settings, "x11forwarding", "no") == "yes";
     let any_scored = root == "yes" || empty || x11;
     let mut findings = Vec::new();
     let mut add =
@@ -195,7 +235,7 @@ pub fn evaluate(sandbox: &Sandbox, detected_at: &str) -> CheckReport {
     }
     // Password sign-in is informational: turning it off needs a key, so the
     // finding offers the plan but does not count against the score.
-    if value(&settings, "passwordauthentication", "yes") == "yes" {
+    if value(settings, "passwordauthentication", "yes") == "yes" {
         add(
             "password",
             Severity::Info,
@@ -354,8 +394,23 @@ mod tests {
     fn findings_follow_the_effective_values_and_defaults() {
         let (root, sandbox) = tree(&[("/etc/ssh/sshd_config", INCLUDE_FIRST)]);
         let report = evaluate(&sandbox, "now");
-        let ids: Vec<&str> = report.findings.iter().map(|f| f.id.as_str()).collect();
+        let ids: Vec<&str> = report
+            .findings
+            .iter()
+            .map(|f| f.id.as_str())
+            .filter(|id| !id.starts_with("detect."))
+            .collect();
         assert_eq!(ids, ["ssh.root", "ssh.x11", "ssh.password"]);
+        let note = report
+            .findings
+            .iter()
+            .find(|f| f.id == "detect.ssh")
+            .unwrap();
+        assert_eq!(note.summary_key, "detect-ssh-weak");
+        assert_eq!(
+            note.args["patch"], "{}",
+            "the default change closes the risky settings"
+        );
         assert_eq!(report.results[0].outcome, CheckOutcome::Fail);
         assert_eq!(report.findings[0].severity, Severity::High);
         std::fs::remove_dir_all(root).unwrap();
@@ -363,8 +418,8 @@ mod tests {
         let (root, sandbox) = tree(&[("/etc/ssh/sshd_config", "# nothing set\n")]);
         let report = evaluate(&sandbox, "now");
         assert_eq!(report.results[0].outcome, CheckOutcome::Pass);
-        assert_eq!(report.findings.len(), 1);
-        assert_eq!(report.findings[0].id, "ssh.password");
+        let ids: Vec<&str> = report.findings.iter().map(|f| f.id.as_str()).collect();
+        assert_eq!(ids, ["ssh.password", "detect.ssh"]);
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -463,5 +518,42 @@ mod tests {
                 .contains("nothing to change")
         );
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn the_note_tells_a_missing_server_a_weak_one_and_a_hardened_one_with_and_without_passwords() {
+        let (r1, none) = tree(&[]);
+        assert_eq!(
+            survey(effective(&none).as_ref(), "x").summary_key,
+            "detect-ssh-absent"
+        );
+        let (r2, weak) = tree(&[("/etc/ssh/sshd_config", "PermitRootLogin yes\nPort 2222\n")]);
+        let note = survey(effective(&weak).as_ref(), "x");
+        assert_eq!(
+            (
+                note.summary_key.as_str(),
+                note.args["port"].as_str(),
+                note.args["root"].as_str()
+            ),
+            ("detect-ssh-weak", "2222", "yes")
+        );
+        let (r3, pw) = tree(&[("/etc/ssh/sshd_config", "PermitRootLogin no\n")]);
+        let note = survey(effective(&pw).as_ref(), "x");
+        assert_eq!(note.summary_key, "detect-ssh-hardened-password");
+        assert!(
+            !note.args.contains_key("patch"),
+            "password sign-in is never switched off for the person"
+        );
+        let (r4, tight) = tree(&[(
+            "/etc/ssh/sshd_config",
+            "PermitRootLogin no\nPasswordAuthentication no\n",
+        )]);
+        assert_eq!(
+            survey(effective(&tight).as_ref(), "x").summary_key,
+            "detect-ssh-hardened"
+        );
+        for r in [r1, r2, r3, r4] {
+            std::fs::remove_dir_all(r).unwrap();
+        }
     }
 }

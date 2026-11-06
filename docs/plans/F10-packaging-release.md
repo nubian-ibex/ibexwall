@@ -12,6 +12,12 @@ checklist. Spec phase F10; the maintainer said "siga para a F10" on
 Status: in progress (autonomous mode). M2 done 2026-11-05: 26 official plugins in
 one `ibexwall-plugins` binary (9.2 MiB stripped, from 58 MiB over 31), phases
 f1 to f9 green on all five distros.
+M4 done 2026-11-06: RPM, DEB and Arch packages (ibexwall, ibexwall-desktop,
+ibexwall-mcp) from one staged tree (`cargo xtask stage`), the release key
+embedded in the daemon, `ibexwalld --cleanup` for the uninstall, and a VM phase
+(`--phase f10`) that builds, installs, uses, upgrades, removes and purges on
+five distros with no residue. COPR, PPA, OBS and AUR publishing need the
+maintainer's accounts and keys. `docs/systemd-security.md` rates every unit.
 M3 done 2026-11-05 (ADR-0043): every plugin runs in its own socket-activated,
 sandboxed unit (dynamic user, manifest capabilities, systemd exposure 1.6 to
 1.8); phases f1 to f9 green on five distros. The F9 limits on /home and kernel

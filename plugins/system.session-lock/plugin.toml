@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "Screen lock"
 pt-BR = "Bloqueio de tela"
+es = "Bloqueo de pantalla"
+fr = "Verrouillage de l'écran"
+de = "Bildschirmsperre"
 
 [description]
 en = "Checks that the desktop locks the screen by itself when you step away."
 pt-BR = "Verifica se a área de trabalho bloqueia a tela sozinha quando você se afasta."
+es = "Comprueba que el escritorio bloquea la pantalla por sí solo cuando te alejas."
+fr = "Vérifie que le bureau verrouille l'écran tout seul quand vous vous éloignez."
+de = "Prüft, ob der Desktop den Bildschirm von selbst sperrt, wenn Sie weggehen."
 
 [privileges]
 # Read-only check: the core executes nothing on its behalf.

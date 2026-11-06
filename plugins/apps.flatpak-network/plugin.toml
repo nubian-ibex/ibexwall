@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "Flatpak network access"
 pt-BR = "Acesso à rede dos apps Flatpak"
+es = "Acceso a la red de Flatpak"
+fr = "Accès réseau Flatpak"
+de = "Flatpak-Netzwerkzugriff"
 
 [description]
 en = "Cuts the network access of a Flatpak app with a reversible override."
 pt-BR = "Corta o acesso à rede de um app Flatpak com uma sobreposição reversível."
+es = "Corta el acceso a la red de una aplicación Flatpak con una anulación reversible."
+fr = "Coupe l'accès réseau d'une application Flatpak avec un remplacement réversible."
+de = "Sperrt den Netzwerkzugriff einer Flatpak-App mit einer umkehrbaren Überschreibung."
 
 [privileges]
 write_paths = ["/var/lib/flatpak/overrides"]

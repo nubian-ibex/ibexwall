@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "Antimalware"
 pt-BR = "Antimalware"
+es = "Antimalware"
+fr = "Antimalware"
+de = "Virenschutz"
 
 [description]
 en = "Scans folders on demand or on a schedule with ClamAV and YARA, and reports what they find."
 pt-BR = "Varre pastas sob demanda ou em horário marcado com ClamAV e YARA, e relata o que encontram."
+es = "Analiza carpetas bajo demanda o de forma programada con ClamAV y YARA, e informa de lo que encuentran."
+fr = "Analyse des dossiers à la demande ou selon un calendrier avec ClamAV et YARA, et signale ce qu'ils trouvent."
+de = "Scannt Ordner auf Anforderung oder nach Zeitplan mit ClamAV und YARA und meldet, was gefunden wird."
 
 [privileges]
 write_paths = ["/etc/systemd/system/ibexwall-av-scan.service", "/etc/systemd/system/ibexwall-av-scan.timer", "/etc/ibexwall/av", "/var/lib/ibexwall/av/.managed"]

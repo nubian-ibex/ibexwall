@@ -1,0 +1,15 @@
+ssh-root-title = El servidor SSH deja que root inicie sesión con contraseña
+ssh-root-summary = PermitRootLogin es { $value }. Quien adivine la contraseña de root obtiene el control total.
+ssh-empty-title = El servidor SSH acepta contraseñas vacías
+ssh-empty-summary = PermitEmptyPasswords es yes: una cuenta sin contraseña puede iniciar sesión por la red.
+ssh-x11-title = El servidor SSH reenvía sesiones gráficas
+ssh-x11-summary = X11Forwarding es yes. Un servidor comprometido puede acceder a la pantalla y al teclado del cliente.
+ssh-password-title = El servidor SSH acepta contraseñas
+ssh-password-summary = Las contraseñas del inicio de sesión se pueden adivinar por la red; las claves no.
+ssh-may-affect-root = Deja de funcionar el inicio de sesión como root por SSH con contraseña. Usa un usuario normal y sudo, o una clave.
+ssh-may-affect-password = Con las contraseñas desactivadas, solo pueden iniciar sesión los usuarios con una clave autorizada. Comprueba primero la tuya o podrías quedarte fuera.
+detect-ssh-title = SSH en este equipo
+detect-ssh-absent = Aquí no hay ningún servidor SSH configurado, así que no hay nada que reforzar.
+detect-ssh-hardened = El servidor SSH (puerto { $port }) no permite root con contraseña, contraseñas vacías ni reenvío X11. El inicio de sesión de root es { $root }.
+detect-ssh-hardened-password = El servidor SSH (puerto { $port }) está reforzado, salvo que cualquiera con una contraseña puede iniciar sesión. Desactiva eso solo después de haber copiado una clave a cada cuenta que la necesite, o te quedarás fuera.
+detect-ssh-weak = El servidor SSH (puerto { $port }) permite algo arriesgado: el inicio de sesión de root es { $root }, o las contraseñas vacías o el reenvío X11 están activados. Más abajo tienes un cambio sugerido que los cierra, listo para revisar; mantiene el inicio de sesión con contraseña.

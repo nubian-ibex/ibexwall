@@ -41,12 +41,28 @@ fn the_catalog_is_complete_bilingual_sourced_and_honest_about_risk() {
             item.id
         );
         for (what, text) in [("title", &item.title), ("summary", &item.summary)] {
-            assert!(
-                text.en.len() > 8 && text.pt_br.len() > 8,
-                "{} {what}",
-                item.id
-            );
-            assert_ne!(text.en, text.pt_br, "{} {what} is not translated", item.id);
+            // Every shipped language says it, and says it in its own words.
+            for locale in ibexwall_proto::names::LOCALES {
+                let said = text.0.get(locale).map_or("", String::as_str);
+                assert!(said.len() > 8, "{} {what} in {locale}", item.id);
+                if locale != "en" {
+                    assert_ne!(
+                        said,
+                        text.en(),
+                        "{} {what} is not translated to {locale}",
+                        item.id
+                    );
+                }
+            }
+        }
+        if let Some(breaks) = &item.breaks {
+            for locale in ibexwall_proto::names::LOCALES {
+                assert!(
+                    breaks.0.get(locale).is_some_and(|s| s.len() > 8),
+                    "{} breaks in {locale}",
+                    item.id
+                );
+            }
         }
         // What may break is stated wherever something can.
         assert!(
@@ -69,10 +85,12 @@ fn the_catalog_is_complete_bilingual_sourced_and_honest_about_risk() {
             );
         }
         // The house rule: no em or en dashes in anything the person reads.
-        let all = format!(
-            "{} {} {} {}",
-            item.title.en, item.title.pt_br, item.summary.en, item.summary.pt_br
-        );
+        let all: String = [Some(&item.title), Some(&item.summary), item.breaks.as_ref()]
+            .into_iter()
+            .flatten()
+            .flat_map(|text| text.0.values())
+            .map(String::as_str)
+            .collect();
         assert!(
             !all.contains('\u{2014}') && !all.contains('\u{2013}'),
             "{}",

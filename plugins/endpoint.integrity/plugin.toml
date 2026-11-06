@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "File integrity"
 pt-BR = "Integridade de arquivos"
+es = "Integridad de archivos"
+fr = "Intégrité des fichiers"
+de = "Dateiintegrität"
 
 [description]
 en = "Asks the package manager which installed files are not what it shipped, and AIDE when it is set up."
 pt-BR = "Pergunta ao gerenciador de pacotes quais arquivos instalados não são o que ele entregou, e ao AIDE quando configurado."
+es = "Pregunta al gestor de paquetes qué archivos instalados no son los que distribuyó, y a AIDE cuando está configurado."
+fr = "Demande au gestionnaire de paquets quels fichiers installés ne sont pas ceux qu'il a livrés, et à AIDE s'il est configuré."
+de = "Fragt die Paketverwaltung, welche installierten Dateien nicht dem Auslieferungszustand entsprechen, und AIDE, wenn es eingerichtet ist."
 
 [privileges]
 

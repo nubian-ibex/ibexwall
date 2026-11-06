@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "SSH server"
 pt-BR = "Servidor SSH"
+es = "Servidor SSH"
+fr = "Serveur SSH"
+de = "SSH-Server"
 
 [description]
 en = "Checks the SSH server's settings (root login, empty passwords, forwarding) and tightens them with a drop-in."
 pt-BR = "Verifica as configurações do servidor SSH (login de root, senhas vazias, encaminhamento) e as reforça com um drop-in."
+es = "Comprueba los ajustes del servidor SSH (inicio de sesión de root, contraseñas vacías, reenvío) y los refuerza con un archivo drop-in."
+fr = "Vérifie les réglages du serveur SSH (connexion root, mots de passe vides, redirections) et les renforce avec un fichier drop-in."
+de = "Prüft die Einstellungen des SSH-Servers (root-Anmeldung, leere Passwörter, Weiterleitung) und verschärft sie mit einer Drop-in-Datei."
 
 [privileges]
 write_paths = ["/etc/ssh/sshd_config.d"]

@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "Temporary mounts"
 pt-BR = "Montagens temporárias"
+es = "Montajes temporales"
+fr = "Montages temporaires"
+de = "Temporäre Einhängepunkte"
 
 [description]
 en = "Checks that /tmp and /dev/shm cannot run programs or hold setuid files, and sets it for the next boot."
 pt-BR = "Verifica se /tmp e /dev/shm não executam programas nem guardam arquivos setuid, e configura para a próxima inicialização."
+es = "Comprueba que /tmp y /dev/shm no pueden ejecutar programas ni contener archivos setuid, y lo establece para el próximo arranque."
+fr = "Vérifie que /tmp et /dev/shm ne peuvent ni exécuter de programmes ni contenir de fichiers setuid, et le définit pour le prochain démarrage."
+de = "Prüft, ob /tmp und /dev/shm keine Programme ausführen oder setuid-Dateien enthalten können, und legt es für den nächsten Start fest."
 
 [privileges]
 write_paths = ["/etc/systemd/system/tmp.mount.d", "/etc/systemd/system/dev-shm.mount.d"]

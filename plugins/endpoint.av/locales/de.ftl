@@ -1,0 +1,11 @@
+av-infected-title = Ein Scanner hat eine Datei markiert
+av-infected-summary = { $path } entspricht { $signature }. Öffnen Sie sie nicht; löschen Sie sie oder sehen Sie sie sich an einem sicheren Ort an.
+av-more-title = Und { $count } weitere
+av-more-summary = { $count } weitere Dateien wurden markiert. Führen Sie die Prüfung mit --json aus, um alle zu sehen.
+av-nosignatures-title = ClamAV hat keine Signaturdatenbank
+av-nosignatures-summary = ClamAV ist installiert, hat aber nichts, womit es Dateien vergleichen kann. Führen Sie zuerst freshclam aus (oder den Update-Timer Ihrer Distribution).
+av-noscanner-title = Es ist kein Virenscanner installiert
+av-noscanner-summary = Installieren Sie ClamAV (und YARA für eigene Regeln) aus Ihrer Distribution, um Dateien zu prüfen. IbexWall installiert nichts von selbst.
+av-may-affect-load = Ein Scan liest viele Dateien und verlangsamt den Computer, solange er läuft.
+av-selinux-title = SELinux hindert ClamAV daran, Ihre Dateien zu lesen
+av-selinux-summary = Ein Scan würde laufen und nichts sehen. Erlauben Sie es mit: sudo setsebool -P antivirus_can_scan_system on

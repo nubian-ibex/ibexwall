@@ -1,0 +1,14 @@
+sysctl-off-title = Un réglage de sécurité du noyau est en dessous de la référence
+sysctl-off-summary = { $key } vaut { $current } ; la valeur de référence est { $want }.
+sysctl-may-affect-ptrace = Attacher un débogueur à un programme déjà en cours d'exécution (gdb, strace) cesse de fonctionner.
+sysctl-may-affect-bpf = Les programmes qui chargent eBPF sans privilèges cessent de fonctionner. IbexWall n'est pas concerné : il s'exécute avec des privilèges.
+sysctl-may-affect-kexec = Ne peut pas être annulé sans redémarrage : le chargement kexec reste désactivé jusque-là.
+sysctl-may-affect-rp-filter = Peut casser les VPN et les machines avec plusieurs routes réseau.
+sysctl-may-affect-sysrq = Les touches d'urgence SysRq cessent de fonctionner.
+sysctl-may-affect-ipv6-ra = Les adresses et routes IPv6 annoncées par votre routeur ne sont plus acceptées, donc IPv6 peut cesser de fonctionner sur les réseaux qui en dépendent.
+sysctl-may-affect-sack = Les téléchargements peuvent être plus lents sur les connexions avec pertes.
+sysctl-may-affect-userns = Les programmes qui construisent leur propre bac à sable sans privilèges cessent de fonctionner : bacs à sable de Flatpak, Chromium et Firefox, conteneurs sans root.
+detect-sysctl-title = Réglages de sécurité du noyau aujourd'hui
+detect-sysctl-ok = Les { $total } réglages recommandés du noyau sont tous déjà en place.
+detect-sysctl-open = { $have } réglages recommandés du noyau sur { $total } sont en place. Manquants : { $missing } (et { $more } de plus). Une modification suggérée qui les définit est prête à être examinée ci-dessous.
+detect-sysctl-unreadable = Les réglages du noyau n'ont pas pu être lus ici, donc rien n'est suggéré.

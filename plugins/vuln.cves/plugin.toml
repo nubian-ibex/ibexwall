@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "Known vulnerabilities"
 pt-BR = "Vulnerabilidades conhecidas"
+es = "Vulnerabilidades conocidas"
+fr = "Vulnérabilités connues"
+de = "Bekannte Schwachstellen"
 
 [description]
 en = "Lists the security updates your distribution has published for installed packages. Works offline from the package manager's own cache; nothing is sent anywhere."
 pt-BR = "Lista as atualizações de segurança que a sua distribuição publicou para os pacotes instalados. Funciona offline, pelo cache do próprio gerenciador de pacotes; nada é enviado a lugar nenhum."
+es = "Enumera las actualizaciones de seguridad que tu distribución ha publicado para los paquetes instalados. Funciona sin conexión con la propia caché del gestor de paquetes; no se envía nada a ninguna parte."
+fr = "Liste les mises à jour de sécurité que votre distribution a publiées pour les paquets installés. Fonctionne hors ligne à partir du cache du gestionnaire de paquets ; rien n'est envoyé nulle part."
+de = "Listet die Sicherheitsupdates auf, die Ihre Distribution für installierte Pakete veröffentlicht hat. Funktioniert offline mit dem eigenen Cache der Paketverwaltung; nichts wird irgendwohin gesendet."
 
 [privileges]
 # Read-only check: the core executes nothing on its behalf.

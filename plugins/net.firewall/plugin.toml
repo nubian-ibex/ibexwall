@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "Firewall"
 pt-BR = "Firewall"
+es = "Cortafuegos"
+fr = "Pare-feu"
+de = "Firewall"
 
 [description]
 en = "Controls which connections can reach this computer, through the firewall your system already uses."
 pt-BR = "Controla quais conexões podem chegar a este computador, pelo firewall que o seu sistema já usa."
+es = "Controla qué conexiones pueden llegar a este equipo, a través del cortafuegos que tu sistema ya usa."
+fr = "Contrôle quelles connexions peuvent joindre cet ordinateur, via le pare-feu que votre système utilise déjà."
+de = "Steuert, welche Verbindungen diesen Computer erreichen können, über die Firewall, die Ihr System bereits verwendet."
 
 [privileges]
 write_paths = ["/etc/ibexwall/firewall"]

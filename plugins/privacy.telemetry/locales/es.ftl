@@ -1,0 +1,10 @@
+telemetry-popcon-title = Este equipo informa de qué paquetes tiene instalados
+telemetry-popcon-summary = popularity-contest está activado y envía cada semana la lista de paquetes instalados a la distribución.
+telemetry-apport-title = Se pueden enviar informes de fallos a la distribución
+telemetry-apport-summary = apport está activado; los fallos pueden notificarse con detalles del programa que falló.
+telemetry-motd-title = El mensaje de inicio de sesión obtiene noticias de la distribución
+telemetry-motd-summary = motd-news está activado; cada inicio de sesión contacta con los servidores de la distribución.
+telemetry-countme-title = El gestor de paquetes cuenta este equipo
+telemetry-countme-summary = Un repositorio tiene countme activado, lo que envía una marca anónima semanal para que la distribución pueda contar a sus usuarios.
+telemetry-firefox-title = Firefox envía datos de uso a Mozilla
+telemetry-firefox-summary = Firefox está instalado y ninguna política del sistema desactiva su telemetría.

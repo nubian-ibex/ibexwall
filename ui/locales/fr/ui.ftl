@@ -1,0 +1,497 @@
+app-name = IbexWall
+app-tagline = Protection du système
+nav-label = Navigation principale
+nav-overview = Vue d'ensemble
+nav-plugins = Plugins
+nav-posture = État du système
+nav-history = Historique
+nav-settings = Réglages
+sidebar-status-active = Protection active
+skip-to-content = Aller au contenu
+
+overview-title = Vue d'ensemble
+overview-last-check = Dernière vérification complète { $when }
+overview-never-checked = Aucune vérification n'a encore eu lieu
+overview-check-now = Vérifier maintenant
+overview-checking = Vérification en cours…
+overview-status-protected = Votre ordinateur est protégé
+overview-status-attention = Votre ordinateur peut être mieux protégé
+overview-status-unknown = Vérifions votre ordinateur
+overview-badge-protected = Protégé
+overview-badge-attention = Attention
+overview-badge-unknown = Non vérifié
+overview-summary =
+    { $failed ->
+        [0] Les { $assessed } vérifications possibles ici sont toutes en ordre.
+        [one] { $passed } vérifications sur { $assessed } sont en ordre. Une recommandation rendrait le système plus sûr.
+       *[other] { $passed } vérifications sur { $assessed } sont en ordre. { $failed } recommandations rendraient le système plus sûr.
+    }
+overview-summary-unknown = Lancez une vérification pour voir comment cet ordinateur est protégé. Rien n'est modifié.
+overview-view-recommendation = Voir la recommandation
+overview-view-all = Voir toutes les protections
+overview-run-first = Lancer la première vérification
+overview-protections = Protections
+overview-recommendation = Recommandation
+overview-not-assessed =
+    { $count ->
+        [one] Une vérification ne peut pas encore être évaluée.
+       *[other] { $count } vérifications ne peuvent pas encore être évaluées.
+    }
+
+trust-no-change = Rien ne change sur votre système sans votre accord
+trust-undo = Chaque modification peut être annulée
+trust-open = Code ouvert et vérifiable
+trust-local = Vos données restent sur cet ordinateur
+
+score-label = Score : { $score } sur 100
+score-none = Pas encore de score
+score-of = sur 100
+
+card-boot = Démarrage sécurisé
+card-disk = Disque chiffré
+card-firewall = Pare-feu
+card-confinement = Limites des programmes
+card-accounts = Accès administrateur
+card-ports = Exposition réseau
+card-updates = Mises à jour et micrologiciels
+card-state-ok = En ordre
+card-state-attention = Attention
+card-state-unknown = Non évalué
+card-detail-checks = { $count } vérifications
+
+outcome-pass = En ordre
+outcome-fail = Attention
+outcome-not-applicable = Sans objet ici
+outcome-not-assessed = Pas encore évalué
+
+severity-info = Info
+severity-low = Faible
+severity-medium = Moyenne
+severity-high = Élevée
+severity-critical = Critique
+
+state-loading = Chargement…
+state-empty-title = Rien à afficher pour le moment
+state-empty-body = Lancez une vérification et les résultats apparaîtront ici.
+state-error-title = Impossible de joindre le service IbexWall
+state-error-body = Le service de protection n'a pas répondu. Vos protections continuent de fonctionner ; cette fenêtre ne peut simplement pas lire leur état.
+state-denied-title = Autorisation nécessaire
+state-denied-body = Votre compte n'a pas le droit de lire cette information. Demandez à un administrateur d'autoriser { $action }.
+state-retry = Réessayer
+
+theme-label = Thème
+theme-system = Suivre le système
+theme-light = Clair
+theme-dark = Sombre
+language-label = Langue
+
+plugins-title = Plugins
+plugins-subtitle = Chaque protection est un plugin que vous pouvez activer ou désactiver
+plugins-kind-check = Lecture seule
+plugins-kind-control = Modifie le système
+plugins-kind-monitor = Surveille
+plugins-origin-official = Officiel
+plugins-origin-community = Communauté
+plugins-origin-local = Local
+plugins-enabled = Activé
+plugins-disabled = Désactivé
+plugins-detail = Détails
+plugins-close = Fermer les détails
+plugins-permissions = Ce que ce plugin peut faire
+plugins-permissions-write = Modifier des fichiers dans { $paths }
+plugins-permissions-units = Contrôler des services : { $units }
+plugins-permissions-sysctl = Définir des paramètres du noyau : { $keys }
+plugins-permissions-exec = Exécuter des programmes : { $commands }
+plugins-permissions-nft = Ajouter des règles de pare-feu avec son propre préfixe
+plugins-permissions-none = Lire le système ; il ne peut rien modifier
+plugins-findings = Constats ouverts
+plugins-no-findings = Aucun constat ouvert
+plugins-locked = Défini par votre organisation
+plugins-incompatible = Non compatible avec ce système
+
+simulate = Simuler
+apply = Appliquer les modifications
+applying = Application en cours…
+confirm-title = Conserver les modifications ?
+plan-expires = Cet aperçu expire { $when }
+
+may-affect-label = Ce que cela peut affecter
+may-affect-title = Cela peut affecter
+restore-point-note = Un point de restauration ({ $point }) est créé avant toute modification.
+
+keep-changes-title = Conserver les modifications
+keep-changes-prompt = Conserver les modifications ? ({ $seconds } s restantes, elles seront ensuite annulées automatiquement)
+keep-changes = Conserver les modifications
+undo-changes = Annuler les modifications
+
+applied-committed = Modifications appliquées
+applied-rolled-back = Modifications annulées
+simulate-empty = Rien à modifier
+
+posture-title = État du système
+posture-subtitle = Chaque vérification, ce qu'elle signifie et ce qu'elle vaut
+posture-how-title = Comment nous calculons
+posture-how-intro = Chaque vérification a un poids selon sa gravité. Le score est la somme des poids des vérifications en ordre, divisée par les poids des vérifications qui s'appliquent à cet ordinateur.
+posture-how-weight = Poids
+posture-how-outcome = Statut
+posture-how-na = Les vérifications sans objet ici et celles qui ne peuvent pas encore être évaluées ne comptent ni pour ni contre le score.
+posture-recommendation = Recommandation
+posture-checks = Vérifications
+posture-open-findings = Constats ouverts ({ $count })
+
+history-title = Historique
+history-subtitle = Chaque modification, qui l'a approuvée et ce qui s'est passé
+history-actor-user = { $actor }
+history-actor-system = IbexWall lui-même
+history-result-committed = Appliquée et conservée
+history-result-rolled_back = Annulée
+history-result-pending_confirm = En attente de confirmation
+history-result-failed = Échec (annulée)
+history-empty-title = Rien n'a encore changé
+history-empty-body = Quand vous appliquez une protection, elle apparaît ici avec un moyen de l'annuler.
+history-undo = Annuler cette modification
+history-view = Voir
+
+settings-title = Réglages
+settings-subtitle = Apparence et langue
+
+nav-dns = DNS sécurisé
+dns-title = DNS sécurisé
+dns-subtitle = Chiffrez vos requêtes DNS et bloquez les traqueurs et les domaines malveillants
+dns-unavailable-title = Le DNS sécurisé n'est pas disponible
+dns-unavailable-body = Le plugin DNS sécurisé n'est pas installé sur cet ordinateur.
+dns-status-off = Le DNS sécurisé est désactivé
+dns-status-off-body = Votre ordinateur envoie ses requêtes DNS par le serveur propre au réseau.
+dns-status-pass = Vos requêtes DNS sont chiffrées
+dns-status-pass-body = Le résolveur local fonctionne et répond pour cet ordinateur.
+dns-status-fail = Le DNS sécurisé est activé mais ne fonctionne pas
+dns-status-fail-body = Le résolveur local ne répond pas. Vérifiez les réglages ci-dessous ou désactivez-le.
+dns-status-not_applicable = Le DNS sécurisé est sans objet ici
+dns-status-not_applicable-body = Ce système n'utilise pas la configuration avec laquelle le DNS sécurisé fonctionne.
+dns-status-not_assessed = Ce système ne peut pas encore être vérifié
+dns-status-not_assessed-body = Pour l'instant, le DNS sécurisé prend en charge systemd-resolved. Les autres configurations ne sont pas encore prises en charge.
+dns-status-unknown = Vérification en cours
+dns-status-unknown-body = Le résultat apparaîtra après la prochaine vérification.
+dns-provider = Fournisseur
+dns-provider-quad9 = Quad9
+dns-provider-quad9-logs = n'enregistre pas les adresses IP des utilisateurs
+dns-provider-cloudflare = Cloudflare
+dns-provider-cloudflare-logs = tronque les adresses IP et les supprime sous 25 heures
+dns-jurisdiction = Juridiction : { $code }
+dns-transport = Comment les requêtes sont chiffrées
+dns-transport-tls = DNS sur TLS (recommandé)
+dns-transport-https = DNS sur HTTPS
+dns-transport-h3 = DNS sur HTTPS (HTTP/3)
+dns-transport-quic = DNS sur QUIC
+dns-list = Liste de blocage
+dns-list-none = Aucune
+dns-list-hagezi-light = HaGeZi Light (le moins de blocages)
+dns-list-hagezi-normal = HaGeZi Normal
+dns-list-hagezi-pro = HaGeZi Pro (recommandée par ses auteurs)
+dns-list-hagezi-pro-plus = HaGeZi Pro++ (plus de blocages)
+dns-list-hagezi-ultimate = HaGeZi Ultimate (peut casser des sites)
+dns-list-oisd-small = OISD small
+dns-list-oisd-big = OISD big
+dns-list-stevenblack = StevenBlack unified hosts
+dns-enforcement = Refuser le DNS non chiffré
+dns-enforcement-body = Les programmes ne peuvent pas envoyer de requêtes DNS ou DoT en clair en contournant le DNS sécurisé.
+dns-block-doh = Empêcher les navigateurs de le contourner
+dns-block-doh-body = Demande à Firefox de désactiver son propre DNS. Les réglages des navigateurs ne sont jamais modifiés sans votre accord.
+dns-review-note = Rien ne change tant que vous n'avez pas examiné les modifications exactes et appliqué.
+
+change-failed-title = IbexWall n'a pas pu continuer
+change-failed-other = La demande a échoué. Rien n'a été modifié.
+
+dns-browser-policy = Désactiver le DNS chiffré propre à chaque navigateur
+dns-browser-policy-body = Avec votre accord, écrit la politique qui empêche Firefox, Chrome, Chromium, Brave et Edge d'utiliser leurs propres serveurs DoH. Seuls les navigateurs installés sur cet ordinateur sont touchés, et annuler la modification supprime la politique.
+
+dns-provider-adguard = AdGuard DNS
+dns-provider-adguard-logs = ne traite aucune donnée personnelle, seulement des statistiques d'usage globales
+dns-provider-dns4eu = DNS4EU (protecteur)
+dns-provider-dns4eu-logs = voir la documentation du fournisseur sur la vie privée
+
+dns-counters-title = Depuis le démarrage du résolveur
+dns-counter-blocked-list = Domaines bloqués par la liste
+dns-counter-blocked-doh = Tentatives d'accès à d'autres serveurs DoH
+dns-counter-forwarded = Requêtes transmises chiffrées
+dns-counter-errors = Échecs en amont
+dns-counters-updated = Mis à jour { $when }.
+dns-counters-not-running = Le résolveur ne transmet pas d'informations pour le moment.
+dns-counters-privacy = Uniquement des compteurs. IbexWall n'enregistre pas les domaines que vous consultez.
+
+nav-apps = Applications et réseau
+apps-title = Applications et réseau
+apps-subtitle = Voyez quels programmes utilisent Internet et où ils se connectent.
+apps-mode-allow = Autoriser
+apps-mode-allow-body = Accès libre à Internet.
+apps-mode-monitor = Surveiller
+apps-mode-monitor-body = Accès libre, mais tout est enregistré.
+apps-mode-ask = Demander
+apps-mode-ask-body = Vous décidez à chaque nouvelle destination.
+apps-mode-block = Bloquer
+apps-mode-block-body = Aucun accès à Internet.
+apps-mode-unavailable = Indisponible tant que le moniteur de connexions est désactivé ou que le noyau refuse le suivi des programmes.
+apps-mode-unavailable-container = Demander ne peut pas retenir les connexions d'un conteneur. Autorisez-le ou bloquez-le plutôt.
+apps-mode-failed = Impossible de changer le mode. Réessayez.
+apps-mode-group = Mode réseau pour { $app }
+apps-monitor-running = Le moniteur de connexions fonctionne.
+apps-monitor-limited = Le moniteur de connexions fonctionne avec une limite : { $reason }
+apps-monitor-off = Le moniteur de connexions est désactivé : { $reason }
+apps-monitor-off-body = Les applications et les destinations apparaissent ici une fois qu'il fonctionne. Rien n'est bloqué tant qu'il est désactivé.
+apps-search = Rechercher des applications
+apps-filters = Filtrer les applications
+apps-filter-all = Toutes · { $count }
+apps-filter-active = Connectées maintenant · { $count }
+apps-filter-new = Nouvelles · { $count }
+apps-list-label = Applications
+apps-empty-title = Aucune application vue pour le moment
+apps-empty-body = Les programmes apparaissent ici après leur première connexion.
+apps-none-match = Aucune application ne correspond à votre recherche.
+apps-kind-flatpak = Flatpak
+apps-kind-snap = Snap
+apps-kind-desktop_app = Application
+apps-kind-system_service = Service système
+apps-kind-container = Conteneur
+apps-kind-cli = Programme
+apps-kind-unknown = Inconnu
+apps-new-badge = Nouvelle
+apps-summary =
+    { $destinations ->
+        [one] 1 destination
+       *[other] { $destinations } destinations
+    } · { $connections ->
+        [one] 1 connexion
+       *[other] { $connections } connexions
+    }
+apps-last-activity = Dernière activité { $when }
+apps-select = Afficher les détails de { $app }
+apps-details-title = Détails
+apps-details-hint = Choisissez une application pour voir où elle se connecte.
+apps-package = Paquet : { $name }
+apps-exe = Fichier du programme : { $path }
+apps-first-seen = Vue pour la première fois { $when }
+apps-where = Où elle se connecte
+apps-no-destinations = Aucune destination enregistrée pour le moment.
+apps-no-domain = aucun domaine connu
+apps-port = port { $port }
+apps-times =
+    { $count ->
+        [one] 1 fois
+       *[other] { $count } fois
+    }
+apps-block-title = Couper l'accès réseau de cette application
+apps-block-body = Flatpak lancera cette application sans accès au réseau. Vous pouvez l'annuler depuis l'Historique.
+apps-block-scope = Fonctionne pour les applications Flatpak installées pour tout le système. Les applications installées pour un seul utilisateur ne peuvent pas être modifiées d'ici.
+apps-block-start = Bloquer l'accès réseau
+apps-block-enable-failed = Impossible d'activer le plugin réseau Flatpak.
+apps-block-unavailable = Le blocage n'est pas disponible sur ce système.
+apps-block-other = Le blocage d'une seule application arrivera avec le pare-feu, dans une version ultérieure.
+apps-privacy = Tout ce qui est affiché reste sur cet ordinateur. Seuls les nombres et les heures sont conservés, jamais ce qui a été envoyé.
+
+nav-firewall = Pare-feu
+firewall-title = Pare-feu
+firewall-subtitle = Choisissez qui peut joindre cet ordinateur, via le pare-feu que votre système utilise déjà.
+firewall-plugin-off-title = Les contrôles du pare-feu sont désactivés
+firewall-plugin-off-body = Activez-les pour changer ce qui est autorisé en entrée. La lecture de l'état actuel fonctionne dans les deux cas.
+firewall-manager = Géré par { $manager }
+firewall-manager-firewalld = firewalld
+firewall-manager-ufw = ufw
+firewall-manager-nftables = La protection propre à IbexWall
+firewall-status-active = Le pare-feu est activé
+firewall-status-inactive = Le pare-feu est désactivé
+firewall-status-unknown = L'état du pare-feu est inconnu
+firewall-zone = Zone : { $zone }
+firewall-inactive-body = Rien ne filtre les connexions qui arrivent d'autres ordinateurs.
+firewall-enable-title = Activer la protection de base
+firewall-enable-body = Les connexions venant d'autres ordinateurs sont refusées, sauf celles que vous avez initiées, le trafic local, la configuration réseau et les services qui écoutent en ce moment, afin que votre session actuelle continue de fonctionner. Les interfaces de conteneurs et de VPN sont laissées intactes.
+firewall-enable-keep = Garder joignable ce qui écoute
+firewall-allowed-ports = Ports autorisés
+firewall-allowed-services = Services autorisés
+firewall-none = Aucun
+firewall-remove = Retirer { $what }
+firewall-add-title = Autoriser un port
+firewall-port = Port
+firewall-protocol = Protocole
+firewall-allow = Autoriser ce port
+firewall-port-invalid = Saisissez un port entre 1 et 65535.
+firewall-service-title = Autoriser un service
+firewall-service-name = Nom du service
+firewall-service-allow = Autoriser ce service
+firewall-service-invalid = Utilisez des lettres, des chiffres, des tirets et des tirets bas.
+firewall-listening-title = À l'écoute sur toutes les adresses
+firewall-listening-body = Ces programmes acceptent des connexions sur toutes les interfaces réseau. Les ports sans règle propre peuvent rester joignables via un service ou une règle par défaut.
+firewall-other-title = Règles lues mais non modifiées
+firewall-profiles-title = Profil réseau
+firewall-profiles-body = Un profil décide de ce que ce réseau peut voir de cet ordinateur.
+firewall-profile-home = Maison
+firewall-profile-home-body = Les autres appareils de la maison peuvent atteindre les services partagés.
+firewall-profile-work = Travail
+firewall-profile-work-body = Les règles d'un réseau professionnel.
+firewall-profile-public = Public
+firewall-profile-public-body = Un réseau que vous ne contrôlez pas : seul ce que vous avez choisi est ouvert.
+firewall-profile-travel = Voyage
+firewall-profile-travel-body = Rien n'entre sans demande. SSH est aussi fermé.
+firewall-profile-unavailable = Les profils nécessitent firewalld.
+firewall-profile-apply = Passer à { $profile }
+firewall-networks-title = Réseaux
+firewall-network-suggestion = Profil suggéré : { $profile }
+firewall-kind-wired = Filaire
+firewall-kind-wifi_secured = Wi-Fi avec mot de passe
+firewall-kind-wifi_open = Wi-Fi ouvert
+firewall-kind-other = Autre
+firewall-warning-open-network = Ce réseau est ouvert : toute personne à proximité peut le rejoindre. Voyage garde tout fermé.
+firewall-warning-unknown-network = IbexWall ne connaît pas ce type de réseau. Voyage garde tout fermé.
+firewall-review-note = Examinez ce qui changerait, puis appliquez. Vous pouvez annuler depuis l'Historique.
+
+prompt-title = { $app } veut accéder à Internet
+prompt-destination = Destination
+prompt-program = Programme
+prompt-address = Adresse
+prompt-allow = Autoriser
+prompt-block = Bloquer
+prompt-scope-label = Mémoriser cette décision
+prompt-scope-always = Toujours, pour cette application
+prompt-scope-destination = Seulement pour cette destination
+prompt-scope-once = Seulement cette fois
+prompt-countdown = Sans réponse dans { $seconds } s, la connexion passe.
+prompt-more = { $count } autres en attente
+prompt-failed = Impossible d'envoyer la réponse. Elle a peut-être expiré.
+risk-reboot-to-revert = Cela ne peut pas être annulé avant le redémarrage de l'ordinateur. Annuler la modification dans l'Historique ne la fera pas revenir en arrière.
+
+nav-assistant = Assistant
+assistant-title = Assistant IA
+assistant-subtitle = Modifications suggérées par un assistant IA, en attente de votre décision
+assistant-promise-title = Ce qu'un assistant peut et ne peut pas faire
+assistant-promise-propose = Il peut lire l'état de votre sécurité et suggérer des modifications. Il ne peut rien appliquer, approuver ni annuler.
+assistant-promise-log = Tout ce qu'il fait est écrit dans un journal qui montre si une ligne a été supprimée.
+assistant-promise-undo = Chaque modification que vous approuvez peut être annulée depuis l'Historique. Les modifications irréversibles ne sont jamais acceptées.
+assistant-pending-title = En attente de votre décision ({ $count })
+assistant-decided-title = Décidées
+assistant-empty-title = Aucune suggestion pour le moment
+assistant-empty-body = Quand un assistant que vous avez connecté suggère une modification, elle apparaît ici. Rien n'est appliqué sans votre approbation.
+assistant-from = Suggérée par { $client } (une IA)
+assistant-would-do = Ce qui changerait
+assistant-says = Écrit par l'IA, non vérifié par IbexWall
+assistant-reversible-immediate = Peut être annulée immédiatement
+assistant-reversible-reboot = Peut être annulée après un redémarrage
+assistant-confirm-needed = Vous aurez quelques secondes pour confirmer après son application.
+assistant-approve = Approuver et appliquer
+assistant-reject = Rejeter
+assistant-status-pending = En attente
+assistant-status-approved = Approuvée
+assistant-status-rejected = Rejetée
+assistant-status-expired = Expirée
+assistant-stale = Le plan a changé depuis sa suggestion, donc rien n'a été appliqué. Demandez à l'assistant de la suggérer de nouveau.
+assistant-failed = La décision n'a pas pu être envoyée. La suggestion a peut-être expiré.
+
+dns-own-title = Vos propres serveurs DNS
+dns-own-body = Utilisez un résolveur de confiance ou imposé : votre routeur, le serveur de votre entreprise ou celui de votre VPN. Les requêtes pour tout le reste restent chiffrées.
+dns-network-title = Votre réseau propose des serveurs DNS
+dns-network-body = Le DNS sécurisé ne les utilise pas de lui-même, donc rien ne change pour vos requêtes tant que vous n'avez pas choisi.
+dns-network-use = Utiliser { $address }
+dns-plain-warning = Les requêtes dirigées vers { $servers } partent sans chiffrement vers ce serveur local ; toute personne sur ce réseau peut les lire.
+dns-own-enable = Utiliser mes propres serveurs plutôt qu'un fournisseur
+dns-own-primary = Premier serveur (adresse IP)
+dns-own-secondary = Second serveur, utilisé si le premier ne répond pas (facultatif)
+dns-own-transport = Comment il est joint
+dns-own-plain = Sans chiffrement (réseau local uniquement)
+dns-own-tls = Chiffré (DNS sur TLS)
+dns-own-name = Nom sur le certificat du serveur
+dns-own-order = Le premier serveur répond ; le second prend le relais quand il ne le peut pas.
+dns-own-split-title = Domaines internes
+dns-own-split-body = Les noms sous ces domaines (par exemple ceux de votre entreprise) vont vers un autre serveur local ; tout le reste utilise les serveurs ci-dessus.
+dns-own-domains = Domaines, séparés par des virgules
+dns-own-route = Serveur pour ces domaines (adresse IP)
+dns-own-problem-primary = Saisissez le premier serveur.
+dns-own-problem-address = L'une des adresses n'est pas une adresse IP valide.
+dns-own-problem-public-plain = Le DNS non chiffré n'est autorisé que pour les adresses de votre propre réseau. Utilisez l'option chiffrée pour les serveurs publics.
+dns-own-problem-name = Un serveur chiffré a besoin du nom figurant sur son certificat.
+dns-own-problem-domain = L'un des domaines n'est pas valide.
+dns-own-problem-route = Saisissez le serveur pour les domaines internes.
+dns-own-problem-route-server = Le serveur des domaines internes doit être une adresse de votre propre réseau.
+dns-own-fix-first = Corrigez les points ci-dessus pour examiner la modification.
+
+connect-title = Connecter une IA
+connect-body = Choisissez le programme que vous utilisez, collez le texte ci-dessous dans ses réglages, puis choisissez ce qu'il peut faire. L'IA lit l'état de votre sécurité ; elle ne peut jamais appliquer une modification seule.
+connect-client = Programme
+connect-client-claude-code = Claude Code
+connect-client-opencode = OpenCode
+connect-client-vscode = VS Code
+connect-paste = Mettez ceci dans { $where } :
+connect-copy = Copier
+connect-copied = Copié
+connect-allow-title = Ce qu'elle peut faire
+connect-allow-body = Sans choix ici, une IA ne peut lire que votre score et vos constats.
+connect-preset = Autorisé
+connect-preset-read = Lecture seule
+connect-preset-plan = Lire et planifier
+connect-preset-propose = Lire, planifier et suggérer des modifications
+connect-preset-read-body = Elle voit votre score, vos constats et les événements récents, et rien d'autre.
+connect-preset-plan-body = Elle peut aussi vous montrer ce qu'une modification ferait, sans l'effectuer.
+connect-preset-propose-body = Elle peut aussi laisser une suggestion ici pour que vous l'approuviez ou la rejetiez. Vous décidez ; elle n'applique jamais rien.
+remote-title = Accéder à IbexWall depuis un autre ordinateur
+remote-body = Désactivé par défaut. Une fois activé, une IA sur une autre machine peut se connecter via une connexion chiffrée, mais seulement avec une clé que vous créez ici.
+remote-on = Activé, à l'écoute sur { $listen }
+remote-off = Désactivé
+remote-tokens-title = Clés
+remote-tokens-none = Aucune clé pour le moment.
+remote-expires = expire { $day }
+remote-no-expiry = n'expire pas
+remote-revoke = Retirer
+remote-revoke-body = Retirer une clé la rend inutilisable immédiatement. Examinez la modification ci-dessous.
+remote-new-title = Créer une clé
+remote-new-name = À quoi elle sert
+remote-new-expires = Cesse de fonctionner le
+remote-new-secret = Votre propre secret (facultatif)
+remote-new-secret-help = Laissez vide pour qu'un secret robuste soit généré pour vous. Si vous en choisissez un, utilisez au moins 24 lettres, chiffres, - ou _, avec beaucoup de variété.
+remote-new-make = Créer la clé
+remote-new-failed = La clé n'a pas pu être créée. Vérifiez le nom et le secret.
+remote-token-once = Copiez cette clé maintenant. Elle ne sera plus affichée et IbexWall n'en conserve qu'une empreinte.
+remote-token-env = Sur l'autre ordinateur, gardez-la dans la variable d'environnement IBEXWALL_MCP_TOKEN, jamais dans un fichier que vous partagez.
+remote-token-review = Examinez la modification ci-dessous pour autoriser cette clé.
+remote-switch-title = L'activer ou la désactiver
+remote-tls = Il ne parle qu'en chiffré (TLS). Créez d'abord le certificat ci-dessus.
+remote-listen = Écouter sur
+remote-listen-help = 127.0.0.1 le garde sur cet ordinateur. Utilisez 0.0.0.0 avec un port pour laisser entrer d'autres ordinateurs.
+remote-turn-on = Activer
+remote-turn-off = Désactiver
+remote-url = Adresse pour l'autre ordinateur : { $url }
+remote-cert-title = Certificat
+remote-cert-body = L'autre ordinateur vérifie qu'il parle à celui-ci grâce à ce certificat. IbexWall le crée ici, valable un an.
+remote-cert-fingerprint = Empreinte. Vérifiez-la sur l'autre ordinateur avant de faire confiance au certificat :
+remote-cert-hosts = Noms ou adresses que l'autre ordinateur utilisera
+remote-cert-hosts-help = Par exemple : mcp.home.example, 192.168.1.20. Séparez par des virgules.
+remote-cert-make = Créer le certificat
+remote-cert-replace = Remplacer le certificat
+remote-cert-never-shown = La clé privée est créée quand vous appliquez la modification. Elle n'est jamais affichée et reste lisible uniquement par le serveur MCP.
+detected-use = Utiliser cette suggestion
+detected-review = Examiner la modification suggérée
+
+nav-hardening = Durcissement
+hardening-title = Durcissement
+hardening-subtitle = Réglages recommandés par des guides de sécurité publiés. Voyez d'où vient chacun et ce qu'il peut casser, choisissez, examinez et appliquez ; chaque modification peut être annulée.
+hardening-count = { $applied } réglages recommandés sur { $total } sont déjà en place.
+hardening-area-kernel = Noyau
+hardening-area-memory = Mémoire
+hardening-area-filesystem = Fichiers et montages
+hardening-area-network = Réseau
+hardening-status-applied = En place
+hardening-status-open = Non appliqué
+hardening-status-unknown = Indéterminé
+hardening-risk-low = Risque faible
+hardening-risk-medium = Peut affecter certains programmes
+hardening-risk-high = Peut casser des choses
+hardening-breaks = Peut casser :
+hardening-sources = Source :
+hardening-more = En savoir plus sur ce réglage
+hardening-review-title = Examiner { $count } sélectionnés
+hardening-risky = { $count } des réglages sélectionnés peuvent affecter des programmes que vous utilisez. Lisez ce que chacun peut casser avant d'appliquer.
+hardening-review = Examiner la modification
+hardening-apply = Appliquer { $count } réglages
+hardening-applied = Appliqué. { $count } modifications sont en place.
+hardening-keep-body = Certaines modifications nécessitent votre confirmation pour rester.
+hardening-keep = Conserver les modifications
+hardening-undo = Tout annuler
+hardening-undone = Toutes les modifications ont été annulées.
+hardening-stopped = La modification pour { $plugin } n'a pas tenu, donc le reste n'a pas été appliqué.
+language-system = Langue du système ({ $language })

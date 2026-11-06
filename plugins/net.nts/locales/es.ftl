@@ -1,0 +1,13 @@
+nts-missing-title = El reloj no lo mantiene un cliente que pueda autenticar servidores
+nts-missing-summary = chrony no está instalado. Sin él, la hora viene de NTP sin autenticar o de ninguna parte, y cualquiera en el camino puede cambiarla. Instala chrony y luego activa esto.
+nts-off-title = El reloj toma la hora de servidores que no puede autenticar
+nts-off-summary = chrony no tiene ninguna fuente NTS. Una respuesta de hora falsificada puede romper la comprobación de certificados y los registros.
+nts-may-affect-firewall-4460 = NTS pide primero las claves a cada servidor por el puerto TCP 4460. Un cortafuegos que lo bloquee deja el reloj con sus otras fuentes.
+nts-may-affect-clock = La hora procede de los servidores elegidos además de los ya configurados; IbexWall no elimina los de la propia distribución.
+detect-time-title = Qué mantiene hoy tu reloj
+detect-time-chrony-nts = chrony está en marcha con { $sources } fuentes autenticadas (NTS). Se rechazaría una respuesta de hora falsificada.
+detect-time-chrony-plain = chrony mantiene el reloj con { $sources } fuentes que no se pueden autenticar. Más abajo tienes una configuración sugerida que añade una fuente autenticada, lista para revisar.
+detect-time-chrony-unreadable = chrony está instalado pero no se pudo leer su configuración, así que no se sugiere nada.
+detect-time-timesyncd = El reloj lo mantiene systemd-timesyncd, que no puede autenticar servidores. Instala chrony y vuelve aquí: { $install }
+detect-time-ntpd = El reloj lo mantiene ntpd, que IbexWall no gestiona. Para una hora autenticada, instala chrony: { $install }
+detect-time-none = No se encontró ningún servicio de hora. Instala chrony y vuelve aquí: { $install }

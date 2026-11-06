@@ -1,0 +1,14 @@
+sysctl-off-title = Un ajuste de seguridad del kernel está por debajo de la referencia
+sysctl-off-summary = { $key } es { $current }; el valor de referencia es { $want }.
+sysctl-may-affect-ptrace = Deja de funcionar adjuntar un depurador a un programa que ya se está ejecutando (gdb, strace).
+sysctl-may-affect-bpf = Los programas que cargan eBPF sin privilegios dejan de funcionar. IbexWall no se ve afectado: se ejecuta con privilegios.
+sysctl-may-affect-kexec = No se puede deshacer sin reiniciar: la carga con kexec permanece desactivada hasta entonces.
+sysctl-may-affect-rp-filter = Puede romper VPN y equipos con varias rutas de red.
+sysctl-may-affect-sysrq = Las teclas de emergencia SysRq dejan de funcionar.
+sysctl-may-affect-ipv6-ra = Ya no se aceptan las direcciones y rutas IPv6 que anuncia tu router, así que IPv6 puede dejar de funcionar en redes que dependen de ellas.
+sysctl-may-affect-sack = Las descargas pueden ser más lentas en conexiones con pérdidas.
+sysctl-may-affect-userns = Los programas que crean su propio sandbox sin privilegios dejan de funcionar: los sandboxes de Flatpak, Chromium y Firefox, y los contenedores sin root.
+detect-sysctl-title = Ajustes de seguridad del kernel hoy
+detect-sysctl-ok = Los { $total } ajustes recomendados del kernel ya están aplicados.
+detect-sysctl-open = { $have } de { $total } ajustes recomendados del kernel están aplicados. Faltan: { $missing } (y { $more } más). Más abajo tienes un cambio sugerido que los establece, listo para revisar.
+detect-sysctl-unreadable = No se pudieron leer aquí los ajustes del kernel, así que no se sugiere nada.

@@ -1,0 +1,9 @@
+persistence-new-title = Nouvel élément { $kind } qui n'existait pas avant
+persistence-new-summary = { $path } est nouveau depuis l'acceptation de la référence. Si ce n'est pas vous qui l'avez ajouté, examinez-le et supprimez-le.
+persistence-changed-title = { $kind } modifié
+persistence-changed-summary = { $path } a changé depuis l'acceptation de la référence. Si ce n'est pas vous qui l'avez modifié, examinez-le.
+persistence-preload-title = Quelque chose se charge dans chaque programme
+persistence-preload-summary = { $path } liste des bibliothèques que le système charge dans chaque programme. Presque seuls les malwares font cela.
+persistence-more-title = Et { $count } de plus
+persistence-more-summary = { $count } autres changements de type { $kind } ont été trouvés. Lancez la vérification avec --json pour tous les voir.
+persistence-may-affect = Accepter la référence enregistre ce qui se trouve sur l'ordinateur maintenant, de sorte que seuls les changements ultérieurs sont signalés.

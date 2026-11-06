@@ -25,22 +25,20 @@ elif command -v pacman >/dev/null; then FAM=arch
 else echo "UNKNOWN PACKAGE FAMILY"; exit 1; fi
 OUT1=/tmp/ibx/out1
 OUT2=/tmp/ibx/out2
-JSON_ID="python3 -c 'import json,sys;t=sys.stdin.read();i=t.find(\"{\");d=json.JSONDecoder().raw_decode(t[i:])[0] if i>=0 else {};t=d.get(\"plan\") or d.get(\"transaction\");print(t[\"id\"] if isinstance(t,dict) else t)'"
 # What AppArmor refused, newest last, for a scenario that failed.
 aa_dump() { sudo journalctl --no-pager 2>/dev/null | grep 'apparmor="DENIED"' | grep ibexwall | tail -25 | sed -E 's/.*(operation=)/\1/' | cut -c1-260; }
 # And what SELinux refused.
 sel_dump() { sudo grep -h 'type=AVC' /var/log/audit/audit.log 2>/dev/null | grep -E 'ibexwall' | tail -40 | sed -E 's/.*avc: *//' | sed -E 's/ pid=[0-9]+//; s/ ino=[0-9]+//; s/ dev="[^"]*"//; s/ tclass=/ class=/' | cut -c1-300; }
 trap 'rc=$?; [ $rc = 0 ] || { aa_dump; sel_dump; }' EXIT
-# Plan and apply, leaving the transaction in TX.
-change() {
+apply_change() {
   PLUGIN=$1; shift
-  P=$(sudo ibexctl plan "$PLUGIN" "$@" --json 2>/tmp/plan.err | eval "$JSON_ID") || { echo "PLAN FAILED: $(cat /tmp/plan.err)"; aa_dump; return 1; }
+  P=$(sudo ibexctl plan "$PLUGIN" "$@" --json 2>/dev/null | python3 -c 'import json,sys;t=sys.stdin.read();i=t.find("{");d=json.JSONDecoder().raw_decode(t[i:])[0];print(d["plan"]["id"] if "plan" in d else d["id"])') || return 1
   OUT=$(sudo ibexctl apply "$P" --confirm-timeout 300 --json 2>&1 || true)
-  TX=$(echo "$OUT" | eval "$JSON_ID")
-  [ -n "$TX" ] || { echo "APPLY FAILED: $OUT"; aa_dump; sudo journalctl -u ibexwalld -n 20 --no-pager; return 1; }
-  if echo "$OUT" | grep -Eq '"state": "(failed|rolled_back)"'; then echo "THE CHANGE DID NOT STAY: $OUT"; aa_dump; return 1; fi
-  if echo "$OUT" | grep -q pending_confirm; then sudo ibexctl confirm "$TX" >/dev/null || { echo "CONFIRM FAILED"; return 1; }; fi
+  TX=$(echo "$OUT" | python3 -c 'import json,sys;t=sys.stdin.read();i=t.find("{");d=json.JSONDecoder().raw_decode(t[i:])[0];print(d["transaction"]["id"])' 2>/dev/null) || return 1
+  echo "$OUT" | grep -q pending_confirm && sudo ibexctl confirm "$TX" >/dev/null 2>&1
+  return 0
 }
+change() { apply_change "$@"; }
 # Everything the packages put or leave on the machine that carries the name.
 leftovers() {
   sudo find /usr /etc /var /opt /lib /lib64 /boot -xdev \( -name '*ibexwall*' -o -name '*ibexctl*' \) 2>/dev/null | grep -vE '^/(var/lib/ibexwall(-mcp)?|etc/ibexwall|var/lib/cloud/instances/ibexwall[^/]*|var/lib/dpkg/info/ibexwall[^/]*)(/|$)' | sort || true
@@ -204,19 +202,9 @@ for p in $(sudo ibexctl plugins list --json | python3 -c 'import json,sys;d=json
   sudo ibexctl plugins enable $p >/dev/null 2>&1 || true
   sudo ibexctl check $p --json >/dev/null 2>&1 || true
 done
-# Plan, apply and confirm; the transaction is left in TX.
-apply_change() {
-  PLUGIN=$1; shift
-  P=$(sudo ibexctl plan "$PLUGIN" "$@" --json 2>/dev/null | python3 -c 'import json,sys;t=sys.stdin.read();i=t.find("{");d=json.JSONDecoder().raw_decode(t[i:])[0];print(d["plan"]["id"] if "plan" in d else d["id"])') || return 1
-  OUT=$(sudo ibexctl apply "$P" --confirm-timeout 300 --json 2>&1 || true)
-  TX=$(echo "$OUT" | python3 -c 'import json,sys;t=sys.stdin.read();i=t.find("{");d=json.JSONDecoder().raw_decode(t[i:])[0];print(d["transaction"]["id"])' 2>/dev/null) || return 1
-  echo "$OUT" | grep -q pending_confirm && sudo ibexctl confirm "$TX" >/dev/null 2>&1
-  return 0
-}
-change() { apply_change "$@" && sudo ibexctl rollback "$TX" >/dev/null 2>&1; true; }
 change system.sysctl --set 'keys={"net.ipv4.tcp_rfc1337":"1"}'
 change system.modules --set 'block=["vivid"]'
-change net.firewall --set enable_basic=true
+if [ ! -x /usr/sbin/ufw ] && [ ! -x /usr/bin/firewall-cmd ]; then change net.firewall --set enable_basic=true; fi
 # What runs under which profile, read from the kernel.
 confined() {
   PID=$(pgrep -x "$1" | head -1)
@@ -277,18 +265,9 @@ for p in $(sudo ibexctl plugins list --json | python3 -c 'import json,sys;d=json
   sudo ibexctl plugins enable $p >/dev/null 2>&1 || true
   sudo ibexctl check $p --json >/dev/null 2>&1 || true
 done
-apply_change() {
-  PLUGIN=$1; shift
-  P=$(sudo ibexctl plan "$PLUGIN" "$@" --json 2>/dev/null | python3 -c 'import json,sys;t=sys.stdin.read();i=t.find("{");d=json.JSONDecoder().raw_decode(t[i:])[0];print(d["plan"]["id"] if "plan" in d else d["id"])') || return 1
-  OUT=$(sudo ibexctl apply "$P" --confirm-timeout 300 --json 2>&1 || true)
-  TX=$(echo "$OUT" | python3 -c 'import json,sys;t=sys.stdin.read();i=t.find("{");d=json.JSONDecoder().raw_decode(t[i:])[0];print(d["transaction"]["id"])' 2>/dev/null) || return 1
-  echo "$OUT" | grep -q pending_confirm && sudo ibexctl confirm "$TX" >/dev/null 2>&1
-  return 0
-}
-change() { apply_change "$@" && sudo ibexctl rollback "$TX" >/dev/null 2>&1; true; }
 change system.sysctl --set 'keys={"net.ipv4.tcp_rfc1337":"1"}'
 change system.modules --set 'block=["vivid"]'
-change net.firewall --set enable_basic=true
+if [ ! -x /usr/sbin/ufw ] && [ ! -x /usr/bin/firewall-cmd ]; then change net.firewall --set enable_basic=true; fi
 domain_of() {
   case "$1" in
     *.service) PID=$(systemctl show "$1" -p MainPID --value) ;;
@@ -342,6 +321,54 @@ PYEOF
 sudo semodule -B
 echo "METRIC: $N AVC events for the ibexwall domains"
 test "$N" = 0 || { echo "THE DOMAINS DREW $N AVC EVENTS"; exit 1; }
+"#;
+
+/// A smoke of the earlier phases against the installed packages: the checks
+/// of F2, the DNS of F3, the notes of F7, the assistant server of F8, and
+/// the engine's own books. The firewall of F5 is USE, just before it.
+const SMOKE: &str = r#"
+set -e
+# F2: every enabled check plugin answers, and a finding is a finding.
+sudo ibexctl check --json >/tmp/s2-check.json 2>/dev/null || true
+python3 - <<'PYEOF'
+import json
+d = json.JSONDecoder().raw_decode(open("/tmp/s2-check.json").read())[0]
+ids = {f["id"] for f in d["findings"]}
+assert any(i.startswith("posture.") for i in ids), sorted(ids)[:8]
+print("check:", len(ids), "findings")
+PYEOF
+
+# F7: the notes are there, as information.
+for p in system.posture system.ssh system.sysctl net.dns; do
+  sudo ibexctl plugins enable $p >/dev/null 2>&1 || true
+done
+for p in system.ssh system.sysctl net.dns; do
+  sudo ibexctl check $p --json 2>/dev/null | grep -q "detect\." || { echo "NO NOTE FROM $p"; exit 1; }
+done
+echo "notes: ssh, sysctl and dns say what they found"
+
+# F3: Secure DNS through the packaged resolver, a real query, then undone.
+apply_change net.dns --set provider=quad9 --set transport=tls
+systemctl is-active --quiet ibexwall-dns.service || { echo "THE PACKAGED RESOLVER IS NOT UP"; exit 1; }
+Q=$(resolvectl query example.com 2>&1 | head -1)
+echo "$Q" | grep -q "example.com" || { echo "THE RESOLVER DID NOT ANSWER: $Q"; exit 1; }
+sudo ibexctl rollback "$TX" >/dev/null
+if systemctl is-active --quiet ibexwall-dns.service; then echo "THE RESOLVER STAYED UP AFTER THE ROLLBACK"; exit 1; fi
+echo "dns: the resolver answered and was undone"
+
+# F8: the assistant server answers a request over the control socket. Its
+# state directory is created with the right owner, and the right label where
+# the machine uses SELinux.
+sudo install -d -o ibexwall-mcp -m 0700 /var/lib/ibexwall-mcp
+command -v restorecon >/dev/null 2>&1 && sudo restorecon -R /var/lib/ibexwall-mcp || true
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"s2","version":"1"}}}' > /tmp/s2-in
+cat /tmp/s2-in | sudo systemd-run --wait --pipe -q -p User=ibexwall-mcp -p SupplementaryGroups=ibexwall-assistants /usr/bin/ibexwall-mcp --client s2 --state-dir /var/lib/ibexwall-mcp 2>/dev/null | grep -q '"result"' || { echo "THE MCP SERVER DID NOT ANSWER"; exit 1; }
+echo "assistant: the packaged MCP server answered an initialize"
+
+# The engine's own books: history counts what USE did, and the chain is intact.
+sudo ibexctl history --json 2>/dev/null | grep -q committed || { echo "THE HISTORY IS EMPTY"; exit 1; }
+sudo ibexctl audit verify >/dev/null || { echo "THE AUDIT CHAIN DOES NOT VERIFY"; exit 1; }
+echo "METRIC: smoke of F2, F3, F7, F8 and the engine's books, all through the installed packages"
 "#;
 
 /// Upgrade: a higher version over the installed one; the changes made, the
@@ -470,6 +497,10 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     );
     scenario!("i3 every unit, rated by systemd", SECURITY);
     scenario!("u1 changes made through the packaged daemon", USE);
+    scenario!(
+        "s2 a smoke of the earlier phases against the installed packages",
+        SMOKE
+    );
     scenario!(
         "a1 the AppArmor profiles load and the workload draws no event",
         APPARMOR

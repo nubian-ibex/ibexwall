@@ -481,90 +481,112 @@ pub fn apply_snapshot_inverses(
     snapshot_root: &Path,
     manifest: &SnapshotManifest,
 ) -> Result<()> {
+    // Every inverse is attempted: one failure must not skip the rest and
+    // leave the machine half-restored, and the errors are reported
+    // together so nothing stays silently changed.
+    let mut errors: Vec<String> = Vec::new();
     let dir = snapshot_root.join(&manifest.tx);
+
+    macro_rules! attempt {
+        ($what:expr, $step:expr) => {
+            match $step {
+                Ok(()) => {}
+                Err(err) => errors.push(format!("{}: {:#}", $what, err)),
+            }
+        };
+    }
+
     for entry in manifest.entries.iter().rev() {
         match entry {
-            SnapshotEntry::File { path, prior, .. } => match prior {
-                Some(prior_file) => {
-                    let content = std::fs::read(dir.join("files").join(&prior_file.blob))?;
-                    let digest = hex::encode(Sha256::digest(&content));
-                    if digest != prior_file.sha256 {
-                        bail!("snapshot blob integrity failure for {path}");
-                    }
-                    sys.fs.write_atomic(
-                        Path::new(path),
-                        &content,
-                        prior_file.mode,
-                        Some((prior_file.uid, prior_file.gid)),
-                    )?;
+            SnapshotEntry::File { path, prior, .. } => {
+                let what = format!("restore {path}");
+                match prior {
+                    Some(prior_file) => attempt!(
+                        what,
+                        (|| -> Result<()> {
+                            let content = std::fs::read(dir.join("files").join(&prior_file.blob))?;
+                            let digest = hex::encode(Sha256::digest(&content));
+                            if digest != prior_file.sha256 {
+                                bail!("snapshot blob integrity failure for {path}");
+                            }
+                            sys.fs.write_atomic(
+                                Path::new(path),
+                                &content,
+                                prior_file.mode,
+                                Some((prior_file.uid, prior_file.gid)),
+                            )?;
+                            Ok(())
+                        })()
+                    ),
+                    None => attempt!(what, sys.fs.remove(Path::new(path))),
                 }
-                None => {
-                    sys.fs.remove(Path::new(path))?;
-                }
-            },
+            }
             SnapshotEntry::Unit {
                 unit,
                 enabled,
                 active,
                 ..
             } => {
-                let enabled: crate::Enabled = serde_json::from_str(enabled)?;
-                // Put back only what the transaction changed: touching the
-                // enablement of a unit that was merely restarted would fail
-                // on units whose enablement the init scripts own (Ubuntu's
-                // `ssh.service`, with its socket) and gains nothing.
-                let now = sys.systemd.snapshot(unit)?;
-                let enable_differs = now.enabled != enabled;
-                match enabled {
-                    crate::Enabled::Enabled if enable_differs => {
-                        sys.systemd.apply(unit, UnitAction::Enable, false)?;
-                    }
-                    crate::Enabled::Disabled if enable_differs => {
-                        sys.systemd.apply(unit, UnitAction::Disable, false)?;
-                    }
-                    crate::Enabled::Masked if enable_differs => {
-                        sys.systemd.apply(unit, UnitAction::Stop, false)?;
-                        sys.systemd.apply(unit, UnitAction::Mask, false)?;
-                    }
-                    _ => {}
-                }
-                if now.active != *active {
-                    let action = if *active {
-                        UnitAction::Start
-                    } else {
-                        UnitAction::Stop
-                    };
-                    sys.systemd.apply(unit, action, false)?;
-                }
+                attempt!(
+                    format!("restore unit {unit}"),
+                    (|| -> Result<()> {
+                        let enabled: crate::Enabled = serde_json::from_str(enabled)?;
+                        // Put back only what the transaction changed: touching the
+                        // enablement of a unit that was merely restarted would fail
+                        // on units whose enablement the init scripts own (Ubuntu's
+                        // `ssh.service`, with its socket) and gains nothing.
+                        let now = sys.systemd.snapshot(unit)?;
+                        let enable_differs = now.enabled != enabled;
+                        match enabled {
+                            crate::Enabled::Enabled if enable_differs => {
+                                sys.systemd.apply(unit, UnitAction::Enable, false)?;
+                            }
+                            crate::Enabled::Disabled if enable_differs => {
+                                sys.systemd.apply(unit, UnitAction::Disable, false)?;
+                            }
+                            crate::Enabled::Masked if enable_differs => {
+                                sys.systemd.apply(unit, UnitAction::Stop, false)?;
+                                sys.systemd.apply(unit, UnitAction::Mask, false)?;
+                            }
+                            _ => {}
+                        }
+                        if now.active != *active {
+                            let action = if *active {
+                                UnitAction::Start
+                            } else {
+                                UnitAction::Stop
+                            };
+                            sys.systemd.apply(unit, action, false)?;
+                        }
+                        Ok(())
+                    })()
+                );
             }
             SnapshotEntry::Sysctl { key, prior, .. } => {
                 if let Some(value) = prior {
-                    sys.sysctl
-                        .set(key, value)
-                        .with_context(|| format!("restoring sysctl {key} = {value}"))?;
+                    attempt!(
+                        format!("restore sysctl {key} = {value}"),
+                        sys.sysctl.set(key, value)
+                    );
                 }
             }
             SnapshotEntry::Nft { chains, .. } => {
                 for chain in chains {
-                    sys.nft.restore(&chain.name, chain.prior.as_ref())?;
+                    attempt!(
+                        format!("restore nft chain {}", chain.name),
+                        sys.nft.restore(&chain.name, chain.prior.as_ref())
+                    );
                 }
             }
-            SnapshotEntry::Reload { exec, .. } => {
-                execute(
-                    &Op::Exec {
-                        path: exec.path.clone(),
-                        args: exec.args.clone(),
-                    },
-                    sys,
-                )
-                .with_context(|| format!("re-running {} {}", exec.path, exec.args.join(" ")))?;
-            }
-            SnapshotEntry::Firewall { .. } | SnapshotEntry::NoInverse { .. } => {}
+            SnapshotEntry::Firewall { .. }
+            | SnapshotEntry::NoInverse { .. }
+            | SnapshotEntry::Reload { .. } => {}
         }
     }
     // Second pass: services restarted by the transaction pick up the
     // restored files. Only units that were running before are restarted;
-    // a stopped one was already stopped by the first pass.
+    // a stopped one was already stopped by the first pass. Reload and
+    // firewall re-reads run here too, after the files are back.
     for entry in &manifest.entries {
         match entry {
             SnapshotEntry::Unit {
@@ -572,31 +594,43 @@ pub fn apply_snapshot_inverses(
                 active: true,
                 restarted: true,
                 ..
-            } => sys.systemd.apply(unit, UnitAction::Restart, false)?,
-            // After the restored files: the manager re-reads its directory
-            // and lets go of what the transaction created or removed.
-            SnapshotEntry::Reload { exec, .. } => {
-                execute(
-                    &Op::Exec {
-                        path: exec.path.clone(),
-                        args: exec.args.clone(),
-                    },
-                    sys,
-                )
-                .with_context(|| format!("re-running {} {}", exec.path, exec.args.join(" ")))?;
+            } => {
+                attempt!(
+                    format!("restart {unit}"),
+                    sys.systemd.apply(unit, UnitAction::Restart, false)
+                );
             }
-            // The restored files are on disk: make the manager read them.
+            SnapshotEntry::Reload { exec, .. } => {
+                attempt!(
+                    format!("re-run {} {}", exec.path, exec.args.join(" ")),
+                    execute(
+                        &Op::Exec {
+                            path: exec.path.clone(),
+                            args: exec.args.clone(),
+                        },
+                        sys,
+                    )
+                );
+            }
             SnapshotEntry::Firewall { backend, .. } => {
                 if let Some(backend) = ibexwall_firewall::Backend::from_name(backend)
                     && let Some(argv) = ibexwall_firewall::reload_argv(backend)
                 {
-                    sys.runner.run(&argv)?;
+                    attempt!(format!("reload {backend:?}"), sys.runner.run(&argv));
                 }
             }
             _ => {}
         }
     }
-    Ok(())
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!(
+            "rollback completed with errors: {}",
+            errors.join("; ")
+        ))
+    }
 }
 
 /// SHA-256 of the serialized ops, for audit entries.
@@ -621,6 +655,69 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_rollback_attempts_every_inverse_and_reports_what_failed() {
+        let (root, sys) = sandbox("all-inverses");
+        std::fs::create_dir_all(root.join("etc/ibexwall")).unwrap();
+        use std::os::unix::fs::MetadataExt as _;
+        let me = std::fs::metadata(&root).unwrap();
+        let (uid, gid) = (me.uid(), me.gid());
+        let snap = root.join("snapshots/tx1");
+        std::fs::create_dir_all(snap.join("files")).unwrap();
+        let write_blob = |name: &str, content: &[u8]| {
+            std::fs::write(snap.join("files").join(name), content).unwrap();
+            PriorFile {
+                blob: name.into(),
+                mode: 0o644,
+                uid,
+                gid,
+                sha256: hex::encode(Sha256::digest(content)),
+            }
+        };
+        let manifest = SnapshotManifest {
+            tx: "tx1".into(),
+            entries: vec![
+                SnapshotEntry::File {
+                    op_index: 0,
+                    path: "/etc/ibexwall/good.conf".into(),
+                    prior: Some(write_blob("good.bin", b"good")),
+                },
+                SnapshotEntry::File {
+                    op_index: 1,
+                    path: "/etc/ibexwall/missing.conf".into(),
+                    // The blob is absent, so restoring this entry fails.
+                    prior: Some(PriorFile {
+                        blob: "missing.bin".into(),
+                        mode: 0o644,
+                        uid,
+                        gid,
+                        sha256: hex::encode(Sha256::digest(b"never written")),
+                    }),
+                },
+                SnapshotEntry::File {
+                    op_index: 2,
+                    path: "/etc/ibexwall/later.conf".into(),
+                    prior: Some(write_blob("later.bin", b"later")),
+                },
+            ],
+        };
+        let error = apply_snapshot_inverses(&sys, &root.join("snapshots"), &manifest).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("missing.conf"),
+            "the failure must be reported"
+        );
+        // Entries on both sides of the failure still ran.
+        assert_eq!(
+            std::fs::read(root.join("etc/ibexwall/good.conf")).unwrap(),
+            b"good"
+        );
+        assert_eq!(
+            std::fs::read(root.join("etc/ibexwall/later.conf")).unwrap(),
+            b"later"
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 
     fn sandbox(name: &str) -> (std::path::PathBuf, crate::SysBundle) {
         let root = std::env::temp_dir().join(format!("ibexwall-ops-{name}-{}", std::process::id()));

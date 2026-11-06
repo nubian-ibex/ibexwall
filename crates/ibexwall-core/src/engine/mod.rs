@@ -88,7 +88,7 @@ impl Engine {
                         Ok(content) => {
                             let meta = self.sys.fs.metadata(std::path::Path::new(path))?;
                             let blob = format!("{index:03}.bin");
-                            std::fs::write(dir.join("files").join(&blob), &content)?;
+                            durable_write(&dir.join("files").join(&blob), &content)?;
                             Some(PriorFile {
                                 sha256: hex::encode(sha2::Sha256::digest(&content)),
                                 blob,
@@ -141,7 +141,7 @@ impl Engine {
                         Ok(content) if !content.is_empty() => {
                             let meta = self.sys.fs.metadata(Path::new(path))?;
                             let blob = format!("{index:03}.bin");
-                            std::fs::write(dir.join("files").join(&blob), &content)?;
+                            durable_write(&dir.join("files").join(&blob), &content)?;
                             Some(PriorFile {
                                 sha256: hex::encode(sha2::Sha256::digest(&content)),
                                 blob,
@@ -170,7 +170,7 @@ impl Engine {
                             Ok(content) => {
                                 let meta = self.sys.fs.metadata(Path::new(path))?;
                                 let blob = format!("{index:03}-{n}.bin");
-                                std::fs::write(dir.join("files").join(&blob), &content)?;
+                                durable_write(&dir.join("files").join(&blob), &content)?;
                                 Some(PriorFile {
                                     sha256: hex::encode(sha2::Sha256::digest(&content)),
                                     blob,
@@ -221,7 +221,7 @@ impl Engine {
                             Ok(content) => {
                                 let meta = self.sys.fs.metadata(Path::new(&path))?;
                                 let blob = format!("{index:03}-{n}.bin");
-                                std::fs::write(dir.join("files").join(&blob), &content)?;
+                                durable_write(&dir.join("files").join(&blob), &content)?;
                                 Some(PriorFile {
                                     sha256: hex::encode(sha2::Sha256::digest(&content)),
                                     blob,
@@ -295,10 +295,15 @@ impl Engine {
             tx: tx.to_string(),
             entries,
         };
-        std::fs::write(
-            dir.join("manifest.json"),
-            serde_json::to_vec_pretty(&manifest)?,
+        // Crash-safety order: blobs are synced as written, then the files
+        // directory, then the manifest, then the snapshot directory, so a
+        // manifest never names a blob that is not durable yet.
+        sync_dir(&dir.join("files"))?;
+        durable_write(
+            &dir.join("manifest.json"),
+            &serde_json::to_vec_pretty(&manifest)?,
         )?;
+        sync_dir(&dir)?;
         Ok(manifest)
     }
 
@@ -501,6 +506,23 @@ impl Default for Engine {
 }
 
 /// Parent directories the inverses of a snapshot will write to.
+/// Writes and fsyncs a snapshot file: the prior content must be on disk
+/// before the manifest that names it, or a crash could leave a change on
+/// the machine with an unrestorable snapshot.
+fn durable_write(path: &Path, content: &[u8]) -> Result<()> {
+    use std::io::Write as _;
+    let mut file = std::fs::File::create(path)?;
+    file.write_all(content)?;
+    file.sync_all()?;
+    Ok(())
+}
+
+/// fsyncs a directory so its entries are durable.
+fn sync_dir(path: &Path) -> Result<()> {
+    std::fs::File::open(path)?.sync_all()?;
+    Ok(())
+}
+
 /// `Core` builds its paths already prefixed with the sandbox root when
 /// one is active, while the `SysBundle` filesystem translates under its
 /// own root: strip the prefix here so the two never double up.

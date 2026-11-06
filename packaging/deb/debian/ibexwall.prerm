@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+case "$1" in
+remove)
+    # shellcheck disable=SC1091
+    . /usr/lib/ibexwall/package-scripts.sh
+    pre_remove
+    ;;
+esac
+exit 0

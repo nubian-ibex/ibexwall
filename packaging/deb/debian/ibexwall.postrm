@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+case "$1" in
+remove | purge | disappear)
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+    ;;
+esac
+if [ "$1" = purge ]; then
+    # The user's data stays until a purge: state, audit chain, settings.
+    rm -rf /var/lib/ibexwall /var/lib/ibexwall-mcp /etc/ibexwall /run/ibexwall
+fi
+exit 0

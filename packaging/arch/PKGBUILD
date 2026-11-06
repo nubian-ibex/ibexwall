@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Maintainer: Nubian Ibex <maintainers@nubian-ibex.invalid>
+#
+# Two ways to build: from the source tree (`cargo xtask stage`), or from a
+# staged tree a release has already built: IBEXWALL_STAGE=/path/to/stage.
+# The stage holds root/ (the installed layout) and stage-lists/ (who owns what).
+
+pkgbase=ibexwall
+pkgname=(ibexwall ibexwall-desktop ibexwall-mcp)
+pkgver=0.1.0
+pkgrel=1
+arch=(x86_64)
+url=https://github.com/nubian-ibex/ibexwall
+license=(GPL-3.0-or-later)
+makedepends=(cargo)
+options=(!strip !debug)
+
+build() {
+    [[ -n ${IBEXWALL_STAGE:-} ]] && return
+    # The source tree is two levels above this file (packaging/arch).
+    (cd "$startdir/../.." && cargo xtask stage --destdir "$srcdir/stage/root")
+}
+
+# Copies the files a package owns from the staged tree.
+_from_stage() {
+    local stage=${IBEXWALL_STAGE:-$srcdir/stage}
+    sed 's#^/##' "$stage/stage-lists/$1.list" |
+        tar -C "$stage/root" -cf - -T - | tar -C "$pkgdir" -xf -
+}
+
+package_ibexwall() {
+    pkgdesc='Security center for Linux: daemon, command line, resolver and plugins'
+    depends=(nftables polkit systemd)
+    optdepends=('chrony: authenticated time (NTS)' 'ufw: firewall manager' 'firewalld: firewall manager')
+    install=ibexwall.install
+    _from_stage ibexwall
+}
+
+package_ibexwall-desktop() {
+    pkgdesc='IbexWall desktop app and session agent'
+    depends=("ibexwall=$pkgver-$pkgrel" webkit2gtk-4.1 gtk3)
+    optdepends=('libayatana-appindicator: tray icon')
+    _from_stage ibexwall-desktop
+}
+
+package_ibexwall-mcp() {
+    pkgdesc='IbexWall MCP server for AI assistants'
+    depends=("ibexwall=$pkgver-$pkgrel")
+    _from_stage ibexwall-mcp
+}

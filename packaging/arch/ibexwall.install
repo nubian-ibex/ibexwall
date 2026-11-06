@@ -1,0 +1,21 @@
+# shellcheck shell=sh disable=SC1091
+post_install() {
+    . /usr/lib/ibexwall/package-scripts.sh
+    post_install
+}
+
+post_upgrade() {
+    . /usr/lib/ibexwall/package-scripts.sh
+    post_upgrade
+}
+
+pre_remove() {
+    . /usr/lib/ibexwall/package-scripts.sh
+    pre_remove
+}
+
+post_remove() {
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+}

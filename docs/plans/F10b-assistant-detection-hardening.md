@@ -8,7 +8,7 @@ alongside F10 (packaging stays M4 onward) and follows the order the maintainer
 chose: 1 connect an assistant, 2 detection with pre-filled settings, 3 the
 Hardening catalog and the new tool plugins.
 
-Status: parts 1 and 2 done 2026-11-05. Part 3: the Hardening catalog, screen and the system.hardening and system.modules plugins are done (26 items, five distros); the rkhunter and chkrootkit, OpenSCAP and local-exposure (nmap) plugins and the ssh, sysctl and MAC pre-fill are next.
+Status: parts 1, 2 and 3 done 2026-11-05, including the rkhunter and chkrootkit, OpenSCAP and local-exposure (nmap) plugins. Left: the ssh, sysctl and MAC pre-fill, and dedicated screens for the three scanners (they show in the plugin detail for now).
 
 ## Rules that do not change
 
@@ -124,3 +124,31 @@ madaidans page shows no licence, so nothing is copied from it.
 
 The explanation pages on the site are linked once the domain is set
 (`ui/src/lib/site.ts`).
+
+## The scanner plugins as built
+
+`endpoint.rootkit`, `net.exposure` and `system.openscap` share one shape
+(`ibexwall_sdk::scanner`): the plan writes a oneshot unit (and a timer on
+request) that runs the outside tool as root over a read-only system and leaves
+its report in `/var/lib/ibexwall/<tool>/`; the check reads that report back.
+The plugin never runs the tool and never installs it; a missing tool is
+reported with the distribution's own install command.
+
+- Rootkit: rkhunter warnings and chkrootkit `INFECTED` lines are leads, capped
+  at 20, and weigh as one low-severity check because both tools raise false
+  alarms. The unit sees the real `/dev` and `/tmp`.
+- Exposure: nmap runs against this computer's own IPv4 addresses, read from
+  `/proc/net/fib_trie` at plan time; the config has no field for a target.
+  Seen from the machine itself it does not show what a firewall blocks from
+  outside, and the text says so. Fedora runs nmap in its own SELinux domain
+  (`traceroute_t`), which is refused under `NoNewPrivileges` and may not write
+  to IbexWall's state directory, so this unit lifts `NoNewPrivileges` and has
+  systemd store nmap's standard output.
+- OpenSCAP: the data stream is chosen from the distribution (never a free path)
+  and the profile must exist in it. Verified end to end on Fedora. Ubuntu 24.04
+  and Debian ship no content for their release (Ubuntu 24.04's `ssg-debderived`
+  has content up to 22.04), so there the plugin says so and plans nothing.
+  Arch has no content package.
+- `systemd-analyze security` rates the root scanners poorly (rkhunter 9.0,
+  OpenSCAP 8.2): they must read most of the system. The units keep the system
+  read-only and write only to their own state directory.

@@ -18,6 +18,9 @@ fn main() {
 }
 
 fn run() -> Result<()> {
+    if std::env::args().nth(1).as_deref() == Some("--cleanup") {
+        return cleanup();
+    }
     let dev_key = std::env::args()
         .nth(1)
         .and_then(|arg| arg.strip_prefix("--dev-key=").map(PathBuf::from));
@@ -42,6 +45,28 @@ fn run() -> Result<()> {
     // A crashed daemon leaves the socket file behind; bind(2) would fail.
     let _ = std::fs::remove_file(&socket);
     runtime.block_on(ibexwall_core::serve(&socket, dev_key))
+}
+
+/// `ibexwalld --cleanup`: what the package runs before it removes the files.
+/// It undoes what IbexWall changed and keeps the user's data. A failure is
+/// said out loud but does not make the removal fail.
+fn cleanup() -> Result<()> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let report = runtime.block_on(ibexwall_core::cleanup(names::root(), None))?;
+    println!(
+        "ibexwalld: undid {} change(s), removed {} firewall chain(s)",
+        report.rolled_back, report.chains_removed
+    );
+    for (tx, why) in &report.failed {
+        eprintln!("ibexwalld: could not undo {tx}: {why}");
+    }
+    if report.failed.is_empty() {
+        Ok(())
+    } else {
+        anyhow::bail!("{} change(s) could not be undone", report.failed.len())
+    }
 }
 
 /// journald when available (production), stderr otherwise (dev/tests).

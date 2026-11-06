@@ -327,6 +327,19 @@ impl Engine {
         Ok(())
     }
 
+    /// Removes every chain left in IbexWall's table (the uninstall); returns
+    /// how many there were. The foreign tables are never looked at.
+    pub fn remove_nft_table(&self) -> Result<usize> {
+        if !self.sys.allow_system_executors {
+            return Ok(0);
+        }
+        let chains = self.sys.nft.chains()?;
+        for name in &chains {
+            self.sys.nft.restore(name, None)?;
+        }
+        Ok(chains.len())
+    }
+
     /// Puts the persisted chains back, leaving alone any that already
     /// exist. Returns how many were restored.
     pub fn restore_nft(&self, file: &Path) -> Result<usize> {

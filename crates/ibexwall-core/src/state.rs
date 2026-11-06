@@ -265,6 +265,23 @@ impl State {
         })
     }
 
+    /// Transactions whose changes are still on the machine, newest first:
+    /// what an uninstall has to undo.
+    pub fn list_active_transactions(&self) -> Result<Vec<TxRow>> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, plan_id, plugin, state FROM transactions \
+                 WHERE state IN ('committed', 'pending_confirm') ORDER BY created_at DESC, rowid DESC",
+            )?;
+            let rows = stmt.query_map([], row_to_tx)?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(out)
+        })
+    }
+
     /// Transactions a restart must roll back (spec §4.5 recovery).
     pub fn list_recoverable_transactions(&self) -> Result<Vec<TxRow>> {
         self.with_conn(|conn| {

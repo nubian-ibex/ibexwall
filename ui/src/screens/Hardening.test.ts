@@ -71,9 +71,12 @@ describe('Hardening screen', () => {
     expect(screen.getByRole('note')).toHaveTextContent(/can affect programs you use/i);
   });
 
-  it('shows no link to the site while the domain is not set', async () => {
+  it('links each setting to its page on the site', async () => {
     await open();
-    expect(screen.queryByRole('link', { name: /more about this setting/i })).toBeNull();
+    const links = screen.getAllByRole('link', { name: /more about this setting/i });
+    expect(links.length).toBeGreaterThan(5);
+    expect(links[0]).toHaveAttribute('href', 'https://ibexwall.com/hardening/kernel.kptr-restrict');
+    expect(links[0]).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
   it('speaks Portuguese', async () => {

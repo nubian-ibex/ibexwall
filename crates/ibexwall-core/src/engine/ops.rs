@@ -294,6 +294,49 @@ fn parse_mode(mode: &str) -> Option<u32> {
     u32::from_str_radix(mode, 8).ok().filter(|m| *m <= 0o7777)
 }
 
+/// The concrete things a plan touches, keyed so a rollback can refuse to
+/// act while a newer transaction holds the same target (paths, sysctl
+/// keys, units and nft chains). Overlapping here is what can corrupt a
+/// restore; unrelated transactions stay independent.
+pub(crate) fn op_targets(ops: &[Op]) -> std::collections::BTreeSet<String> {
+    let mut targets = std::collections::BTreeSet::new();
+    for op in ops {
+        match op {
+            Op::FileWrite { path, .. } | Op::FileRemove { path } => {
+                targets.insert(path.clone());
+            }
+            Op::TlsKeyPair {
+                cert_path,
+                key_path,
+                ..
+            } => {
+                targets.insert(cert_path.clone());
+                targets.insert(key_path.clone());
+            }
+            Op::SystemdUnit { unit, .. } => {
+                targets.insert(format!("unit:{unit}"));
+            }
+            Op::SysctlSet { key, .. } => {
+                targets.insert(format!("sysctl:{key}"));
+            }
+            Op::FlatpakOverride { app_id, .. } => {
+                if let Some(path) = ibexwall_sys::flatpak::override_path(app_id) {
+                    targets.insert(path);
+                }
+            }
+            Op::NftFragment { fragment } => {
+                if let Ok(fragment) = ibexwall_sys::ops::parse_fragment(fragment) {
+                    for chain in fragment.chain_names() {
+                        targets.insert(format!("nft:{chain}"));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    targets
+}
+
 /// Risk flags derived from the operations themselves (spec §4.5).
 /// Sysctls that can be turned on but not off again at runtime.
 pub(crate) const ONE_WAY_SYSCTLS: &[&str] =

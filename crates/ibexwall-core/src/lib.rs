@@ -42,6 +42,11 @@ pub struct Core {
     pub monitor: monitor::Monitor,
     /// The root the daemon works under (`/`, or a sandbox).
     pub root: PathBuf,
+    /// Serializes every engine and state mutation: apply, confirm,
+    /// rollback, the confirmation watchdog and proposal decisions run
+    /// one at a time, so a snapshot can never capture another change
+    /// mid-flight and a rollback can never interleave with an apply.
+    pub tx_sem: Arc<tokio::sync::Semaphore>,
 }
 
 /// Serves the varlink API on `socket` (dev/tests) until the process is
@@ -188,6 +193,7 @@ impl Core {
             events,
             monitor: monitor::Monitor::new(root.clone()),
             root,
+            tx_sem: Arc::new(tokio::sync::Semaphore::new(1)),
         };
         // nftables keeps nothing across a reboot: put our chains back
         // first, so that recovering an interrupted transaction (which

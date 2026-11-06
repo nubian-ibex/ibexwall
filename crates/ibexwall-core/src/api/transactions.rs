@@ -5,8 +5,14 @@
 
 use super::*;
 
-pub(crate) fn confirm(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkError> {
+pub(crate) async fn confirm(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkError> {
     let tx_id = str_field(parameters, "transaction_id")?;
+    let _permit = core
+        .tx_sem
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(internal)?;
     let row = core
         .state
         .get_transaction(&tx_id)
@@ -25,19 +31,69 @@ pub(crate) fn confirm(core: &Arc<Core>, parameters: &Value) -> Result<Reply, Var
     Ok(Reply::result(Value::Null))
 }
 
-pub(crate) fn rollback(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkError> {
+/// A newer active transaction that touches any of `ops`' targets would
+/// be destroyed by rolling back an older one over it; return its id so
+/// the caller can say "roll that one back first".
+fn newer_overlap(core: &Core, target: &str, ops: &[Op]) -> anyhow::Result<Option<String>> {
+    let targets = crate::engine::ops::op_targets(ops);
+    let active = core.state.list_active_transactions()?; // newest first
+    for row in active {
+        if row.id == target {
+            break; // the target itself and everything older is fine
+        }
+        let plan = core
+            .state
+            .load_plan(&row.plan_id)?
+            .ok_or_else(|| anyhow::anyhow!("plan {} missing", row.plan_id))?;
+        let other_ops: Vec<Op> = serde_json::from_str(&plan.ops_json)?;
+        if crate::engine::ops::op_targets(&other_ops)
+            .intersection(&targets)
+            .next()
+            .is_some()
+        {
+            return Ok(Some(row.id));
+        }
+    }
+    Ok(None)
+}
+
+pub(crate) async fn rollback(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkError> {
     let target = str_field(parameters, "target")?;
+    let _permit = core
+        .tx_sem
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(internal)?;
     let row = core
         .state
         .get_transaction(&target)
         .map_err(internal)?
         .ok_or_else(|| not_found("transaction", &target))?;
+    // Only a change that is actually on the machine can be rolled back;
+    // a rolled back or failed transaction is not, and replaying its
+    // inverses would restore stale snapshots over newer changes.
+    match row.state {
+        TransactionState::Committed | TransactionState::PendingConfirm => {}
+        other => {
+            return Err(invalid_argument(
+                "target",
+                format!("transaction is {}", tx_state(&other)),
+            ));
+        }
+    }
     let plan = core
         .state
         .load_plan(&row.plan_id)
         .map_err(internal)?
         .ok_or_else(|| not_found("plan", &row.plan_id))?;
     let ops: Vec<Op> = serde_json::from_str(&plan.ops_json).map_err(internal)?;
+    if let Some(newer) = newer_overlap(core, &target, &ops).map_err(internal)? {
+        return Err(err(
+            "Conflict",
+            json!({ "reason": format!("a newer transaction {newer} touches the same target; roll it back first") }),
+        ));
+    }
     core.rollback_transaction(&target, &ops)
         .map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?;
     core.state
@@ -113,25 +169,45 @@ pub(crate) fn spawn_confirmation_watchdog(
         let now = ibexwall_sys::RealClock.unix_now();
         let wait = (deadline_unix - now).max(0) as u64;
         tokio::time::sleep(Duration::from_secs(wait)).await;
-        // Refresh the decision: Confirm may have committed already.
+        // Serialize with any apply or manual rollback, then re-read the
+        // state: Confirm may have committed already, and the lock is the
+        // only place this decision is made.
+        let _permit = match core.tx_sem.clone().acquire_owned().await {
+            Ok(permit) => permit,
+            Err(_) => return,
+        };
         if let Ok(Some(row)) = core.state.get_transaction(&tx_id) {
             if row.state != TransactionState::PendingConfirm {
                 return;
             }
             tracing::warn!(transaction = %tx_id, "confirmation window expired, rolling back");
-            let _ = core.rollback_transaction(&tx_id, &ops);
-            let _ = core.state.mark_transaction(&tx_id, TxStatus::RolledBack);
+            let (status, result, final_state) = match core.rollback_transaction(&tx_id, &ops) {
+                Ok(()) => (
+                    TxStatus::RolledBack,
+                    "confirm-timeout-rollback",
+                    TransactionState::RolledBack,
+                ),
+                Err(error) => {
+                    tracing::error!(transaction = %tx_id, %error, "automatic rollback failed");
+                    (
+                        TxStatus::Failed,
+                        "confirm-timeout-rollback-failed",
+                        TransactionState::Failed,
+                    )
+                }
+            };
+            let _ = core.state.mark_transaction(&tx_id, status);
             core.audit(
                 "system",
                 &row.plugin,
                 Some(&tx_id),
                 &crate::audit::ops_digest(&ops),
-                "confirm-timeout-rollback",
+                result,
             );
             core.publish_transaction_event(&Transaction {
                 id: tx_id.clone(),
                 plan_id: row.plan_id.clone(),
-                state: TransactionState::RolledBack,
+                state: final_state,
                 started_at: ibexwall_sys::RealClock.rfc3339_now(),
                 confirm_deadline: None,
                 restore_point: String::new(),

@@ -1580,3 +1580,112 @@ async fn one_client_cannot_bury_the_queue() {
         .await
         .unwrap();
 }
+
+#[tokio::test]
+async fn applying_the_same_plan_twice_is_refused() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let (_core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+    client
+        .call(
+            "com.ibexwall.Core.SetPluginEnabled",
+            json!({ "id": "dev.echo", "enabled": true }),
+        )
+        .await
+        .unwrap();
+    let plan = plan_with(&mut client, "dropin").await;
+    let plan_id = plan["id"].as_str().unwrap().to_string();
+    client
+        .call("com.ibexwall.Core.Apply", json!({ "plan_id": plan_id }))
+        .await
+        .unwrap();
+    // A plan is one shot: replaying it must not change the machine again.
+    let err = client
+        .call("com.ibexwall.Core.Apply", json!({ "plan_id": plan_id }))
+        .await
+        .unwrap_err();
+    assert_eq!(err.name, "com.ibexwall.Core.Conflict");
+}
+
+#[tokio::test]
+async fn a_rolled_back_transaction_cannot_be_rolled_back_again() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let (_core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+    client
+        .call(
+            "com.ibexwall.Core.SetPluginEnabled",
+            json!({ "id": "dev.echo", "enabled": true }),
+        )
+        .await
+        .unwrap();
+    let plan = plan_with(&mut client, "dropin").await;
+    let plan_id = plan["id"].as_str().unwrap().to_string();
+    let value = client
+        .call("com.ibexwall.Core.Apply", json!({ "plan_id": plan_id }))
+        .await
+        .unwrap();
+    let tx = value["transaction"]["id"].as_str().unwrap().to_string();
+    client
+        .call("com.ibexwall.Core.Rollback", json!({ "target": tx }))
+        .await
+        .unwrap();
+    let err = client
+        .call("com.ibexwall.Core.Rollback", json!({ "target": tx }))
+        .await
+        .unwrap_err();
+    assert_eq!(err.name, "com.ibexwall.Core.InvalidArgument");
+}
+
+#[tokio::test]
+async fn rolling_back_over_a_newer_transaction_is_refused() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let (_core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+    client
+        .call(
+            "com.ibexwall.Core.SetPluginEnabled",
+            json!({ "id": "dev.echo", "enabled": true }),
+        )
+        .await
+        .unwrap();
+
+    // Two committed changes to the same file, newest first.
+    let plan = plan_with(&mut client, "dropin").await;
+    let plan_id = plan["id"].as_str().unwrap().to_string();
+    let value = client
+        .call("com.ibexwall.Core.Apply", json!({ "plan_id": plan_id }))
+        .await
+        .unwrap();
+    let older = value["transaction"]["id"].as_str().unwrap().to_string();
+
+    let plan = plan_with(&mut client, "dropin").await;
+    let plan_id = plan["id"].as_str().unwrap().to_string();
+    let value = client
+        .call("com.ibexwall.Core.Apply", json!({ "plan_id": plan_id }))
+        .await
+        .unwrap();
+    let newer = value["transaction"]["id"].as_str().unwrap().to_string();
+
+    // Rolling back the older one would overwrite the newer change.
+    let err = client
+        .call("com.ibexwall.Core.Rollback", json!({ "target": older }))
+        .await
+        .unwrap_err();
+    assert_eq!(err.name, "com.ibexwall.Core.Conflict");
+
+    // The newest rolls back cleanly.
+    client
+        .call("com.ibexwall.Core.Rollback", json!({ "target": newer }))
+        .await
+        .unwrap();
+}

@@ -230,9 +230,22 @@ async fn dispatch(
             let id = str_field(&parameters, "id")?;
             let decision = str_field(&parameters, "decision")?;
             let (proposal, digest) = core.pending_proposal(&id).map_err(proposal_error)?;
+            // One decision per proposal: the first caller to flip it from
+            // pending wins, the rest get "already decided".
+            let final_status = match decision.as_str() {
+                "reject" => "rejected",
+                "approve" => "approved",
+                _ => return Err(invalid_argument("decision", "approve or reject".into())),
+            };
+            if !core
+                .state
+                .claim_proposal(&id, final_status)
+                .map_err(internal)?
+            {
+                return Err(proposal_error(crate::proposals::Error::Decided));
+            }
             match decision.as_str() {
                 "reject" => {
-                    core.mark_proposal(&id, ibexwall_proto::ProposalStatus::Rejected);
                     core.audit("user", &proposal.plugin, None, &digest, "proposal-rejected");
                     core.publish_proposal_event("proposals.decided", &proposal);
                     Ok(Reply::result(json!({ "transaction": null })))
@@ -245,13 +258,31 @@ async fn dispatch(
                     if crate::audit::ops_digest(&ops) != digest {
                         return Err(err("ProposalStale", json!({ "id": id })));
                     }
-                    let reply = apply(core, &json!({ "plan_id": plan.id })).await?;
-                    core.mark_proposal(&id, ibexwall_proto::ProposalStatus::Approved);
-                    core.audit("user", &proposal.plugin, None, &digest, "proposal-approved");
-                    core.publish_proposal_event("proposals.decided", &proposal);
-                    Ok(reply)
+                    let reply = apply(core, &json!({ "plan_id": plan.id })).await;
+                    match &reply {
+                        Ok(_) => {
+                            core.audit(
+                                "user",
+                                &proposal.plugin,
+                                None,
+                                &digest,
+                                "proposal-approved",
+                            );
+                            core.publish_proposal_event("proposals.decided", &proposal);
+                        }
+                        Err(_) => {
+                            core.audit(
+                                "user",
+                                &proposal.plugin,
+                                None,
+                                &digest,
+                                "proposal-approval-failed",
+                            );
+                        }
+                    }
+                    reply
                 }
-                _ => Err(invalid_argument("decision", "approve or reject".into())),
+                _ => unreachable!("the decision was validated above"),
             }
         }
         "SetDefaultMode" => {
@@ -378,8 +409,8 @@ async fn dispatch(
         }
         "PlanChange" => plan_change(core, &parameters).await,
         "Apply" => apply(core, &parameters).await,
-        "Confirm" => confirm(core, &parameters),
-        "Rollback" => rollback(core, &parameters),
+        "Confirm" => confirm(core, &parameters).await,
+        "Rollback" => rollback(core, &parameters).await,
         "History" => {
             let limit = parameters
                 .get("limit")
@@ -642,6 +673,17 @@ async fn apply(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkErr
         .clone();
     crate::engine::ops::validate(&ops, &manifest)
         .map_err(|e| invalid_argument("ops", e.to_string()))?;
+
+    // One engine mutation at a time, and one shot per plan.
+    let _permit = core
+        .tx_sem
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(internal)?;
+    if !core.state.consume_plan(&plan_id).map_err(internal)? {
+        return Err(err("Conflict", json!({ "reason": "plan already applied" })));
+    }
 
     let tx_id = fresh_id("tx");
     let restore_point = format!("snapshots/{tx_id}");

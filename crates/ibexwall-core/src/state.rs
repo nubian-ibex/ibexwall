@@ -13,6 +13,7 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 
 use ibexwall_proto::TransactionState;
+use ibexwall_sys::Clock;
 
 /// One row of `transactions`.
 #[derive(Debug, Clone)]
@@ -118,6 +119,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
              created_at INTEGER NOT NULL,
              decided_at INTEGER
          );",
+    ),
+    (
+        "0006_plan_consumed",
+        "ALTER TABLE plans ADD COLUMN consumed INTEGER NOT NULL DEFAULT 0;",
     ),
 ];
 
@@ -243,6 +248,33 @@ impl State {
                 rusqlite::params![status.as_str(), id],
             )?;
             Ok(())
+        })
+    }
+
+    /// Claims a plan exactly once: a plan can be applied a single time,
+    /// so a replayed Apply is refused instead of changing the machine
+    /// again. Returns whether this call won the claim.
+    pub fn consume_plan(&self, id: &str) -> Result<bool> {
+        self.with_conn(|conn| {
+            let changed = conn.execute(
+                "UPDATE plans SET consumed = 1 WHERE id = ?1 AND consumed = 0",
+                rusqlite::params![id],
+            )?;
+            Ok(changed == 1)
+        })
+    }
+
+    /// Atomically moves a proposal from `pending` to a final status,
+    /// only if it is still pending. Returns whether this call won the
+    /// race, so two concurrent decisions cannot both apply.
+    pub fn claim_proposal(&self, id: &str, status: &str) -> Result<bool> {
+        self.with_conn(|conn| {
+            let changed = conn.execute(
+                "UPDATE proposals SET status = ?2, decided_at = ?3 \
+                 WHERE id = ?1 AND status = 'pending'",
+                rusqlite::params![id, status, ibexwall_sys::RealClock.unix_now()],
+            )?;
+            Ok(changed == 1)
         })
     }
 
@@ -644,6 +676,46 @@ mod tests {
         let stored = state.list_check_results().unwrap();
         assert_eq!(stored.len(), 1);
         assert_eq!(stored[0].outcome, CheckOutcome::Pass);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_plan_is_consumed_exactly_once() {
+        let (dir, state) = temp_state();
+        let plan = crate::engine::PersistedPlan {
+            id: "p1".into(),
+            plugin: "dev.echo".into(),
+            ops_json: "[]".into(),
+            requires_confirm: false,
+            confirm_timeout_s: 60,
+            fingerprint: "f".into(),
+            expires_at: "2099-01-01T00:00:00Z".into(),
+            created_at: "now".into(),
+        };
+        state.save_plan(&plan).unwrap();
+        assert!(state.consume_plan("p1").unwrap());
+        assert!(
+            !state.consume_plan("p1").unwrap(),
+            "a replayed apply must lose"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_proposal_is_claimed_exactly_once() {
+        let (dir, state) = temp_state();
+        state
+            .with_conn(|conn| {
+                conn.execute(
+                    "INSERT INTO proposals (id, client, plugin, json, ops_digest, status, created_at) \
+                     VALUES ('pr1', 'c', 'dev.echo', '{}', 'd', 'pending', 0)",
+                    [],
+                )?;
+                Ok::<_, rusqlite::Error>(())
+            })
+            .unwrap();
+        assert!(state.claim_proposal("pr1", "approved").unwrap());
+        assert!(!state.claim_proposal("pr1", "approved").unwrap());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

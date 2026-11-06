@@ -84,7 +84,7 @@ change() {{
   if echo "$OUT" | grep -Eq '"state": "(failed|rolled_back)"'; then echo "THE CHANGE DID NOT STAY: $OUT"; sudo journalctl -u ibexwalld -n 12 --no-pager; sudo journalctl -u 'ibexwall-exec-*' -n 12 --no-pager; return 1; fi
   if echo "$OUT" | grep -q pending_confirm; then sudo ibexctl confirm "$TX" >/dev/null || {{ echo "CONFIRM FAILED"; return 1; }}; fi
 }}
-findings() {{ sudo ibexctl check "$1" --json 2>/dev/null | python3 -c 'import json,sys; print(" ".join(f["id"] for f in json.load(sys.stdin)["findings"]))'; }}
+findings() {{ sudo ibexctl check "$1" --json 2>/dev/null | python3 -c 'import json,sys; print(" ".join(f["id"] for f in json.load(sys.stdin)["findings"] if not f["id"].startswith("detect.")))'; }}
 # The things to fix: the "we found" notes (detect.*) are information.
 problems() {{ findings "$1" | tr ' ' '\n' | grep -v '^detect\.' | tr '\n' ' ' | sed 's/ *$//'; }}
 "#,
@@ -145,7 +145,7 @@ echo "METRIC: applied, drop-in holds $(sudo grep -c '=' $DROP_IN) keys"
 
 # The check agrees the gap closed.
 sudo ibexctl check system.sysctl --json > /tmp/f7-check2.json || true
-python3 -c 'import json,sys; d=json.load(open("/tmp/f7-check2.json")); assert not d["findings"], d["findings"]'
+python3 -c 'import json,sys; d=json.load(open("/tmp/f7-check2.json")); left=[f for f in d["findings"] if not f["id"].startswith("detect.")]; assert not left, left; n=[f for f in d["findings"] if f["id"]=="detect.sysctl"][0]; assert n["args"]["case"]=="ok", n'
 
 # Distro files untouched; only ours was added.
 AFTER=$(sudo ls /etc/sysctl.d)
@@ -753,6 +753,34 @@ sudo test ! -e /etc/modprobe.d/70-ibexwall-modules.conf || {{ echo "THE MODULE D
 if sudo test -e /etc/sysctl.d/70-ibexwall-sysctl.conf && sudo grep -q rfc1337 /etc/sysctl.d/70-ibexwall-sysctl.conf; then echo "THE SYSCTL DROP-IN SURVIVED"; exit 1; fi
 has open net.tcp-rfc1337 || {{ echo "rfc1337 DID NOT GO BACK"; exit 1; }}
 echo "METRIC: all four changes undone in reverse, the catalog sees the settings open again"
+"#,
+            lib = lib
+        )
+    );
+
+    scenario!(
+        "m7 ssh and sysctl say what they found, as information",
+        &format!(
+            r#"{lib}
+for p in system.ssh system.sysctl; do sudo ibexctl plugins enable $p >/dev/null; done
+note() {{ sudo ibexctl check "$1" --json 2>/dev/null | python3 -c '
+import json,sys
+d=json.JSONDecoder().raw_decode(sys.stdin.read())[0]
+n=[f for f in d["findings"] if f["id"]=="detect.'"$2"'"]
+assert len(n)==1, [f["id"] for f in d["findings"]]
+n=n[0]
+assert n["severity"]=="info", n
+a=n["args"]
+case=a["case"]
+'"$3"'
+print(case)'; }}
+SSH=$(note system.ssh ssh 'assert case in ("hardened","hardened-password","weak","absent"), a
+assert ("patch" in a) == (case == "weak"), a
+assert case == "absent" or a["port"].isdigit(), a')
+SYS=$(note system.sysctl sysctl 'assert case in ("ok","open"), a
+assert ("patch" in a) == (case == "open"), a
+assert int(a["have"]) <= int(a["total"]), a')
+echo "METRIC: ssh $SSH, sysctl $SYS"
 "#,
             lib = lib
         )

@@ -150,7 +150,13 @@ impl Engine {
                                 gid: meta.gid,
                             })
                         }
-                        _ => None,
+                        Ok(_) => None,
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                        Err(e) => {
+                            return Err(
+                                anyhow::Error::new(e).context(format!("snapshotting {path}"))
+                            );
+                        }
                     };
                     entries.push(SnapshotEntry::File {
                         op_index: index,
@@ -253,7 +259,23 @@ impl Engine {
                     entries.push(SnapshotEntry::NoInverse { op_index: index });
                 }
                 Op::SysctlSet { key, .. } => {
-                    let prior = self.sys.sysctl.get(key).ok();
+                    let prior = match self.sys.sysctl.get(key) {
+                        Ok(value) => Some(value),
+                        // A key this kernel does not have is genuinely
+                        // absent; anything else is a read failure that
+                        // must not silently lose the prior value.
+                        Err(e)
+                            if e.downcast_ref::<std::io::Error>()
+                                .is_some_and(|e| e.kind() == std::io::ErrorKind::NotFound) =>
+                        {
+                            None
+                        }
+                        Err(e) => {
+                            return Err(anyhow::anyhow!(
+                                "reading sysctl {key} for the snapshot: {e:#}"
+                            ));
+                        }
+                    };
                     entries.push(SnapshotEntry::Sysctl {
                         op_index: index,
                         key: key.clone(),

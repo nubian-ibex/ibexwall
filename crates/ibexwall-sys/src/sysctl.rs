@@ -82,7 +82,12 @@ impl Sysctl for FakeSysctl {
             .expect("lock poisoned")
             .get(key)
             .cloned()
-            .ok_or_else(|| anyhow::anyhow!("sysctl {key}: not found"))
+            .ok_or_else(|| {
+                anyhow::Error::new(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("sysctl {key}: not found"),
+                ))
+            })
     }
 
     fn set(&self, key: &str, value: &str) -> anyhow::Result<()> {

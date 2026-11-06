@@ -7,10 +7,8 @@ import type { Finding } from '../gen/contracts';
 export type Risk = 'low' | 'medium' | 'high';
 export type Status = 'applied' | 'open' | 'unknown';
 
-export interface Text {
-  en: string;
-  'pt-BR': string;
-}
+/** A text by language tag; English is always there. */
+export type Text = Record<string, string> & { en: string };
 
 export interface Source {
   name: string;

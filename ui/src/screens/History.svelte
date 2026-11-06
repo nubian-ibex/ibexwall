@@ -1,6 +1,6 @@
 <script lang="ts">
   import { app } from '../lib/app.svelte';
-  import { t } from '../lib/i18n.svelte';
+  import { i18n, t } from '../lib/i18n.svelte';
   import { relativeTime } from '../lib/time';
   import Button from '../components/Button.svelte';
   import StateMessage from '../components/StateMessage.svelte';
@@ -62,7 +62,7 @@
                 ? t('history-actor-system')
                 : t('history-actor-user', { actor: entry.actor })}</span
             >
-            <span class="mono">{entry.ts ? relativeTime(entry.ts, 'en') : ''}</span>
+            <span class="mono">{entry.ts ? relativeTime(entry.ts, i18n.locale) : ''}</span>
           </div>
           {#if entry.transaction && entry.result === 'committed'}
             <Button {busy} onclick={() => undo(entry.transaction!)}>{t('history-undo')}</Button>

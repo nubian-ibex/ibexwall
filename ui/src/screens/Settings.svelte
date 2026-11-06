@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { i18n, LOCALES, t, type Locale } from '../lib/i18n.svelte';
+  import { i18n, languageName, LOCALES, t } from '../lib/i18n.svelte';
   import { applyTheme, savedTheme, THEMES, type Theme } from '../lib/theme';
 
   let theme = $state<Theme>(savedTheme());
@@ -10,7 +10,8 @@
   }
 
   function onLocale(event: Event) {
-    i18n.set((event.currentTarget as HTMLSelectElement).value as Locale);
+    const value = (event.currentTarget as HTMLSelectElement).value;
+    i18n.set(value === '' ? null : value);
   }
 </script>
 
@@ -24,9 +25,10 @@
 <section class="card">
   <label>
     <span>{t('language-label')}</span>
-    <select value={i18n.locale} onchange={onLocale}>
+    <select value={i18n.chosen ? i18n.locale : ''} onchange={onLocale}>
+      <option value="">{t('language-system', { language: languageName(i18n.locale) })}</option>
       {#each LOCALES as locale (locale)}
-        <option value={locale}>{t(`language-${locale}`)}</option>
+        <option value={locale}>{languageName(locale)}</option>
       {/each}
     </select>
   </label>

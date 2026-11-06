@@ -34,7 +34,7 @@ pub use state::TxRow;
 
 /// Everything the API dispatches against.
 pub struct Core {
-    pub config: config::Layers,
+    pub config: std::sync::RwLock<config::Layers>,
     pub state: state::State,
     pub engine: engine::Engine,
     pub plugins: Arc<plugins::Supervisor>,
@@ -212,7 +212,7 @@ impl Core {
         let config = config::Layers::load(&root)?;
         let plugins = Arc::new(plugins::Supervisor::discover(&root, dev_key).await?);
         let mut core = Self {
-            config,
+            config: std::sync::RwLock::new(config),
             state,
             engine,
             plugins,
@@ -312,6 +312,21 @@ impl Core {
 
     pub fn manifest(&self, plugin: &str) -> Result<ibexwall_proto::Manifest> {
         Ok(self.plugins.manifest(plugin)?.clone())
+    }
+
+    /// Re-reads the configuration so a change on disk (an organization
+    /// lock, a user setting) takes effect without a restart. Called
+    /// before planning and applying; a broken new file keeps the last
+    /// good configuration and logs, rather than blocking the daemon.
+    pub fn reload_config(&self) {
+        match config::Layers::load(&self.root) {
+            Ok(fresh) => {
+                *self.config.write().expect("config lock poisoned") = fresh;
+            }
+            Err(error) => {
+                tracing::warn!(%error, "reloading the configuration failed; keeping the last good one");
+            }
+        }
     }
 
     /// Appends to the audit chain (spec §4.4).

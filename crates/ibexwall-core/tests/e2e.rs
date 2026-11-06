@@ -723,6 +723,37 @@ async fn read_methods_and_error_paths() {
 }
 
 #[tokio::test]
+async fn a_config_change_takes_effect_without_a_restart() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let (_core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+    client
+        .call(
+            "com.ibexwall.Core.SetPluginEnabled",
+            json!({ "id": "dev.echo", "enabled": true }),
+        )
+        .await
+        .unwrap();
+    let plan = plan_with(&mut client, "dropin_file").await;
+
+    // Change the user layer while the daemon keeps running.
+    std::fs::write(
+        sandbox.root.join("etc/ibexwall/config.toml"),
+        "[plugins.\"dev.echo\"]\nmode = \"changed\"\n",
+    )
+    .unwrap();
+
+    // The same daemon re-reads the config and the plan is now stale.
+    let err = client
+        .call("com.ibexwall.Core.Apply", json!({ "plan_id": plan["id"] }))
+        .await
+        .unwrap_err();
+    assert_eq!(err.name, "com.ibexwall.Core.PlanStale");
+}
+
 async fn config_change_makes_a_plan_stale() {
     if plugin_binary().is_none() {
         eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");

@@ -417,14 +417,13 @@ async fn dispatch(
         }
         "GetConfig" => {
             let plugin = str_field(&parameters, "plugin")?;
+            core.reload_config();
             let manifest = core
                 .manifest(&plugin)
                 .map_err(|_| not_found("plugin", &plugin))?;
-            let effective = core
-                .config
-                .effective(&plugin, &std::collections::BTreeMap::new());
-            let locks: Vec<String> = core
-                .config
+            let config = core.config.read().expect("config lock poisoned");
+            let effective = config.effective(&plugin, &std::collections::BTreeMap::new());
+            let locks: Vec<String> = config
                 .locks
                 .iter()
                 .filter(|l| l.starts_with(&plugin) || l.starts_with(&format!("{plugin}.")))
@@ -432,7 +431,7 @@ async fn dispatch(
                 .collect();
             Ok(Reply::result(json!({
                 "effective": effective,
-                "layers": { "user": core.config.user.plugins.get(&plugin).cloned().unwrap_or_default() },
+                "layers": { "user": config.user.plugins.get(&plugin).cloned().unwrap_or_default() },
                 "locks": locks,
                 "reversible": manifest.risk.reversible,
             })))
@@ -606,12 +605,20 @@ async fn build_plan(
     actor: &str,
 ) -> Result<(Plan, Vec<Op>), VarlinkError> {
     authorize_plugin_change(core, &plugin)?;
+    // A config change on disk takes effect immediately, not after a
+    // restart, so locks and the plan fingerprint reflect the real state.
+    core.reload_config();
 
     // The organization layer can lock a setting; a plan that touches a
     // locked key is refused whoever asks for it.
     if let Some(keys) = patch.as_object() {
         for key in keys.keys() {
-            if let Some(pattern) = core.config.is_locked(&plugin, key) {
+            if let Some(pattern) = core
+                .config
+                .read()
+                .expect("config lock poisoned")
+                .is_locked(&plugin, key)
+            {
                 return Err(err(
                     "Conflict",
                     json!({ "reason": format!("`{plugin}.{key}` is locked by the organization layer ({pattern})") }),
@@ -651,7 +658,11 @@ async fn build_plan(
         ops_json: serde_json::to_string(&ops).map_err(internal)?,
         requires_confirm,
         confirm_timeout_s: CONFIRM_TIMEOUT_S,
-        fingerprint: core.config.fingerprint(),
+        fingerprint: core
+            .config
+            .read()
+            .expect("config lock poisoned")
+            .fingerprint(),
         expires_at: expires_at.clone(),
         created_at: now,
     };
@@ -721,8 +732,16 @@ async fn apply(core: &Arc<Core>, parameters: &Value, actor: &str) -> Result<Repl
         .ok_or_else(|| not_found("plan", &plan_id))?;
     let ops: Vec<Op> = serde_json::from_str(&plan.ops_json).map_err(internal)?;
 
-    // Expiry and staleness (spec §4.5).
-    if core.config.fingerprint() != plan.fingerprint {
+    // Expiry and staleness (spec §4.5). The config is re-read so a
+    // change since the plan was made actually fires PlanStale.
+    core.reload_config();
+    if core
+        .config
+        .read()
+        .expect("config lock poisoned")
+        .fingerprint()
+        != plan.fingerprint
+    {
         return Err(err("PlanStale", json!({ "plan_id": plan_id })));
     }
     if ibexwall_sys::RealClock.unix_now() > parse_unix(&plan.expires_at) {

@@ -103,6 +103,13 @@ pub(crate) fn render_proposal(p: &serde_json::Value) -> String {
             text(&op["op"]),
             text(&op["target"])
         ));
+        // The diff is what a person must actually review before
+        // approving: without it they sign off on content they never saw.
+        if let Some(diff) = op["diff"].as_str() {
+            for line in diff.lines() {
+                out.push_str(&format!("      {}\n", clean(line)));
+            }
+        }
     }
     out
 }

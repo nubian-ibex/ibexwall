@@ -293,6 +293,27 @@ impl State {
         })
     }
 
+    /// Bounds what grows without bound: expired plans no transaction
+    /// still references, and events beyond the most recent window. A plan
+    /// a transaction points at (for rollback) is never pruned, however
+    /// old. Snapshots are pruned elsewhere, where the transaction state
+    /// machine knows they are no longer needed.
+    pub fn prune(&self, now_unix: i64) -> Result<()> {
+        self.with_conn(|conn| {
+            conn.execute(
+                "DELETE FROM plans WHERE expires_at < ?1 \
+                 AND id NOT IN (SELECT plan_id FROM transactions)",
+                rusqlite::params![ibexwall_sys::format_rfc3339(now_unix)],
+            )?;
+            conn.execute(
+                "DELETE FROM events WHERE seq NOT IN \
+                 (SELECT seq FROM events ORDER BY seq DESC LIMIT 2000)",
+                [],
+            )?;
+            Ok(())
+        })
+    }
+
     pub fn set_confirm_deadline(&self, id: &str, deadline_unix: i64) -> Result<()> {
         self.with_conn(|conn| {
             conn.execute(
@@ -736,6 +757,56 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn prune_drops_expired_unreferenced_plans_and_old_events() {
+        let (dir, state) = temp_state();
+        let plan = |id: &str, expires: &str| crate::engine::PersistedPlan {
+            id: id.into(),
+            plugin: "dev.echo".into(),
+            ops_json: "[]".into(),
+            requires_confirm: false,
+            confirm_timeout_s: 60,
+            fingerprint: "f".into(),
+            expires_at: expires.into(),
+            created_at: "now".into(),
+        };
+        state
+            .save_plan(&plan("stale", "2000-01-01T00:00:00Z"))
+            .unwrap();
+        state
+            .save_plan(&plan("kept", "2099-01-01T00:00:00Z"))
+            .unwrap();
+        // A plan a transaction still references is never pruned, even expired.
+        state
+            .save_plan(&plan("referenced", "2000-01-01T00:00:00Z"))
+            .unwrap();
+        state
+            .with_conn(|conn| {
+                conn.execute(
+                    "INSERT INTO transactions (id, plan_id, plugin, state, restore_point, created_at) \
+                     VALUES ('tx', 'referenced', 'dev.echo', 'committed', 's', 'now')",
+                    [],
+                )?;
+                for i in 0..3 {
+                    conn.execute(
+                        "INSERT INTO events (ts, source, kind, severity, json) \
+                         VALUES ('t', 's', 'k', 'info', ?1)",
+                        [i.to_string()],
+                    )?;
+                }
+                Ok::<_, rusqlite::Error>(())
+            })
+            .unwrap();
+
+        state.prune(1_900_000_000).unwrap();
+        assert!(state.load_plan("stale").unwrap().is_none());
+        assert!(state.load_plan("kept").unwrap().is_some());
+        assert!(state.load_plan("referenced").unwrap().is_some());
+        // Events beyond the window are trimmed, the newest survive.
+        assert!(state.list_events(100).unwrap().len() <= 2000);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     fn a_plan_is_consumed_exactly_once() {
         let (dir, state) = temp_state();
         let plan = crate::engine::PersistedPlan {

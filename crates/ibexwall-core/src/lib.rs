@@ -225,6 +225,8 @@ impl Core {
         if restored_ok {
             core.persist_nft();
         }
+        // Bound the tables that would otherwise grow forever.
+        core.state.prune(ibexwall_sys::RealClock.unix_now())?;
         Ok(core)
     }
 

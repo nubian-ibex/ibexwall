@@ -47,6 +47,20 @@ connection.
 Summary:        IbexWall MCP server for AI assistants
 Requires:       %{name} = %{version}-%{release}
 
+%package selinux
+Summary:        IbexWall SELinux policy
+BuildRequires:  selinux-policy-devel
+Requires:       %{name} = %{version}-%{release}
+Requires:       selinux-policy-targeted
+Requires(post): policycoreutils
+Requires(postun): policycoreutils
+%{!?selinux_src:%global selinux_src %{_builddir}/%{name}-%{version}/packaging/selinux}
+
+%description selinux
+Confines the secure DNS resolver, the MCP server and the plugins with SELinux
+domains of their own, and labels IbexWall's files. The plugins read the system
+and change none of it.
+
 %description mcp
 The MCP server that lets an AI assistant read your security status and
 suggest changes. It can never apply one. The HTTPS mode is off until you
@@ -61,6 +75,7 @@ turn it on.
 %if 0%{!?prebuilt_stage:1}
 cargo xtask stage --destdir %{_builddir}/stage/root
 %endif
+make -C %{selinux_src} -f %{_datadir}/selinux/devel/Makefile ibexwall.pp
 
 %install
 %if 0%{?prebuilt_stage:1}
@@ -75,13 +90,35 @@ for pkg in ibexwall ibexwall-desktop ibexwall-mcp; do
     { sed 's/^/%dir /' "$stage/stage-lists/$pkg.dirs"; cat "$stage/stage-lists/$pkg.list"; } > %{_builddir}/$pkg.files
 done
 
+install -Dm644 %{selinux_src}/ibexwall.pp %{buildroot}%{_datadir}/selinux/packages/ibexwall.pp
+
 %files -f %{_builddir}/ibexwall.files
 %files desktop -f %{_builddir}/ibexwall-desktop.files
 %files mcp -f %{_builddir}/ibexwall-mcp.files
+%files selinux
+%{_datadir}/selinux/packages/ibexwall.pp
 
 %post
 . /usr/lib/ibexwall/package-scripts.sh
 post_install
+
+%post selinux
+. /usr/lib/ibexwall/package-scripts.sh
+%selinux_modules_install %{_datadir}/selinux/packages/ibexwall.pp
+selinux_install
+
+%preun selinux
+if [ "$1" -eq 0 ]; then
+    . /usr/lib/ibexwall/package-scripts.sh
+    selinux_remove
+fi
+
+%postun selinux
+if [ "$1" -eq 0 ]; then
+    %selinux_modules_uninstall ibexwall
+    # Labels of a module that is gone mean nothing; the files get the usual ones.
+    restorecon -R /var/lib/ibexwall /var/lib/ibexwall-mcp /etc/ibexwall >/dev/null 2>&1 || :
+fi
 
 %preun
 . /usr/lib/ibexwall/package-scripts.sh

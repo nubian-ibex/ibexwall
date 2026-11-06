@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+/usr/bin/ibexwall-dns			--	gen_context(system_u:object_r:ibexwall_dns_exec_t,s0)
+/usr/bin/ibexwall-mcp			--	gen_context(system_u:object_r:ibexwall_mcp_exec_t,s0)
+/usr/libexec/ibexwall/ibexwall-plugins	--	gen_context(system_u:object_r:ibexwall_plugin_exec_t,s0)
+
+/etc/ibexwall(/.*)?				gen_context(system_u:object_r:ibexwall_conf_t,s0)
+/var/lib/ibexwall(/.*)?				gen_context(system_u:object_r:ibexwall_var_lib_t,s0)
+/var/lib/ibexwall-mcp(/.*)?			gen_context(system_u:object_r:ibexwall_var_lib_t,s0)
+/run/ibexwall(/.*)?				gen_context(system_u:object_r:ibexwall_var_run_t,s0)
+/run/ibexwall/plugins(/.*)?			gen_context(system_u:object_r:ibexwall_plugin_var_run_t,s0)

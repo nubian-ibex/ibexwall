@@ -28,7 +28,9 @@ OUT2=/tmp/ibx/out2
 JSON_ID="python3 -c 'import json,sys;t=sys.stdin.read();i=t.find(\"{\");d=json.JSONDecoder().raw_decode(t[i:])[0] if i>=0 else {};t=d.get(\"plan\") or d.get(\"transaction\");print(t[\"id\"] if isinstance(t,dict) else t)'"
 # What AppArmor refused, newest last, for a scenario that failed.
 aa_dump() { sudo journalctl --no-pager 2>/dev/null | grep 'apparmor="DENIED"' | grep ibexwall | tail -25 | sed -E 's/.*(operation=)/\1/' | cut -c1-260; }
-trap 'aa_dump' ERR
+# And what SELinux refused.
+sel_dump() { sudo grep -h 'type=AVC' /var/log/audit/audit.log 2>/dev/null | grep -E 'ibexwall' | tail -40 | sed -E 's/.*avc: *//' | sed -E 's/ pid=[0-9]+//; s/ ino=[0-9]+//; s/ dev="[^"]*"//; s/ tclass=/ class=/' | cut -c1-300; }
+trap 'rc=$?; [ $rc = 0 ] || { aa_dump; sel_dump; }' EXIT
 # Plan and apply, leaving the transaction in TX.
 change() {
   PLUGIN=$1; shift
@@ -52,10 +54,10 @@ rm -rf /tmp/ibx && mkdir -p /tmp/ibx/out1 /tmp/ibx/out2 && tar xzf /tmp/ibx-inpu
 cd /tmp/ibx
 case $FAM in
 rpm)
-  sudo dnf install -y -q rpm-build systemd-rpm-macros >/dev/null
-  rpmbuild -bb --quiet --define "_topdir /tmp/ibx/rpmbuild" --define 'prebuilt_stage /tmp/ibx/stage' packaging/rpm/ibexwall.spec
+  sudo dnf install -y -q rpm-build systemd-rpm-macros selinux-policy-devel make >/dev/null
+  rpmbuild -bb --quiet --define "_topdir /tmp/ibx/rpmbuild" --define 'prebuilt_stage /tmp/ibx/stage' --define 'selinux_src /tmp/ibx/packaging/selinux' packaging/rpm/ibexwall.spec
   cp rpmbuild/RPMS/*/*.rpm out1/
-  rpmbuild -bb --quiet --define "_topdir /tmp/ibx/rpmbuild2" --define 'dist .upg' --define 'prebuilt_stage /tmp/ibx/stage' packaging/rpm/ibexwall.spec
+  rpmbuild -bb --quiet --define "_topdir /tmp/ibx/rpmbuild2" --define 'dist .upg' --define 'prebuilt_stage /tmp/ibx/stage' --define 'selinux_src /tmp/ibx/packaging/selinux' packaging/rpm/ibexwall.spec
   cp rpmbuild2/RPMS/*/*.rpm out2/
   ;;
 deb)
@@ -260,6 +262,88 @@ echo "METRIC: $N AppArmor events for the ibexwall profiles"
 test "$N" = 0 || { echo "THE PROFILES LOGGED $N EVENTS"; exit 1; }
 "#;
 
+/// SELinux: the module is loaded, the resolver, the MCP server and the
+/// plugins run in their own domains, and an ordinary workload draws no denial.
+/// Skipped where SELinux is not the machine's access control.
+const SELINUX: &str = r#"
+if [ "$(getenforce 2>/dev/null)" != Enforcing ]; then echo "METRIC: SELinux is not enforcing on this machine: skipped"; exit 0; fi
+[ "$FAM" = rpm ] && rpm -q ibexwall-selinux >/dev/null 2>&1 || { echo "ibexwall-selinux IS NOT INSTALLED"; exit 1; }
+sudo semodule -l | grep -q '^ibexwall' || { echo "THE MODULE IS NOT LOADED"; exit 1; }
+sudo systemctl restart ibexwalld.service
+for u in $(systemctl list-units 'ibexwall-plugin-*.service' --no-legend | awk '{print $1}'); do sudo systemctl restart $u 2>/dev/null || true; done
+sudo semodule -DB
+AUDIT_BEFORE=$(sudo sh -c 'wc -l < /var/log/audit/audit.log')
+for p in $(sudo ibexctl plugins list --json | python3 -c 'import json,sys;d=json.JSONDecoder().raw_decode(sys.stdin.read())[0];print(" ".join(p["id"] for p in (d["plugins"] if isinstance(d,dict) else d)))'); do
+  sudo ibexctl plugins enable $p >/dev/null 2>&1 || true
+  sudo ibexctl check $p --json >/dev/null 2>&1 || true
+done
+apply_change() {
+  PLUGIN=$1; shift
+  P=$(sudo ibexctl plan "$PLUGIN" "$@" --json 2>/dev/null | python3 -c 'import json,sys;t=sys.stdin.read();i=t.find("{");d=json.JSONDecoder().raw_decode(t[i:])[0];print(d["plan"]["id"] if "plan" in d else d["id"])') || return 1
+  OUT=$(sudo ibexctl apply "$P" --confirm-timeout 300 --json 2>&1 || true)
+  TX=$(echo "$OUT" | python3 -c 'import json,sys;t=sys.stdin.read();i=t.find("{");d=json.JSONDecoder().raw_decode(t[i:])[0];print(d["transaction"]["id"])' 2>/dev/null) || return 1
+  echo "$OUT" | grep -q pending_confirm && sudo ibexctl confirm "$TX" >/dev/null 2>&1
+  return 0
+}
+change() { apply_change "$@" && sudo ibexctl rollback "$TX" >/dev/null 2>&1; true; }
+change system.sysctl --set 'keys={"net.ipv4.tcp_rfc1337":"1"}'
+change system.modules --set 'block=["vivid"]'
+change net.firewall --set enable_basic=true
+domain_of() {
+  case "$1" in
+    *.service) PID=$(systemctl show "$1" -p MainPID --value) ;;
+    *) PID=$(pgrep -x "$1" | head -1) ;;
+  esac
+  [ -n "$PID" ] && [ "$PID" != 0 ] || { echo "$1 IS NOT RUNNING: $(cat /tmp/s1-mcp.err /tmp/s1-mcp.out 2>/dev/null | head -4)"; return 1; }
+  CTX=$(sudo cat /proc/$PID/attr/current | tr -d '\0')
+  echo "METRIC: $1 runs as $CTX"
+  echo "$CTX" | grep -q ":$2:" || {  echo "$1 IS NOT IN THE $2 DOMAIN ($(ls -Z $(sudo readlink /proc/$PID/exe) | head -1))"; sudo grep -h type=AVC /var/log/audit/audit.log | tail -6 | sed -E "s/.*avc: *//" | cut -c1-320; return 1; }
+}
+if apply_change net.dns --set provider=quad9 --set transport=tls; then
+  for i in 1 2 3; do resolvectl query example.com >/dev/null 2>&1 || true; sleep 1; done
+  domain_of ibexwall-dns.service ibexwall_dns_t
+  sudo ibexctl rollback "$TX" >/dev/null 2>&1 || true
+else
+  echo "THE RESOLVER COULD NOT BE TURNED ON"; exit 1
+fi
+sudo install -d -o ibexwall-mcp -m 0700 /var/lib/ibexwall-mcp
+sudo restorecon -R /var/lib/ibexwall-mcp
+# The MCP server, as an assistant's client would start it, answers a request.
+# The domain it starts in is what the policy computes for init starting it.
+EXEC=$(selinuxexeccon /usr/bin/ibexwall-mcp system_u:system_r:init_t:s0 2>&1)
+echo "METRIC: ibexwall-mcp would start as $EXEC"
+echo "$EXEC" | grep -q ':ibexwall_mcp_t:' || { echo "THE MCP SERVER WOULD NOT START IN ITS DOMAIN"; exit 1; }
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"s1","version":"1"}}}' > /tmp/s1-in
+chmod 644 /tmp/s1-in
+cat /tmp/s1-in | sudo systemd-run --wait --pipe -q -p User=ibexwall-mcp -p SupplementaryGroups=ibexwall-assistants /usr/bin/ibexwall-mcp --client s1 --state-dir /var/lib/ibexwall-mcp 2>&1 | cat > /tmp/s1-out || true
+grep -q '"result"' /tmp/s1-out || { echo "THE MCP SERVER DID NOT ANSWER: $(head -c 300 /tmp/s1-out /tmp/s1-err)"; exit 1; }
+sudo ibexctl check system.posture --json >/dev/null 2>&1 || true
+PLUGIN_PID=$(systemctl show ibexwall-plugin-posture.service -p MainPID --value)
+CTX=$(sudo cat /proc/$PLUGIN_PID/attr/current)
+echo "METRIC: a plugin runs as $CTX"
+echo "$CTX" | grep -q ':ibexwall_plugin_t:' || { echo "A PLUGIN IS NOT IN ITS DOMAIN"; exit 1; }
+sleep 2
+sudo tail -n +$((AUDIT_BEFORE+1)) /var/log/audit/audit.log 2>/dev/null | grep 'type=AVC' | grep -E 'ibexwall_|ibexwall-' | sed -E 's/.*avc: *//' > /tmp/avc.log || true
+N=$(wc -l < /tmp/avc.log)
+python3 - <<'PYEOF'
+import re, collections
+seen = collections.OrderedDict()
+for line in open('/tmp/avc.log'):
+    m = re.search(r'avc:\s+(\w+)\s+\{ ([^}]*) \} for.*?comm="([^"]*)".*?(?:name="([^"]*)")?.*?scontext=(\S+) tcontext=(\S+) tclass=(\S+) permissive=(\d)', line)
+    if not m:
+        seen[line.strip()[-200:]] = 1
+        continue
+    kind, perms, comm, name, scon, tcon, tclass, perm = m.groups()
+    scon = scon.split(':')[2]; tcon = tcon.split(':')[2]
+    seen[(kind, scon, tcon, tclass, perms, perm)] = 1
+for key in seen:
+    print("METRIC: AVC", *key) if isinstance(key, tuple) else print("METRIC: AVC raw", key)
+PYEOF
+sudo semodule -B
+echo "METRIC: $N AVC events for the ibexwall domains"
+test "$N" = 0 || { echo "THE DOMAINS DREW $N AVC EVENTS"; exit 1; }
+"#;
+
 /// Upgrade: a higher version over the installed one; the changes made, the
 /// history and the firewall survive, and the daemon runs the new files.
 const UPGRADE: &str = r#"
@@ -389,6 +473,10 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
         APPARMOR
     );
     scenario!(
+        "s1 the SELinux domains hold and the workload draws no denial",
+        SELINUX
+    );
+    scenario!(
         "u2 an upgrade keeps the changes, the history and the firewall, and runs the new files",
         UPGRADE
     );
@@ -403,5 +491,38 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
         Ok(())
     } else {
         bail!("{failures} f10 scenario(s) failed")
+    }
+}
+
+/// Development aid: builds the SELinux module on the machine and loads it,
+/// printing what the compiler says. `cargo xtask vm-test --distro fedora
+/// --phase selinux`.
+pub fn run_selinux_build(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
+    let tar = workspace.join("target/stage/selinux-src.tar.gz");
+    std::fs::create_dir_all(tar.parent().expect("a parent"))?;
+    let status = Command::new("tar")
+        .arg("czf")
+        .arg(&tar)
+        .args(["-C", "packaging", "selinux"])
+        .current_dir(workspace)
+        .status()?;
+    if !status.success() {
+        bail!("packing the policy sources failed");
+    }
+    vm.ssh(install)?;
+    pipe_file(vm, &tar, "cat > /tmp/selinux-src.tar.gz")?;
+    let script = r#"
+set -e
+sudo dnf install -y -q selinux-policy-devel >/dev/null
+rm -rf /tmp/sel && mkdir /tmp/sel && tar xzf /tmp/selinux-src.tar.gz -C /tmp/sel && cd /tmp/sel/selinux
+make -f /usr/share/selinux/devel/Makefile ibexwall.pp 2>&1 | tail -40 | sed 's/^/METRIC: /'
+test -f ibexwall.pp && echo METRIC: BUILT
+echo METRIC: $(getenforce)
+"#;
+    let ok = run_script(vm, "selinux module builds", script);
+    if ok {
+        Ok(())
+    } else {
+        bail!("the module did not build")
     }
 }

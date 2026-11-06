@@ -210,10 +210,10 @@ first mandatory review point.
 - Supervisor: manifest signature verified on every use (minisign format,
   dev anchor only; no embedded release key yet, so non-dev builds refuse
   all plugins).
-- Open items: pidfd subjects (ADR-0025), fuzz target for the varlink
+- Open items: pidfd subjects, fuzz target for the varlink
   framing, rate limiting on the socket, stale plugin processes.
 
-## 11. Transient executor (ADR-0026, F2)
+## 11. Transient executor
 
 - The daemon unit no longer writes `/etc`: every file-touching
   transaction (apply and rollback) runs in `ibexwall-exec` inside a
@@ -259,7 +259,7 @@ first mandatory review point.
   still win for those domains.
 - Captive portals: a portal blocks the encrypted upstream, so the login
   page may not load. The agent announces the portal with the relief steps
-  (ADR-0030); enforcement is never lifted automatically, so a faked portal
+  Enforcement is never lifted automatically, so a faked portal
   cannot weaken the machine.
 
 ## 13. AI assistant (F8)
@@ -333,7 +333,7 @@ first mandatory review point.
   neither is in v1). The daemon's hardened unit hides parts of the filesystem
   from plugins run as its children; own units per plugin (F10) lift that.
 
-## 15. The HTTPS transport and the rule "nothing in the clear" (ADR-0042)
+## 15. The HTTPS transport and the rule "nothing in the clear"
 
 - **Front door.** TLS 1.2 and 1.3 only, ALPN http/1.1, no plain listener and
   no flag to make one; a private key readable by others stops the server.

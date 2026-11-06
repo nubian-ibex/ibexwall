@@ -20,7 +20,7 @@ Component, capability and reason. Reviewed at every phase.
 - Plugins (dev.echo): no capabilities, `DynamicUser` unit text generated
   from the manifest and covered by tests. In F1 the VM runs the plugin as
   a direct child of the daemon; unit-based launch arrives with packaging.
-- polkit subject: `unix-process` with pid and start-time (ADR-0025).
+- polkit subject: `unix-process` with pid and start-time.
   pidfd subjects remain a tracked follow-up.
 - ibexwall-dns (user `ibexwall-dns`): `CAP_NET_BIND_SERVICE` only, no
   privileges to write outside `/var/lib/ibexwall/blocklists`; exposure 1.4

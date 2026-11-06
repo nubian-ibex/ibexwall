@@ -105,6 +105,22 @@ pub fn append(
             hash
         ],
     )?;
+    let seq = tx.last_insert_rowid();
+    // Anchor the head outside the log: deleting the newest rows leaves a
+    // self-consistent prefix, and the anchor is how verify detects it.
+    tx.execute(
+        "CREATE TABLE IF NOT EXISTS audit_anchor (
+             id INTEGER PRIMARY KEY CHECK (id = 1),
+             seq INTEGER NOT NULL,
+             hash TEXT NOT NULL
+         )",
+        [],
+    )?;
+    tx.execute(
+        "INSERT INTO audit_anchor (id, seq, hash) VALUES (1, ?1, ?2)
+         ON CONFLICT(id) DO UPDATE SET seq = excluded.seq, hash = excluded.hash",
+        rusqlite::params![seq, hash],
+    )?;
     tx.commit()?;
     Ok(hash)
 }
@@ -154,6 +170,8 @@ pub fn verify(conn: &Connection) -> Result<Verification> {
 
     let mut expected_prev: String = "0".repeat(64);
     let mut count = 0usize;
+    let mut last_seq = 0i64;
+    let mut last_hash = "0".repeat(64);
     for row in rows {
         let (seq, ts, actor, plugin, transaction, ops_digest, result, prev_hash, hash) = row?;
         count += 1;
@@ -180,7 +198,26 @@ pub fn verify(conn: &Connection) -> Result<Verification> {
                 reason: format!("hash mismatch at seq {seq}: stored {hash}, computed {computed}"),
             });
         }
-        expected_prev = hash;
+        expected_prev = hash.clone();
+        last_seq = seq;
+        last_hash = hash;
+    }
+    // The anchor records the true head; if the newest rows were deleted
+    // the prefix still hashes, so only the anchor can tell.
+    let anchored: Option<(i64, String)> = conn
+        .query_row(
+            "SELECT seq, hash FROM audit_anchor WHERE id = 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .ok();
+    if let Some((seq, hash)) = anchored
+        && (seq != last_seq || hash != last_hash)
+    {
+        return Ok(Verification::Broken {
+            seq: last_seq,
+            reason: format!("the chain head was truncated: anchor points at seq {seq}"),
+        });
     }
     Ok(Verification::Valid { entries: count })
 }
@@ -275,6 +312,23 @@ mod tests {
         match verify(&conn).unwrap() {
             Verification::Broken { seq: 2, .. } => {}
             other => panic!("expected broken chain, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn chain_detects_a_deleted_tail() {
+        let conn = conn();
+        append(&conn, "t", "user:0", "p", None, "d1", "ok").unwrap();
+        append(&conn, "t", "user:0", "p", None, "d2", "ok").unwrap();
+        // Deleting the newest row leaves a self-consistent prefix; only
+        // the anchor can tell the head was cut off.
+        conn.execute("DELETE FROM audit_log WHERE seq = 2", [])
+            .unwrap();
+        match verify(&conn).unwrap() {
+            Verification::Broken { reason, .. } => {
+                assert!(reason.contains("truncated"), "{reason}")
+            }
+            other => panic!("expected a truncated-chain verdict, got {other:?}"),
         }
     }
 }

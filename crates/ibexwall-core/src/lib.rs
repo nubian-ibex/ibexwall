@@ -273,7 +273,7 @@ impl Core {
     /// that cannot be undone is reported and does not stop the rest.
     pub fn cleanup(&self) -> Result<CleanupReport> {
         let mut report = CleanupReport::default();
-        for tx in self.state.list_active_transactions()? {
+        for tx in self.state.list_rollback_candidates()? {
             let ops: Vec<Op> = self
                 .state
                 .load_plan(&tx.plan_id)

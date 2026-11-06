@@ -329,12 +329,34 @@ impl State {
         })
     }
 
-    /// Transactions a restart must roll back (spec §4.5 recovery).
+    /// Transactions a restart must roll back (spec §4.5 recovery): an
+    /// interrupted apply, an unanswered confirmation, or a transaction
+    /// whose rollback failed last time, retried here.
     pub fn list_recoverable_transactions(&self) -> Result<Vec<TxRow>> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
                 "SELECT id, plan_id, plugin, state FROM transactions
-                 WHERE state IN ('applying', 'pending_confirm') ORDER BY created_at",
+                 WHERE state IN ('applying', 'pending_confirm', 'failed') ORDER BY created_at",
+            )?;
+            let rows = stmt.query_map([], row_to_tx)?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(out)
+        })
+    }
+
+    /// Everything whose changes may still be on the machine, newest
+    /// first, for an uninstall to undo: committed and pending
+    /// confirmations, plus failed ones whose rollback may not have
+    /// completed.
+    pub fn list_rollback_candidates(&self) -> Result<Vec<TxRow>> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, plan_id, plugin, state FROM transactions \
+                 WHERE state IN ('committed', 'pending_confirm', 'failed') \
+                 ORDER BY created_at DESC, rowid DESC",
             )?;
             let rows = stmt.query_map([], row_to_tx)?;
             let mut out = Vec::new();

@@ -749,9 +749,18 @@ async fn apply(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkErr
     let snapshot = match result {
         Ok(snapshot) => snapshot,
         Err(e) => {
-            core.rollback_transaction(&tx_id, &ops).ok();
+            // A failed apply still rolls back; record the real outcome
+            // rather than always saying Failed.
+            let rollback = core.rollback_transaction(&tx_id, &ops);
             core.state
-                .mark_transaction(&tx_id, TxStatus::Failed)
+                .mark_transaction(
+                    &tx_id,
+                    if rollback.is_ok() {
+                        TxStatus::RolledBack
+                    } else {
+                        TxStatus::Failed
+                    },
+                )
                 .map_err(internal)?;
             core.audit(
                 "user",
@@ -772,9 +781,16 @@ async fn apply(core: &Arc<Core>, parameters: &Value) -> Result<Reply, VarlinkErr
         .await
         .unwrap_or(false);
     if !verified {
-        core.rollback_transaction(&tx_id, &ops).ok();
+        let rollback = core.rollback_transaction(&tx_id, &ops);
         core.state
-            .mark_transaction(&tx_id, TxStatus::Failed)
+            .mark_transaction(
+                &tx_id,
+                if rollback.is_ok() {
+                    TxStatus::RolledBack
+                } else {
+                    TxStatus::Failed
+                },
+            )
             .map_err(internal)?;
         core.audit(
             "user",

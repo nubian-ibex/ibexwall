@@ -102,13 +102,25 @@ assistants rule, manual runs on real desktops.
 
 ## Pending / next
 
-- F10: packages (COPR, PPA, OBS, AUR), SELinux and AppArmor profiles, signing,
-  SBOM and provenance, docs, site, the release checklist for v1.0.
-- Plugin units (F10): own sandbox per plugin, which gives the integrity and
-  persistence checks full sight of the filesystem and allows discovery of
-  scan folders.
+- F10 done so far: M1 to M4 (maintainability, multicall plugin binary, a unit
+  per plugin, RPM/DEB/Arch packages with `ibexwalld --cleanup`, VM phase
+  `f10` green on five distros) and F10b (assistant, detection notes,
+  Hardening, scanner plugins). Remaining: M5 SELinux and AppArmor profiles
+  (plugins get their own SELinux domain), M6 signing, SBOM, provenance,
+  reproducibility (ship the prebuilt eBPF object as a release artifact),
+  M7 docs and site, M8 full matrix, M9 v1.0 checklist. Publishing (COPR, PPA,
+  OBS, AUR) and the official release key need the maintainer's accounts.
+- Domain (P-01 resolved): `ibexwall.com`, bought on Cloudflare. The GitHub org
+  `nubian-ibex` Website field already points to it. Still to do: org domain
+  verification (TXT `_github-challenge-nubian-ibex-org`, then "Verify" in the
+  org Pages settings), DNS for site (`ibexwall.com`) and docs
+  (`docs.ibexwall.com`), optional Email Routing (`security@ibexwall.com`).
+  Decided: host on Cloudflare Pages (security headers via `_headers`, preview
+  per PR, same panel as DNS); the GitHub free plan is enough. Set `DOCS_BASE`
+  in `ui/src/lib/site.ts` only once the site is live.
+- Cloudflare access: `cf` is installed; the token lives in `~/.zshenv`
+  (restart the agent session so it is visible; check with `cf auth whoami`).
 - CI VM jobs on a KVM-capable runner.
-- P-01 domains (affects the `com.ibexwall` prefix, ADR-0021).
 - `ibexwall-proto` and `ibexwall-sdk` publication to crates.io when contracts
   stabilize.
 

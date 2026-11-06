@@ -461,11 +461,14 @@ fn polkit_action(method: &str) -> Option<&'static str> {
 }
 
 fn identity_of(peer: Peer) -> Identity {
-    let start_time = ibexwall_sys::proc_start_time(peer.pid).unwrap_or(0);
+    // Bound to the connection: uid and pid come from SO_PEERCRED at
+    // accept, and the start time was read from /proc at the same
+    // moment. Nothing here is re-read per call, so a later exec or pid
+    // reuse cannot swap the identity under an authorization check.
     Identity {
         uid: peer.uid,
         pid: peer.pid,
-        start_time,
+        start_time: peer.start_time,
     }
 }
 

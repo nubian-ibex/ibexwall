@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Per-method authorization via polkit (ADR-0025). The real
-//! implementation calls `CheckAuthorization` on the system bus with a
-//! `unix-process` subject (pid + start time, never a bare PID) and
-//! **no** interactive flag: if an authorization prompt would be needed,
-//! we report NotAuthorized and let clients surface it.
+//! Per-method authorization via polkit. The real implementation calls
+//! `CheckAuthorization` on the system bus with a `unix-process` subject
+//! carrying the pid, the start time and the uid, all captured when the
+//! connection was accepted (never a bare PID, and never a start time
+//! re-read later), and **no** interactive flag: if an authorization
+//! prompt would be needed, we report NotAuthorized and let clients
+//! surface it.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -34,6 +36,23 @@ impl Polkit for Box<dyn Polkit> {
 #[derive(Debug, Default)]
 pub struct RealPolkit;
 
+/// The `unix-process` subject: pid, start time and uid of the accepted
+/// connection. The uid is included so polkit never re-reads it from
+/// /proc at check time, which would describe whatever runs under the
+/// pid then instead of the caller.
+fn unix_process_subject(
+    identity: Identity,
+) -> HashMap<&'static str, zbus::zvariant::Variant<'static>> {
+    let mut subject: HashMap<&str, zbus::zvariant::Variant> = HashMap::new();
+    subject.insert("pid", zbus::zvariant::Variant::U32(identity.pid));
+    subject.insert(
+        "start-time",
+        zbus::zvariant::Variant::U64(identity.start_time),
+    );
+    subject.insert("uid", zbus::zvariant::Variant::U32(identity.uid));
+    subject
+}
+
 impl Polkit for RealPolkit {
     fn check(&self, action: String, identity: Identity) -> CheckFuture {
         Box::pin(async move {
@@ -46,12 +65,7 @@ impl Polkit for RealPolkit {
                 return Ok(Decision::Authorized);
             }
 
-            let mut subject: HashMap<&str, zbus::zvariant::Variant> = HashMap::new();
-            subject.insert("pid", zbus::zvariant::Variant::U32(identity.pid));
-            subject.insert(
-                "start-time",
-                zbus::zvariant::Variant::U64(identity.start_time),
-            );
+            let subject = unix_process_subject(identity);
             // CheckAuthorization signature: ((sa{sv})sa{ss}us); the subject
             // is a struct and the details map is a{ss}.
             let details: HashMap<&str, &str> = HashMap::new();
@@ -159,5 +173,20 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(decision, Decision::NotAuthorized);
+    }
+
+    #[test]
+    fn the_subject_carries_the_connection_identity() {
+        let identity = Identity {
+            uid: 1000,
+            pid: 4242,
+            start_time: 99_999,
+        };
+        let subject = unix_process_subject(identity);
+        assert_eq!(subject["pid"], zbus::zvariant::Variant::U32(4242));
+        assert_eq!(subject["start-time"], zbus::zvariant::Variant::U64(99_999));
+        // Without the uid, polkit re-reads it from /proc at check time
+        // and the check can be decided about another process.
+        assert_eq!(subject["uid"], zbus::zvariant::Variant::U32(1000));
     }
 }

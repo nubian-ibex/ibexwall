@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Caller identity on a varlink connection (ADR-0025): `SO_PEERCRED`
-//! gives pid/uid without a race; the daemon reads the peer's start time
-//! from /proc so authorization never trusts a bare, reusable PID.
+//! Caller identity on a varlink connection: `SO_PEERCRED` gives
+//! pid/uid without a race, captured at accept together with the peer's
+//! start time from /proc, so authorization never trusts a bare, reusable
+//! PID. The varlink server owns the capture; this type only carries it.
 
 use std::io;
 

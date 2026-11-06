@@ -26,11 +26,36 @@ pub struct Call {
     pub peer: Peer,
 }
 
-/// Unix credentials of the connected peer.
+/// Unix credentials of the connected peer, captured once at accept:
+/// SO_PEERCRED gives the uid and pid of the process that made the
+/// connection, and the start time is read from /proc at the same moment.
+/// Reading the start time later (per call) would describe whatever
+/// process holds the pid by then, not the one on the socket.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Peer {
     pub uid: u32,
     pub pid: u32,
+    /// Field 22 of `/proc/<pid>/stat`, bound to this connection. Zero
+    /// when it could not be read; authorization fails closed on zero.
+    pub start_time: u64,
+}
+
+/// Field 22 (starttime) of a `/proc/<pid>/stat` line. The comm field can
+/// contain spaces and parentheses, so parsing starts after the last ')';
+/// from there, starttime is the 20th token (the first is field 3,
+/// state).
+fn start_time_from_stat(stat: &str) -> u64 {
+    let tail = stat.rsplit_once(')').map(|(_, tail)| tail).unwrap_or("");
+    tail.split_whitespace()
+        .nth(19)
+        .and_then(|token| token.parse().ok())
+        .unwrap_or(0)
+}
+
+fn proc_start_time(pid: u32) -> u64 {
+    std::fs::read_to_string(format!("/proc/{pid}/stat"))
+        .map(|stat| start_time_from_stat(&stat))
+        .unwrap_or(0)
 }
 
 /// A reply pushed by the handler (result frame or error frame).
@@ -156,12 +181,15 @@ async fn connection(
     info: ServiceInfo,
     handler: Arc<dyn Handler>,
 ) -> anyhow::Result<()> {
+    // Fail closed: a connection whose credentials cannot be read gets no
+    // default identity (least of all uid 0).
     let peer = rustix::net::sockopt::socket_peercred(&stream)
         .map(|cred| Peer {
             uid: cred.uid.as_raw(),
             pid: cred.pid.as_raw_pid().unsigned_abs(),
+            start_time: proc_start_time(cred.pid.as_raw_pid().unsigned_abs()),
         })
-        .unwrap_or_default();
+        .map_err(|error| anyhow::anyhow!("reading the peer credentials: {error}"))?;
     let (mut reader, mut writer) = stream.into_split();
     // One read may deliver several frames; the framer buffers the rest.
     let mut framer = wire::Framer::new();
@@ -302,6 +330,15 @@ mod tests {
                     "com.test.Echo" => {
                         let _ = out.send(Reply::result(call.parameters)).await;
                     }
+                    "com.test.Peer" => {
+                        let _ = out
+                            .send(Reply::result(serde_json::json!({
+                                "uid": call.peer.uid,
+                                "pid": call.peer.pid,
+                                "start_time": call.peer.start_time,
+                            })))
+                            .await;
+                    }
                     "com.test.Stream" => {
                         for i in 0..3 {
                             let _ = out
@@ -352,6 +389,25 @@ mod tests {
             .unwrap();
         assert_eq!(value, serde_json::json!({"hello": "world"}));
 
+        // The peer identity is bound to this connection: the uid and pid
+        // SO_PEERCRED reported at accept, plus a start time read at the
+        // same moment, later than which no /proc re-read happens.
+        let peer = conn
+            .call("com.test.Peer", serde_json::json!({}))
+            .await
+            .unwrap();
+        assert_eq!(peer["pid"], std::process::id() as u64);
+        assert!(peer["start_time"].as_u64().unwrap() > 0);
+        let own_uid = std::fs::read_to_string("/proc/self/status")
+            .unwrap()
+            .lines()
+            .find_map(|line| line.strip_prefix("Uid:"))
+            .and_then(|rest| rest.split_whitespace().next())
+            .unwrap()
+            .parse::<u64>()
+            .unwrap();
+        assert_eq!(peer["uid"], own_uid);
+
         let values = conn
             .call_all("com.test.Stream", serde_json::json!({}))
             .await
@@ -378,6 +434,28 @@ mod tests {
         assert_eq!(value["vendor"], "Nubian Ibex");
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn start_time_parsing_skips_a_comm_full_of_spaces_and_parens() {
+        // Fields after the comm: 3 (state) through 21, then starttime.
+        let tail = (1..=19)
+            .map(|i| i.to_string())
+            .chain(std::iter::once("7777777".to_string()))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let stat = format!("12345 (weird (com m) name x) {tail}");
+        assert_eq!(start_time_from_stat(&stat), 7_777_777);
+        // A truncated line yields zero, which authorization treats as
+        // "do not decide" (fail closed), never as a valid start time.
+        assert_eq!(start_time_from_stat("12345 (short) R 1 2"), 0);
+        assert_eq!(start_time_from_stat("no parenthesises at all"), 0);
+    }
+
+    #[test]
+    fn the_own_start_time_is_readable() {
+        let own = proc_start_time(std::process::id());
+        assert!(own > 0, "our own /proc entry must parse");
     }
 
     #[tokio::test]

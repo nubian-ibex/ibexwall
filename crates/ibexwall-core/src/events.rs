@@ -63,9 +63,14 @@ mod tests {
     async fn slow_subscribers_do_not_block() {
         let bus = Bus::new();
         let _quiet = bus.subscribe();
-        for i in 0..1000 {
-            bus.publish(event(&format!("e{i}")));
-        }
-        // The publisher never blocked: reaching here is the assertion.
+        // Publishing to a subscriber that never reads must not block the
+        // caller; a blocking send would hang this deadline.
+        let done = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            for i in 0..1000 {
+                bus.publish(event(&format!("e{i}")));
+            }
+        })
+        .await;
+        assert!(done.is_ok(), "publish blocked behind a slow subscriber");
     }
 }

@@ -584,10 +584,13 @@ mod tests {
         )
         .await;
         match outcome {
-            Ok(Err(_)) | Err(_) => { /* defended: error reply or dropped connection */ }
+            // Defended: an error reply or a dropped connection.
+            Ok(Err(_)) => {}
             Ok(Ok(value)) => {
                 panic!("server should not answer after a protocol violation, got {value}")
             }
+            // A hang means the server neither replied nor dropped us.
+            Err(_) => panic!("server did not close the connection in time"),
         }
         let _ = std::fs::remove_file(&path);
     }

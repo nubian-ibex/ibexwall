@@ -3,4 +3,11 @@
 
 # fuzz
 
-cargo-fuzz targets (varlink framing, manifest, policy bundle, blocklists, DNS messages); wired with the nightly fuzz CI job.
+Planned cargo-fuzz targets for the parsers that face untrusted input:
+varlink framing, the plugin manifest, the policy bundle, blocklists and
+DNS messages, with a short nightly CI job (spec SEC-08).
+
+Not implemented yet. The parsers are covered by unit and property tests
+today, and the targets plus the nightly job land after v1.0, because
+cargo-fuzz needs a nightly toolchain the release matrix does not use.
+This is recorded in the F10c audit plan.

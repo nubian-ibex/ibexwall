@@ -616,12 +616,14 @@ fn sysctl_value_is_restored_and_unknown_keys_are_skipped() {
 }
 
 #[test]
-fn a_symmetric_exec_is_re_run_by_the_rollback_after_the_files() {
+fn a_symmetric_exec_is_snapshotted_as_a_reload_inverse() {
     let rig = rig("sym", false);
     let ops = vec![Op::Exec {
         path: "/usr/bin/true".into(),
         args: vec![],
     }];
+    // A symmetric exec declared in the manifest is snapshotted as a
+    // Reload, so the rollback re-runs it after the files are restored.
     let manifest = rig
         .engine
         .snapshot(&rig.state, "txs", &ops, &[("/usr/bin/true".into(), vec![])])

@@ -239,25 +239,24 @@ impl Core {
                 .and_then(|p| serde_json::from_str(&p.ops_json).ok())
                 .unwrap_or_default();
             let result = self.rollback_transaction(&tx.id, &ops);
-            self.state.mark_transaction(
-                &tx.id,
-                if result.is_ok() {
-                    TxStatus::RolledBack
-                } else {
-                    TxStatus::Failed
-                },
-            )?;
-            self.audit(
-                "system",
-                &tx.plugin,
-                Some(&tx.id),
-                "",
-                "crash-recovery-rollback",
-            );
+            let (status, event_state, audit_result) = match &result {
+                Ok(()) => (
+                    TxStatus::RolledBack,
+                    TransactionState::RolledBack,
+                    "crash-recovery-rollback",
+                ),
+                Err(_) => (
+                    TxStatus::Failed,
+                    TransactionState::Failed,
+                    "crash-recovery-rollback-failed",
+                ),
+            };
+            self.state.mark_transaction(&tx.id, status)?;
+            self.audit("system", &tx.plugin, Some(&tx.id), "", audit_result);
             self.publish_transaction_event(&Transaction {
                 id: tx.id.clone(),
                 plan_id: tx.plan_id.clone(),
-                state: TransactionState::RolledBack,
+                state: event_state,
                 started_at: now(),
                 confirm_deadline: None,
                 restore_point: String::new(),

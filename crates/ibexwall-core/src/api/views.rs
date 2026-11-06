@@ -30,7 +30,10 @@ pub(crate) fn info(_core: &Arc<Core>) -> Value {
 
 /// The resolver's published counters; counts only, never query names.
 pub(crate) fn dns_status(core: &Arc<Core>) -> Value {
-    let path = ibexwall_proto::names::dns_status_file();
+    // `dns_status_file` is already rooted for the sandbox, while the fs
+    // translates under its own root; strip once so the two never double
+    // up (the resolver itself writes the rooted path).
+    let path = crate::engine::under_root(&ibexwall_proto::names::dns_status_file());
     let status: Value = core
         .engine
         .sys

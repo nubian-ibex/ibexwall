@@ -548,7 +548,7 @@ fn sync_dir(path: &Path) -> Result<()> {
 /// `Core` builds its paths already prefixed with the sandbox root when
 /// one is active, while the `SysBundle` filesystem translates under its
 /// own root: strip the prefix here so the two never double up.
-fn under_root(path: &Path) -> PathBuf {
+pub(crate) fn under_root(path: &Path) -> PathBuf {
     let root = ibexwall_proto::names::root();
     if root == Path::new("/") {
         return path.to_path_buf();

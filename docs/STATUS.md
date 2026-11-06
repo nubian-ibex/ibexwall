@@ -3,138 +3,154 @@
 
 # STATUS
 
-Last updated: 2026-11-04 (F9 delivered, report ready for acceptance)
+Last updated: 2026-11-06 (F10 and F10b delivered; audit and compliance
+plans proposed)
 
 ## Current phase
 
-F0 to F5 and F9 are accepted. F6 to F8 are delivered and wait for the
-maintainer's acceptance. After acceptance, on 2026-11-04: OpenVPN import
-(subset), the HTTPS MCP transport with user-defined tokens, own DNS servers
-with a secondary and split DNS, (nothing in the clear) and its
-guard, and signed commits from now on. Next: F10 (packaging, release, docs, site). Run the app with
-`scripts/dev-sandbox.sh` (sandboxed daemon, host untouched). Manual runs on
-Omarchy and EndeavourOS, and with real assistant clients, are deferred by the
-maintainer.
+F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
+package install, upgrade and remove with no residue across the five
+distros, the smoke of the earlier phases against the installed packages,
+the signed release pipeline with SBOM and provenance, five languages in
+the app and the site, and the public site and docs on Cloudflare Pages.
+GitHub CI is green on every job (fmt, lint, tests with cargo-deny,
+docs, coverage, the UI checks, commit hygiene) plus Scorecard, and the
+commit history is signed and verified.
 
-Phases, newest first (report, plan, ADRs):
+Two plans are proposed and wait for the maintainer:
 
+- `docs/plans/F10c-audit-fixes.md`, from the 2026-11-06 validation pass.
+  The automated battery is green (646 Rust tests, 119 UI tests, clippy,
+  deny, no schema drift, 81% coverage), and the review found five P0,
+  fourteen P1 and twelve P2 issues, mostly in the transaction engine.
+  No v1.0 tag before its M1 and M2 are done.
+- `docs/plans/F11a-compliance.md`, the Compliance section the maintainer
+  asked for: the machine against a named framework, with compliant,
+  non-compliant, not-assessed, attestation and exception states, and a
+  signed export (JSON, CSV, OSCAL). Four decisions wait for the
+  maintainer: the UI name, the order against F11b, the first-release
+  framework list, and the CIS stance.
+
+Architecture decisions are recorded internally, outside this repository;
+the public plans and reports are self-contained without them.
+
+Phases, newest first (report, plan):
+
+- **F10b, assistant connection, detection, hardening** (2026-11-05,
+  `docs/plans/F10b-assistant-detection-hardening.md`). The Assistant
+  connect flow, the `system.assistant` plugin owning `mcp.toml`, token
+  management, OpenSCAP, rkhunter and chkrootkit, local exposure, and the
+  Hardening catalog in the app.
+- **F10, packaging, release, docs, site** (`docs/plans/F10-packaging-release.md`).
+  M1 to M9: maintainability, the multicall plugin binary, a unit per
+  plugin, RPM/DEB/Arch packages with `ibexwalld --cleanup`, AppArmor
+  enforcing on Ubuntu and an SELinux module on Fedora, `cargo xtask
+  release` with signing, SBOM and provenance plus `verify-release` and
+  `repro` (192 files identical), five languages, the website, docs and
+  plugin-index repositories, the five-distro smoke, and the release
+  checklist (`docs/release-checklist.md`).
 - **F9, VPN and endpoint, accepted 2026-11-04** (`docs/reports/F9-report.md`,
   `docs/archive/plans/F9-vpn-and-endpoint.md`). `endpoint.isolate`,
   `net.vpn` (WireGuard through NetworkManager and a kill switch),
-  `endpoint.persistence`, `endpoint.integrity`, `endpoint.av`; address and
-  interface matches in nft rules, private-file previews, symmetric execs.
-  `--phase f9` green on five distros, with a `tcpdump` proof that a dropped
-  tunnel leaks nothing under the kill switch and the EICAR file flagged by
-  ClamAV and YARA. OpenVPN import (a documented subset, `docs/openvpn-subset.md`) was added after acceptance, verified on five distros. Open: scan-folder discovery and a file watcher (need plugin units, F10).
+  `endpoint.persistence`, `endpoint.integrity`, `endpoint.av`; OpenVPN
+  import (a documented subset, `docs/openvpn-subset.md`). `--phase f9`
+  green on five distros, kill-switch leak proof included. Open:
+  scan-folder discovery and a file watcher.
 - **F8, AI assistant (MCP)** (`docs/reports/F8-report.md`,
-  `docs/plans/F8-assistant-mcp.md`). `ibexwall-mcp` over
-  stdio with nine tools and no way to apply, approve or revert; the core's
-  proposal queue (irreversible plans refused, approval re-plans and compares);
-  `ListAudit`; `ibexctl proposals` and `ibexctl mcp config`; the Assistant
-  screen; a hash-chained call log written before each call; the polkit rule
-  and the `ibexwall-assistants` group (accepted and shipped). `--phase f8`
-  green on five distros with a scripted client (no language model) and an
-  injection corpus in the suite. Open: OAuth (not built; a user-defined token instead).
+  `docs/plans/F8-assistant-mcp.md`). `ibexwall-mcp` over stdio with nine
+  read-only tools, the proposal queue, `ListAudit`, `ibexctl proposals`
+  and `ibexctl mcp config`, the hash-chained call log, the polkit rule
+  and the `ibexwall-assistants` group. `--phase f8` green on five
+  distros with an injection corpus. Open: OAuth (a user-defined token
+  shipped instead).
 - **F7, hardening and system plugins** (`docs/reports/F7-report.md`,
-  `docs/plans/F7-hardening-and-system.md`). Sixteen plugins;
-  `--phase f7` green on five distros (15 scenarios). Open: pending firmware
-  and HSI, a plugin monitor interface, GNOME user lock settings, telemetry
-  control, OSV lookup.
+  `docs/plans/F7-hardening-and-system.md`). Sixteen plugins at the time;
+  `--phase f7` green on five distros. Open: pending firmware and HSI, a
+  plugin monitor interface, GNOME user lock settings, telemetry control,
+  OSV lookup.
 - **F6, per-app enforcement and Ask mode** (`docs/reports/F6-report.md`,
-  `docs/plans/F6-app-enforcement.md`, ADRs 0035 to 0037). Block over TCP, UDP,
-  QUIC and IPv6 for the target only, Ask held until answered, fail open;
+  `docs/plans/F6-app-enforcement.md`). Block over TCP, UDP, QUIC and
+  IPv6 for the target only, Ask held until answered, fail open;
   `--phase f6` green on five distros.
 - **F5, inbound firewall, accepted 2026-11-04** (`docs/reports/F5-report.md`,
-  `docs/archive/plans/F5-inbound-firewall.md`, ADRs 0031 to 0034). firewalld, ufw and
-  pure nftables adapters, Docker coexistence, byte-exact rollback. Open:
+  `docs/archive/plans/F5-inbound-firewall.md`). firewalld, ufw and pure
+  nftables adapters, Docker coexistence, byte-exact rollback. Open:
   profiles per connection, rich-rule editing, ufw app profiles.
 - **F4, apps and traffic** (accepted; `docs/reports/F4-report.md`).
-- **F3, secure DNS** (`docs/reports/F3-report.md`). Own servers, a secondary and split DNS were added on 2026-11-04. Core accepted; DoH
-  endpoints, browser policies, captive portal, counters and latency evidence
-  delivered; leftovers: DNS backends B2 to B4, IPv6 presets, a DNSSEC ADR, the
-  TUI DNS view.
+- **F3, secure DNS** (`docs/reports/F3-report.md`). Own servers, a
+  secondary and split DNS, DoH endpoints, browser policies, captive
+  portal, counters and latency evidence. Leftovers: DNS backends B2 to
+  B4, IPv6 presets, a DNSSEC decision, the TUI DNS view.
 - **F2, posture and UI** and **F1, core and CLI** (accepted).
-
-Cross-phase open items: a unit of its own for each plugin (F10; lifts the
-sandbox limits noted in the F9 report), the F10 polkit packaging beyond the
-assistants rule, manual runs on real desktops.
 
 ## What exists
 
-- Cargo workspace with all 13 crate skeletons (proto, sdk, core, sys,
-  ebpf, ebpf-loader, agent, cli, tui, mcp, dns, web, exporters) plus
-  xtask; workspace-wide `forbid(unsafe_code)`, edition 2024, MSRV 1.96,
-  toolchain pinned to 1.98.1.
-- `ibexwall-proto` with the full F0 contract surface: Core API types,
-  typed `Op` set, plugin manifest (+ validation), policy bundle
-  (+ validation), report, canonical `names` module, deterministic
-  schema export.
-- `spec/`: generated JSON Schemas (27) and varlink IDL (3 interfaces);
+- Cargo workspace with the 13 crates plus xtask and the plugin set
+  (net, system, endpoint, apps, device, privacy and vuln categories);
+  workspace-wide `forbid(unsafe_code)` outside the designated eBPF and
+  nfqueue crates, edition 2024, MSRV 1.96, toolchain pinned to 1.98.1.
+- `ibexwall-proto` with the full contract surface, typed `Op` set,
+  plugin manifest and policy bundle validation, canonical names,
+  deterministic schema export; `spec/` holds 40 generated files and
   `cargo xtask schemas --check` enforces zero drift.
-- `cargo xtask vm-test --distro fedora`: QEMU/KVM smoke harness,
-  cloud-init NoCloud seed, checksum-verified image cache; PASS with
-  Fedora 44 (kernel 6.19.10), running `ibexctl` inside the VM.
-- CI: fmt, clippy `-D warnings`, nextest, cargo-deny, schema drift,
-  DCO + Conventional Commits; actions pinned by SHA, zero default
-  permissions; no VM jobs.
-- Community files, repo AGENTS.md, 23 ADRs, threat model v1.
-- `.github-org/` workspace repo ready to become the org `.github`
-  (profile README, SECURITY, conduct, issue/PR templates).
+- 646 Rust tests, 119 UI tests, 81% line coverage; clippy and fmt clean;
+  cargo-deny clean (pinned to 0.20.2 in CI; newer versions reject the
+  config's version fields).
+- VM harness: `cargo xtask vm-test --distro fedora|ubuntu-24.04|
+  ubuntu-26.04|debian|arch --phase f0..f10`, cloud-init NoCloud seed,
+  checksum-verified image cache.
+- GitHub CI: fmt, clippy, nextest with cargo-deny, rustdoc, coverage,
+  the UI checks, DCO plus Conventional Commits, Scorecard, the release
+  workflow; actions pinned by SHA, zero default permissions. The GTK and
+  WebKit system libraries are installed in every job that builds the
+  workspace. No VM jobs (no nested KVM on hosted runners); the VM matrix
+  stays the local verification path.
+- Packaging: RPM, DEB and Arch packages, `ibexwall-apparmor` and
+  `ibexwall-selinux`, tmpfiles and sysusers, polkit rules, the release
+  checklist. `cargo xtask release`, `verify-release`, `repro` and
+  `releasekey`.
+- The app, agent, tray, catalog and manifests in en, pt-BR, es, fr and
+  de (`docs/translating.md`, `scripts/check-locales.mjs`).
+- The site (ibexwall.com), the docs (docs.ibexwall.com) and the plugin
+  index, public, deployed on Cloudflare Pages; `security@ibexwall.com`
+  through Email Routing.
 
 ## Deviations and notes
 
-- **GPG commit signing disabled locally** (`git config commit.gpgsign
-  false` in this clone only) because agent-side pinentry cannot prompt.
-  DCO sign-off trailers are present on every commit; re-enable or
-  re-sign before pushing (`git rebase --gpg-sign main~10..main` style
-  rewrite, or configure gpg with loopback). Not pushed yet (push only on
-  request).
-- Fedora cloud image/checksum names are discovered from the directory
-  listing (checksum file names now vary per respin, e.g.
-  `Fedora-Cloud-44-1.7-x86_64-CHECKSUM`); mirrors:
+- Fedora cloud image and checksum names are discovered from the
+  directory listing (names vary per respin); mirrors:
   dl.fedoraproject.org then mirrors.kernel.org. First run downloads
   ~557 MB.
 - Host tools installed for VM testing (user-approved): `qemu-img`,
-  `genisoimage`. Nothing else touched on the dev host.
-- Extra test resources available for later phases (user-provided):
-  hosts running Omarchy and EndeavourOS, VirtualBox VMs, docker/podman.
-  QEMU/KVM via xtask stays the canonical automated path.
+  `genisoimage`. Nothing else touches the dev host.
+- `deny.toml` ignores RUSTSEC-2024-0370 (unmaintained, inherited from
+  the GTK stack) and cargo-audit reports RUSTSEC-2024-0429 (glib
+  unsound, no known exploit); both are tracked for removal.
+- `fuzz/` and `profiles/` hold READMEs only; the fuzz README promises
+  targets and a nightly job that do not exist yet, and the usage
+  profiles live in code (both noted in the F10c plan).
 
 ## Pending / next
 
-- F10 done so far: M1 to M9. M8 (a smoke of the earlier phases against the
-  installed packages, green on five distros) and M9 (the v1.0 release
-  checklist, docs/release-checklist.md). M1 to M4 (maintainability, multicall plugin
-  binary, a unit per plugin, RPM/DEB/Arch packages with `ibexwalld --cleanup`),
-  M5 (AppArmor profiles enforcing on Ubuntu 24.04 and 26.04, an SELinux module
-  enforcing on Fedora; packages `ibexwall-apparmor` and
-  `ibexwall-selinux`), M6 (`cargo xtask release`: signed artifacts, a CycloneDX
-  SBOM, an in-toto provenance statement, `verify-release`, `repro` (192 files
-  identical), docs/release.md, the release workflow), M7 (five languages in
-  the app and the site, `ibexwall-website`, `ibexwall-docs`,
-  `ibexwall-plugin-index` repos built and pushed private; the site Lighthouse
-  100). F10b done before that. Remaining: M8 (extend the matrix to smoke every
-  earlier phase against installed packages), M9 (the v1.0 checklist and
-  report). Publishing (COPR, PPA, OBS, AUR), the official release key, making
-  the three new repos public and the Cloudflare Pages deploy need the
-  maintainer.
-- Domain (P-01 resolved and live): `ibexwall.com` on Cloudflare. The site
-  (ibexwall.com, www redirects to the same project), the documentation
-  (docs.ibexwall.com) and the org Website field all point there, deployed on
-  Cloudflare Pages (projects `ibexwall-website` and `ibexwall-docs`, manual
-  `wrangler pages deploy` until CI is set up). Each hardening setting in the
-  app links to its page on the site (`DOCS_BASE`). Open: the GitHub org
-  verification click in the org Pages settings, and Email Routing if wanted.
-- Translations: the app is complete in en, pt-BR, es, fr, de (see
-  docs/translating.md). The website: interface, hardening pages and the four
-  standing pages are complete in all five; articles are complete in en and es,
-  and pt-BR, fr, de have part of the set (the site falls back to English and
-  says so); the docs guides are English so far, with the plugin reference
-  generated in all five.
-- Cloudflare access: `cf` is installed; the token lives in `~/.zshenv`
-  (restart the agent session so it is visible; check with `cf auth whoami`).
-- CI VM jobs on a KVM-capable runner.
-- `ibexwall-proto` and `ibexwall-sdk` publication to crates.io when contracts
-  stabilize.
+1. The maintainer's call on `docs/plans/F10c-audit-fixes.md`, then its
+   M1 (P0) and M2 (transaction engine) before any v1.0 tag; M3 and M4
+   (the rest of the audit, fuzz decision) after.
+2. The maintainer's four decisions on `docs/plans/F11a-compliance.md`
+   (name, order, first-release frameworks, CIS), then its milestones;
+   the audit fixes are its M0 prerequisite.
+3. External, with the maintainer: the official release key
+   (`packaging/release.pub` plus the `RELEASE_SIGNING_KEY` secret),
+   COPR/PPA/OBS/AUR accounts to publish the packages, the from-source
+   package builds on a builder with `bpf-linker`, and the manual runs on
+   Omarchy and EndeavourOS and with real assistant clients.
+4. Translations: the docs guides are English so far (the generated
+   reference, including plugins, is in all five); on the site, articles
+   are complete in en and es and partial in pt-BR, fr and de with an
+   English fallback that says so.
+5. Cloudflare Pages git integration for preview deploys (production
+   deploys are manual `wrangler pages deploy`).
+6. CI VM jobs on a KVM-capable runner.
+7. `ibexwall-proto` and `ibexwall-sdk` on crates.io when the contracts
+   stabilize.
 
 History of F0 to F3: `docs/archive/STATUS-history-F0-F3.md`.

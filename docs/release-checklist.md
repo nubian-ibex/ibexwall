@@ -48,20 +48,22 @@ maintainer or a decision.
 
 ## Before a real tag
 
+- [ ] The F10c audit fixes M1 and M2 (`docs/plans/F10c-audit-fixes.md`):
+      no P0 or P1 finding may be open at tag time.
 - [ ] The maintainer's release public key in `packaging/release.pub` and the
       signing secret in the `RELEASE_SIGNING_KEY` repository secret; without
       them the release workflow refuses to run.
-- [ ] The three new repositories (`ibexwall-website`, `ibexwall-docs`,
+- [x] The three new repositories (`ibexwall-website`, `ibexwall-docs`,
       `ibexwall-plugin-index`) made public, after a review.
-- [ ] The GitHub org domain verification clicked in the org Pages settings
-      (the TXT record is already in DNS).
+- [x] The GitHub org domain verification clicked in the org Pages settings.
 - [ ] Manual runs on Omarchy and EndeavourOS, and with real AI assistant
       clients (deferred by the maintainer).
 - [ ] The from-source package builds (spec, `debian/`, PKGBUILD) exercised on a
       builder with the toolchain and `bpf-linker`; the test packages are built
       from the staged tree, and the release ships the prebuilt eBPF object for
       this.
-- [ ] Email Routing for `security@ibexwall.com`, if wanted, with a destination.
+- [x] Email Routing for `security@ibexwall.com`, live and forwarding to the
+      maintainer.
 
 ## Out of scope for v1.0
 

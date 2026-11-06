@@ -141,6 +141,16 @@ pub mod ibexwall_agent {
             .collect()
     }
 
+    /// The language a session asks for (`pt_BR.UTF-8` is `pt`), among the
+    /// ones the app ships; English otherwise.
+    fn language_of(lang: &str) -> &'static str {
+        let code = lang.to_lowercase();
+        ["pt", "es", "fr", "de"]
+            .into_iter()
+            .find(|l| code.starts_with(l))
+            .unwrap_or("en")
+    }
+
     /// A held connection (Ask mode) is time-limited, so it is announced;
     /// answering happens in IbexWall, never from the notification.
     pub fn ask_notification_for(lang: &str, event: &serde_json::Value) -> Option<(String, String)> {
@@ -151,33 +161,65 @@ pub mod ibexwall_agent {
         let untrusted = event.get("untrusted")?;
         let destination = plain(untrusted.get("destination")?.as_str()?);
         let port = untrusted.get("port")?.as_u64()?;
-        Some(if lang.to_lowercase().starts_with("pt") {
-            (
-                "Um programa quer se conectar".to_string(),
-                format!(
-                    "{app} para {destination}:{port}. Abra o IbexWall para permitir ou bloquear."
-                ),
-            )
-        } else {
-            (
-                "A program wants to connect".to_string(),
-                format!("{app} to {destination}:{port}. Open IbexWall to allow or block."),
-            )
-        })
+        let (summary, rest) = match language_of(lang) {
+            "pt" => (
+                "Um programa quer se conectar",
+                "Abra o IbexWall para permitir ou bloquear.",
+            ),
+            "es" => (
+                "Un programa quiere conectarse",
+                "Abre IbexWall para permitirlo o bloquearlo.",
+            ),
+            "fr" => (
+                "Un programme veut se connecter",
+                "Ouvrez IbexWall pour l'autoriser ou le bloquer.",
+            ),
+            "de" => (
+                "Ein Programm möchte eine Verbindung aufbauen",
+                "Öffnen Sie IbexWall, um sie zu erlauben oder zu blockieren.",
+            ),
+            _ => (
+                "A program wants to connect",
+                "Open IbexWall to allow or block.",
+            ),
+        };
+        let to = match language_of(lang) {
+            "pt" => "para",
+            "es" => "a",
+            "fr" => "vers",
+            "de" => "zu",
+            _ => "to",
+        };
+        Some((
+            summary.to_string(),
+            format!("{app} {to} {destination}:{port}. {rest}"),
+        ))
     }
 
-    /// Pure form for tests: the language string decides the wording.
+    /// Pure form for tests: the language string decides the wording. The
+    /// quoted setting name is the label the app shows in the same language.
     pub fn portal_notification_for(lang: &str) -> (&'static str, &'static str) {
-        if lang.to_lowercase().starts_with("pt") {
-            (
+        match language_of(lang) {
+            "pt" => (
                 "Portal de login detectado",
                 "Esta rede exige um login antes de permitir o tráfego, e a página pode não abrir enquanto o DNS seguro recusa DNS sem criptografia. Para entrar: abra o IbexWall, desligue 'Recusar DNS sem criptografia', faça o login e ligue novamente.",
-            )
-        } else {
-            (
+            ),
+            "es" => (
+                "Red con inicio de sesión detectada",
+                "Esta red exige iniciar sesión antes de permitir el tráfico, y la página puede no cargar mientras el DNS seguro rechaza el DNS sin cifrar. Para entrar: abre IbexWall, desactiva 'Rechazar DNS sin cifrar', inicia sesión y vuelve a activarlo.",
+            ),
+            "fr" => (
+                "Réseau avec connexion détecté",
+                "Ce réseau exige une connexion avant d'autoriser le trafic, et la page peut ne pas s'ouvrir tant que le DNS sécurisé refuse le DNS non chiffré. Pour vous connecter : ouvrez IbexWall, désactivez 'Refuser le DNS non chiffré', connectez-vous, puis réactivez-le.",
+            ),
+            "de" => (
+                "Netzwerk mit Anmeldung erkannt",
+                "Dieses Netzwerk verlangt eine Anmeldung, bevor es Datenverkehr zulässt, und die Seite lädt womöglich nicht, solange das sichere DNS unverschlüsseltes DNS ablehnt. So melden Sie sich an: Öffnen Sie IbexWall, schalten Sie 'Unverschlüsseltes DNS ablehnen' aus, melden Sie sich an und schalten Sie es wieder ein.",
+            ),
+            _ => (
                 "Sign-in network detected",
                 "This network needs a login before it allows traffic, and the page may not load while Secure DNS refuses unencrypted DNS. To sign in: open IbexWall, turn off 'Refuse unencrypted DNS', sign in, then turn it back on.",
-            )
+            ),
         }
     }
 
@@ -316,6 +358,15 @@ mod tests {
         let (summary, body) = ask_notification_for("pt_BR.UTF-8", &event).unwrap();
         assert_eq!(summary, "Um programa quer se conectar");
         assert!(body.contains("Abra o IbexWall"));
+        for (lang, summary_start, word) in [
+            ("es_MX.UTF-8", "Un programa", " a "),
+            ("fr_CA.UTF-8", "Un programme", " vers "),
+            ("de_AT.UTF-8", "Ein Programm", " zu "),
+        ] {
+            let (summary, body) = ask_notification_for(lang, &event).unwrap();
+            assert!(summary.starts_with(summary_start), "{lang}: {summary}");
+            assert!(body.contains(word), "{lang}: {body}");
+        }
         // Only questions are announced, and only well formed ones.
         assert!(
             ask_notification_for("", &serde_json::json!({ "kind": "apps.first_connection" }))
@@ -346,6 +397,9 @@ mod tests {
         for (lang, marker) in [
             ("en_US.UTF-8", "Refuse unencrypted DNS"),
             ("pt_BR.UTF-8", "Recusar DNS sem criptografia"),
+            ("es_ES.UTF-8", "Rechazar DNS sin cifrar"),
+            ("fr_FR.UTF-8", "Refuser le DNS non chiffré"),
+            ("de_DE.UTF-8", "Unverschlüsseltes DNS ablehnen"),
         ] {
             let (summary, body) = portal_notification_for(lang);
             assert!(body.contains(marker), "{lang}: {body}");

@@ -364,3 +364,25 @@ first mandatory review point.
 - **Unencrypted DNS on a local network** is allowed only for local-range
   addresses, announced to the person as information, and routed per domain; it
   protects nothing against someone on that network, which the message says.
+
+## 16. Packaging: the release key and the uninstall
+
+- **Release key.** The daemon is built with the release public key embedded
+  (`IBEXWALL_RELEASE_PUBKEY`, `crates/ibexwall-core/build.rs`). It verifies the
+  manifest signature of official and community plugins against it, and trusts
+  a local plugin only with an explicit `--dev-key`. A build without a key trusts
+  no plugin by itself. A packaged install therefore runs exactly the plugins
+  it shipped: a tampered manifest is refused (checked in the VM matrix). The
+  private key never enters the repository; `cargo xtask stage --key-dir`
+  takes it from the maintainer's directory at release time, and until then the
+  test packages are signed with the development key.
+- **Install.** The maintainer scripts only create users and directories,
+  switch on sockets that cost nothing until the core connects, and start them.
+  They apply no IbexWall change: every change still needs a plan, a snapshot
+  and the person's approval.
+- **Uninstall.** `ibexwalld --cleanup` runs before the files are removed. It
+  rolls back each transaction still in effect, newest first, through its own
+  snapshot, and removes what is left of IbexWall's nftables table. It cannot be
+  pointed at anything else: the snapshots hold only what IbexWall changed. A
+  transaction that cannot be undone is reported and does not stop the rest, and
+  the removal itself does not fail. The user's data stays until a purge.

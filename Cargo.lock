@@ -2473,6 +2473,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ibexwall-plugin-exposure"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "ibexwall-plugin-firewall"
 version = "0.1.0"
 dependencies = [
@@ -2591,6 +2602,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ibexwall-plugin-openscap"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "ibexwall-plugin-persistence"
 version = "0.1.0"
 dependencies = [
@@ -2622,6 +2644,17 @@ dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
  "proptest",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "ibexwall-plugin-rootkit"
+version = "0.1.0"
+dependencies = [
+ "ibexwall-proto",
+ "ibexwall-sdk",
+ "serde",
  "serde_json",
  "tokio",
 ]
@@ -2728,6 +2761,7 @@ dependencies = [
  "ibexwall-plugin-coredump",
  "ibexwall-plugin-cves",
  "ibexwall-plugin-dns",
+ "ibexwall-plugin-exposure",
  "ibexwall-plugin-firewall",
  "ibexwall-plugin-firmware",
  "ibexwall-plugin-flatpak-network",
@@ -2738,9 +2772,11 @@ dependencies = [
  "ibexwall-plugin-modules",
  "ibexwall-plugin-mounts",
  "ibexwall-plugin-nts",
+ "ibexwall-plugin-openscap",
  "ibexwall-plugin-persistence",
  "ibexwall-plugin-ports",
  "ibexwall-plugin-posture",
+ "ibexwall-plugin-rootkit",
  "ibexwall-plugin-session-lock",
  "ibexwall-plugin-ssh",
  "ibexwall-plugin-sysctl",

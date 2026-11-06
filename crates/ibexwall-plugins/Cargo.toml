@@ -42,6 +42,9 @@ ibexwall-plugin-ssh = { path = "../../plugins/system.ssh/src", version = "0.1.0"
 ibexwall-plugin-assistant = { path = "../../plugins/system.assistant/src", version = "0.1.0" }
 ibexwall-plugin-hardening = { path = "../../plugins/system.hardening/src", version = "0.1.0" }
 ibexwall-plugin-modules = { path = "../../plugins/system.modules/src", version = "0.1.0" }
+ibexwall-plugin-rootkit = { path = "../../plugins/endpoint.rootkit/src", version = "0.1.0" }
+ibexwall-plugin-exposure = { path = "../../plugins/net.exposure/src", version = "0.1.0" }
+ibexwall-plugin-openscap = { path = "../../plugins/system.openscap/src", version = "0.1.0" }
 ibexwall-plugin-sysctl = { path = "../../plugins/system.sysctl/src", version = "0.1.0" }
 ibexwall-plugin-updates = { path = "../../plugins/system.updates/src", version = "0.1.0" }
 ibexwall-plugin-cves = { path = "../../plugins/vuln.cves/src", version = "0.1.0" }

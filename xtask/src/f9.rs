@@ -12,12 +12,15 @@ use anyhow::Result;
 use super::f1::{install_plugin, provision, run_script, start_daemon};
 use super::vm::{Vm, run_capture};
 
-const PLUGINS: [&str; 5] = [
+const PLUGINS: [&str; 8] = [
     "endpoint.isolate",
     "net.vpn",
     "endpoint.persistence",
     "endpoint.integrity",
     "endpoint.av",
+    "endpoint.rootkit",
+    "net.exposure",
+    "system.openscap",
 ];
 
 const LIB: &str = r#"
@@ -462,7 +465,7 @@ sudo ip link set vethc master ibxbr0
 sudo ip link set vethc up
 sudo ip netns exec vpnsrv ip addr add 10.99.0.2/24 dev veths
 sudo ip netns exec vpnsrv ip link set veths up; sudo ip netns exec vpnsrv ip link set lo up
-for i in $(seq 1 20); do sudo nmcli -t -f DEVICE,STATE device | grep -q '^ibxbr0:connected' && break; sudo nmcli connection up ibxup >/dev/null 2>&1 || true; sleep 1; done
+for i in $(seq 1 45); do sudo nmcli -t -f DEVICE,STATE device | grep -q '^ibxbr0:connected' && break; sudo nmcli connection up ibxup >/dev/null 2>&1 || true; sleep 1; done
 sudo nmcli -t -f DEVICE,STATE device | grep -q '^ibxbr0:connected' || { echo "THE UPLINK BRIDGE IS NOT CONNECTED: $(sudo nmcli -t -f DEVICE,STATE device | tr '\n' ' ')"; exit 1; }
 sudo ip netns exec vpnsrv $OVPN --daemon ibxovpn --log /tmp/ovpn-server.log --dev tun --proto udp --local 10.99.0.2 --port 1194 --server 10.200.0.0 255.255.255.0 --topology subnet --ca ca.crt --cert server.crt --key server.key --dh none --tls-crypt tc.key --cipher AES-256-GCM --data-ciphers AES-256-GCM --keepalive 2 10 --persist-key --persist-tun
 sleep 3
@@ -529,6 +532,117 @@ sudo ip netns del vpnsrv; sudo ip link del vethc 2>/dev/null || true; sudo ip li
 echo "METRIC: rolled back: files, NetworkManager's profile gone, foreign tables identical"
 "#;
 
+/// Rootkit scanners: installed from the distribution, run as a oneshot unit,
+/// their output read back. The tools flag what they flag on a clean image, so
+/// the test proves the machinery (ran, read, bounded, undone), not a verdict.
+const ROOTKIT: &str = r#"
+if command -v apt-get >/dev/null; then sudo apt-get update -qq; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends rkhunter chkrootkit >/dev/null 2>&1 || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends rkhunter >/dev/null
+elif command -v dnf >/dev/null; then sudo dnf install -y -q rkhunter || true; sudo dnf install -y -q chkrootkit >/dev/null 2>&1 || true
+else sudo pacman -Sy --noconfirm --needed rkhunter >/dev/null; fi
+sudo sh -c 'command -v rkhunter' >/dev/null || { echo "rkhunter COULD NOT BE INSTALLED"; exit 1; }
+sudo ibexctl plugins enable endpoint.rootkit >/dev/null
+note() { sudo ibexctl check endpoint.rootkit --json 2>/dev/null | python3 -c '
+import json,sys
+d=json.JSONDecoder().raw_decode(sys.stdin.read())[0]
+n=[f for f in d["findings"] if f["id"]=="detect.rootkit"][0]
+assert n["severity"]=="info"
+print(n["args"]["case"])'; }
+[ "$(note)" = ready ] || { echo "THE NOTE SHOULD SAY READY: $(note)"; exit 1; }
+
+apply_plan endpoint.rootkit --set action=scan
+SCAN_TX=$TX
+sudo test -f /var/lib/ibexwall/rootkit/scan.out || { echo "NO SCAN OUTPUT"; sudo journalctl -u ibexwall-rootkit-scan -n 15 --no-pager; exit 1; }
+sudo ibexctl check endpoint.rootkit --json > /tmp/rk-check.json 2>/dev/null || true
+python3 - <<'PYEOF'
+import json
+d = json.JSONDecoder().raw_decode(open("/tmp/rk-check.json").read())[0]
+leads = [f for f in d["findings"] if f["id"].startswith("rootkit.")]
+assert len(leads) <= 20, len(leads)
+for f in leads:
+    assert f["severity"] in ("medium", "high", "low"), f
+    assert "<" not in f["args"]["text"], f
+assert [f for f in d["findings"] if f["id"] == "detect.rootkit"][0]["args"]["case"] == "scanned"
+print("leads", len(leads))
+PYEOF
+echo "METRIC: rootkit scan ran as a unit, its output was read ($(sudo grep -c . /var/lib/ibexwall/rootkit/scan.out) lines), $(python3 -c 'import json;d=json.JSONDecoder().raw_decode(open("/tmp/rk-check.json").read())[0];print(len([f for f in d["findings"] if f["id"].startswith("rootkit.")]))') leads, none treated as proof"
+[ "$(note)" = scanned ] || { echo "THE NOTE SHOULD SAY SCANNED"; exit 1; }
+echo "METRIC: $(systemd-analyze security ibexwall-rootkit-scan.service --no-pager 2>&1 | tail -1)"
+sudo ibexctl rollback "$SCAN_TX" --json >/dev/null || { echo "ROLLBACK FAILED"; exit 1; }
+sudo test ! -e /etc/systemd/system/ibexwall-rootkit-scan.service || { echo "THE UNIT SURVIVED THE ROLLBACK"; exit 1; }
+"#;
+
+/// nmap against this machine's own addresses only.
+const EXPOSURE: &str = r#"
+pkg nmap >/dev/null
+sudo ibexctl plugins enable net.exposure >/dev/null
+# There is no way to name a target.
+if sudo ibexctl plan net.exposure --set action=scan --set target=8.8.8.8 --json >/dev/null 2>&1; then echo "A TARGET WAS ACCEPTED"; exit 1; fi
+apply_plan net.exposure --set action=scan
+EXP_TX=$TX
+sudo test -f /var/lib/ibexwall/exposure/nmap.xml || { echo "NO NMAP OUTPUT"; sudo journalctl -u ibexwall-exposure-scan -n 8 --no-pager; exit 1; }
+# The command holds this machine's addresses and nothing else.
+UNIT=$(sudo cat /etc/systemd/system/ibexwall-exposure-scan.service)
+TARGETS=$(echo "$UNIT" | grep '^ExecStart=' | sed 's#.*-oX - ##' | tr ' ' '\n' | sort)
+MINE=$(ip -4 -o addr show | awk '{print $4}' | cut -d/ -f1 | sort)
+[ "$TARGETS" = "$MINE" ] || { echo "THE TARGETS ARE NOT THIS MACHINE'S ADDRESSES: [$TARGETS] vs [$MINE]"; exit 1; }
+sudo ibexctl check net.exposure --json > /tmp/exp-check.json 2>/dev/null || true
+sudo head -c 400 /var/lib/ibexwall/exposure/nmap.xml > /tmp/nmap-head.txt 2>&1
+python3 - <<'PYEOF'
+import json
+d = json.JSONDecoder().raw_decode(open("/tmp/exp-check.json").read())[0]
+ids = {f["id"]: f for f in d["findings"]}
+assert "exposure.tcp.22" in ids, (sorted(ids), open("/tmp/nmap-head.txt").read())
+assert all(f["severity"] == "info" for f in d["findings"]), d["findings"]
+assert ids["detect.exposure"]["args"]["case"] == "scanned"
+print("ports", len([i for i in ids if i.startswith("exposure.tcp")]))
+PYEOF
+echo "METRIC: nmap scanned only this machine's own addresses ($(echo $MINE | tr '\n' ' ')) and found sshd on port 22"
+sudo ibexctl rollback "$EXP_TX" --json >/dev/null || { echo "ROLLBACK FAILED"; exit 1; }
+sudo test ! -e /etc/systemd/system/ibexwall-exposure-scan.service || { echo "THE UNIT SURVIVED THE ROLLBACK"; exit 1; }
+"#;
+
+/// OpenSCAP with the distribution's own content, where it exists.
+const OPENSCAP: &str = r#"
+if command -v dnf >/dev/null; then sudo dnf install -y -q openscap-scanner scap-security-guide >/dev/null
+elif command -v apt-get >/dev/null; then sudo apt-get update -qq; sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends openscap-scanner >/dev/null; for p in ssg-base ssg-debderived ssg-debian ssg-applications; do sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends $p >/dev/null 2>&1 || true; done
+else sudo pacman -Sy --noconfirm --needed openscap >/dev/null; fi
+sudo ibexctl plugins enable system.openscap >/dev/null
+note() { sudo ibexctl check system.openscap --json 2>/dev/null | python3 -c '
+import json,sys
+d=json.JSONDecoder().raw_decode(sys.stdin.read())[0]
+n=[f for f in d["findings"] if f["id"]=="detect.openscap"][0]
+assert n["severity"]=="info"
+print(n["args"]["case"])'; }
+CASE=$(note)
+if [ "$CASE" = no-content ] || [ "$CASE" = none ]; then
+  # No content for this distribution: the plugin says so and plans nothing.
+  if sudo ibexctl plan system.openscap --set action=scan --json >/dev/null 2>&1; then echo "A SCAN WAS PLANNED WITHOUT CONTENT"; exit 1; fi
+  echo "METRIC: no SCAP content for this distribution ($CASE): the plugin says so and plans nothing"
+  exit 0
+fi
+[ "$CASE" = ready ] || { echo "THE NOTE SHOULD SAY READY: $CASE"; exit 1; }
+if sudo ibexctl plan system.openscap --set action=scan --set profile=no_such_profile --json >/dev/null 2>&1; then echo "A MADE-UP PROFILE WAS PLANNED"; exit 1; fi
+apply_plan system.openscap --set action=scan
+SCAP_TX=$TX
+sudo test -s /var/lib/ibexwall/openscap/results.xml || { echo "NO RESULTS"; sudo journalctl -u ibexwall-openscap-scan -n 15 --no-pager; exit 1; }
+sudo ibexctl check system.openscap --json > /tmp/scap-check.json 2>/dev/null || true
+python3 - <<'PYEOF'
+import json
+d = json.JSONDecoder().raw_decode(open("/tmp/scap-check.json").read())[0]
+fails = [f for f in d["findings"] if f["id"].startswith("openscap.")]
+assert len(fails) <= 25
+order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+ranks = [order[f["severity"]] for f in fails]
+assert ranks == sorted(ranks), "worst first"
+n = [f for f in d["findings"] if f["id"] == "detect.openscap"][0]
+print("passed", n["args"]["passed"], "failed", n["args"]["failed"], "profile", n["args"]["profile"])
+PYEOF
+echo "METRIC: OpenSCAP checked the standard profile and its failed rules came back worst first"
+echo "METRIC: $(systemd-analyze security ibexwall-openscap-scan.service --no-pager 2>&1 | tail -1)"
+sudo ibexctl rollback "$SCAP_TX" --json >/dev/null || { echo "ROLLBACK FAILED"; exit 1; }
+sudo test ! -e /etc/systemd/system/ibexwall-openscap-scan.service || { echo "THE UNIT SURVIVED THE ROLLBACK"; exit 1; }
+"#;
+
 pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     println!("== f9: build ==");
     let mut args = vec!["build".to_string(), "--release".to_string()];
@@ -574,6 +688,21 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     scenario!(
         "a1 endpoint.av: EICAR is flagged by ClamAV and YARA, scans can be scheduled and undone",
         AV
+    );
+
+    scenario!(
+        "r1 endpoint.rootkit: rkhunter and chkrootkit run as a unit and their leads are read, bounded, and undone",
+        ROOTKIT
+    );
+
+    scenario!(
+        "x1 net.exposure: nmap scans this machine's own addresses and only those",
+        EXPOSURE
+    );
+
+    scenario!(
+        "o1 system.openscap: a profile is checked with the distribution's content, or the plugin says there is none",
+        OPENSCAP
     );
 
     scenario!(

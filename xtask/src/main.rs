@@ -53,6 +53,9 @@ Commands:
                      Build twice from copies of HEAD and compare every file
   plugin-units       Write the systemd socket and service unit of every plugin
                      (--out DIR, default target/plugin-units)
+  releasekey --out DIR
+                     Generate a fresh official release key (minisign, ed25519)
+                     without signing anything or touching the dev key
   devkey             Generate the dev plugin-signing key and sign
                      plugins/*/plugin.toml (dev builds only)
 ";
@@ -139,6 +142,22 @@ fn main() {
                 }
             }
             if let Err(err) = stage::run_stage(&options) {
+                eprintln!("error: {err:#}");
+                std::process::exit(1);
+            }
+        }
+        Some("releasekey") => {
+            let mut out: std::path::PathBuf = "target/releasekey".into();
+            while let Some(arg) = args.next() {
+                match arg.as_str() {
+                    "--out" => out = args.next().unwrap_or_default().into(),
+                    other => {
+                        eprintln!("error: unknown releasekey flag `{other}`");
+                        std::process::exit(2);
+                    }
+                }
+            }
+            if let Err(err) = devkey::run_release(&out) {
                 eprintln!("error: {err:#}");
                 std::process::exit(1);
             }

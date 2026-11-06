@@ -56,6 +56,56 @@ pub(crate) struct KeyPair {
     key_id: [u8; 8],
 }
 
+/// A fresh keypair, written in the minisign wire format the daemon and the
+/// release workflow read: the public key as a comment plus base64, the secret
+/// as raw base64 of the 32-byte seed. The secret is never the encrypted
+/// minisign format, so it plugs straight into the signing code.
+fn generate(pub_path: &Path, secret_path: &Path, comment: &str) -> Result<KeyPair> {
+    let mut secret_bytes = [0u8; 32];
+    getrandom_fill(&mut secret_bytes)?;
+    let secret = ed25519_dalek::SigningKey::from_bytes(&secret_bytes);
+    let key_id = key_id_for(&secret);
+
+    let mut pub_bytes = Vec::with_capacity(42);
+    pub_bytes.extend_from_slice(&KEY_ALG);
+    pub_bytes.extend_from_slice(&key_id);
+    pub_bytes.extend_from_slice(secret.verifying_key().as_bytes());
+    let pub_b64 = base64::engine::general_purpose::STANDARD.encode(&pub_bytes);
+    std::fs::write(
+        pub_path,
+        format!("untrusted comment: {comment}\n{pub_b64}\n"),
+    )?;
+
+    let secret_b64 = base64::engine::general_purpose::STANDARD.encode(secret_bytes);
+    std::fs::write(secret_path, format!("{secret_b64}\n"))?;
+    Ok(KeyPair { secret, key_id })
+}
+
+/// `cargo xtask releasekey --out DIR`: the official release key, generated
+/// fresh, signing nothing and never touching the development key.
+pub(crate) fn run_release(out: &Path) -> Result<()> {
+    std::fs::create_dir_all(out)?;
+    let pub_path = out.join("release.pub");
+    let secret_path = out.join("release.key");
+    generate(&pub_path, &secret_path, "ibexwall release key")?;
+    println!("public key: {}", pub_path.display());
+    println!(
+        "secret key: {} (keep it offline; never commit it)",
+        secret_path.display()
+    );
+    println!();
+    println!("Next steps:");
+    println!(
+        "  cp {} packaging/release.pub   # commit the public key",
+        pub_path.display()
+    );
+    println!(
+        "  set the repository secret RELEASE_SIGNING_KEY to the single line in {}",
+        secret_path.display()
+    );
+    Ok(())
+}
+
 pub(crate) fn ensure_keypair(pub_path: &Path, secret_path: &Path) -> Result<KeyPair> {
     if pub_path.is_file() && secret_path.is_file() {
         let secret_b64 = std::fs::read_to_string(secret_path)?.trim().to_string();
@@ -71,28 +121,9 @@ pub(crate) fn ensure_keypair(pub_path: &Path, secret_path: &Path) -> Result<KeyP
         let key_id = key_id_for(&secret);
         return Ok(KeyPair { secret, key_id });
     }
-    let mut secret_bytes = [0u8; 32];
-    getrandom_fill(&mut secret_bytes)?;
-    let secret = ed25519_dalek::SigningKey::from_bytes(&secret_bytes);
-    let key_id = key_id_for(&secret);
-
-    // Public key file: comment line + base64(42B).
-    let mut pub_bytes = Vec::with_capacity(42);
-    pub_bytes.extend_from_slice(&KEY_ALG);
-    pub_bytes.extend_from_slice(&key_id);
-    pub_bytes.extend_from_slice(secret.verifying_key().as_bytes());
-    let pub_b64 = base64::engine::general_purpose::STANDARD.encode(&pub_bytes);
-    std::fs::write(
-        pub_path,
-        format!("untrusted comment: ibexwall dev key\n{pub_b64}\n"),
-    )?;
-
-    // Secret key file: dev-only raw base64 (NOT the encrypted minisign
-    // secret format; this key never leaves the build tree).
-    let secret_b64 = base64::engine::general_purpose::STANDARD.encode(secret_bytes);
-    std::fs::write(secret_path, format!("{secret_b64}\n"))?;
+    let pair = generate(pub_path, secret_path, "ibexwall dev key")?;
     println!("generated new dev keypair");
-    Ok(KeyPair { secret, key_id })
+    Ok(pair)
 }
 
 fn key_id_for(secret: &ed25519_dalek::SigningKey) -> [u8; 8] {
@@ -154,6 +185,32 @@ fn workspace_root() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_release_key_is_fresh_correctly_labelled_and_a_valid_minisign_key() {
+        let dir = std::env::temp_dir().join(format!("releasekey-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        run_release(&dir).unwrap();
+        // The public key is minisign wire format with the release comment.
+        let pub_text = std::fs::read_to_string(dir.join("release.pub")).unwrap();
+        assert!(pub_text.contains("ibexwall release key"), "{pub_text}");
+        let public_key = minisign_verify::PublicKey::decode(&pub_text).unwrap();
+        // The secret is raw base64 of the 32-byte seed, not the encrypted form.
+        let secret_b64 = std::fs::read_to_string(dir.join("release.key")).unwrap();
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(secret_b64.trim())
+            .unwrap();
+        assert_eq!(bytes.len(), 32);
+        // The key that was written signs data the written public key verifies.
+        let secret = ed25519_dalek::SigningKey::from_bytes(bytes.as_slice().try_into().unwrap());
+        let key_id = key_id_for(&secret);
+        let pair = KeyPair { secret, key_id };
+        let signature = sign_labelled(&pair, b"payload", "a file", "ibexwall release signature");
+        let data = b"payload";
+        let sig = minisign_verify::Signature::decode(&signature).unwrap();
+        public_key.verify(data, &sig, false).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn signatures_verify_with_minisign_verify() {

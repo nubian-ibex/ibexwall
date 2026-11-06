@@ -21,4 +21,5 @@ blake2.workspace = true
 sha2.workspace = true
 minisign-verify.workspace = true
 ibexwall-core = { path = "../crates/ibexwall-core", version = "0.1.0" }
+ibexwall-sys.workspace = true
 toml.workspace = true

@@ -1,0 +1,80 @@
+# The release: built from a tag, signed with the maintainer's key, with an SBOM
+# and a provenance statement of our own, and GitHub's attestation beside it.
+# Nothing here runs until a maintainer pushes a tag `vX.Y.Z`.
+#
+# Secrets (repository settings, never in the repository):
+#   RELEASE_SIGNING_KEY  the secret key file made by `cargo xtask devkey` or the
+#                        maintainer's own tool, in the format xtask reads
+# The public key is `packaging/release.pub`; the daemon is built with it.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release and upload the files
+      id-token: write # the attestation is signed with the workflow's identity
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: ui/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: ui/pnpm-lock.yaml
+      - name: system libraries of the desktop app
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+      - name: the eBPF programs (nightly, rust-src, bpf-linker)
+        run: |
+          rustup toolchain install nightly --profile minimal --component rust-src
+          cargo install bpf-linker --locked
+          cargo xtask ebpf
+      - name: the interface
+        run: |
+          pnpm -C ui install --frozen-lockfile
+          pnpm -C ui build
+      - name: the signing key
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          set -eu
+          test -f packaging/release.pub || { echo "no release key yet: add packaging/release.pub"; exit 1; }
+          umask 077
+          mkdir -p "$RUNNER_TEMP/keys"
+          cp packaging/release.pub "$RUNNER_TEMP/keys/dev.pub"
+          printf '%s\n' "$RELEASE_SIGNING_KEY" > "$RUNNER_TEMP/keys/dev.key"
+      - name: build, sign, and list what is in it
+        run: |
+          cargo xtask release --version "${GITHUB_REF_NAME#v}" \
+            --key-dir "$RUNNER_TEMP/keys" --out dist
+          rm -f "$RUNNER_TEMP/keys/dev.key"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.o
+            dist/*.cdx.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release
+          path: dist/
+          if-no-files-found: error
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* --draft --verify-tag \
+            --title "IbexWall ${GITHUB_REF_NAME#v}" \
+            --notes "Verify with \`cargo xtask verify-release\` or see docs/release.md."

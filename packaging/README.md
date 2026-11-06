@@ -78,5 +78,18 @@ that no unit, process, file or kernel setting is left.
 - `rpm/`, `deb/`, `arch/`: the three formats.
 - `scripts.sh`: the install, upgrade and removal steps.
 
-SELinux and AppArmor policy come with M5, and signing, the SBOM and
-reproducibility with M6 (`docs/plans/F10-packaging-release.md`).
+## Mandatory access control
+
+`ibexwall-apparmor` (Debian and Ubuntu) and `ibexwall-selinux` (Fedora and the
+like) confine the resolver, the MCP server and the plugins, and the AppArmor
+profile of the daemon is generated from the plugin manifests. What is and is not
+confined, and why, is ADR-0044. The AppArmor profiles live under
+`/usr/share/ibexwall/apparmor` and are linked into `/etc/apparmor.d`; the
+units ask for them with `AppArmorProfile=`, so a program a person starts
+themselves is not confined. The SELinux module is built by the RPM from
+`selinux/`.
+
+## Supply chain
+
+Signing, the SBOM, the provenance statement and the reproducibility check are
+`cargo xtask release`, `verify-release` and `repro`; see `docs/release.md`.

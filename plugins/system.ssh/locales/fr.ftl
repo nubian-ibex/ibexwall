@@ -1,0 +1,15 @@
+ssh-root-title = Le serveur SSH laisse root se connecter avec un mot de passe
+ssh-root-summary = PermitRootLogin vaut { $value }. Toute personne qui devine le mot de passe root obtient le contrôle total.
+ssh-empty-title = Le serveur SSH accepte les mots de passe vides
+ssh-empty-summary = PermitEmptyPasswords vaut yes : un compte sans mot de passe peut se connecter par le réseau.
+ssh-x11-title = Le serveur SSH transfère les sessions graphiques
+ssh-x11-summary = X11Forwarding vaut yes. Un serveur compromis peut atteindre l'écran et le clavier du client.
+ssh-password-title = Le serveur SSH accepte les mots de passe
+ssh-password-summary = La connexion par mot de passe peut être devinée par le réseau ; les clés, non.
+ssh-may-affect-root = Se connecter en root par SSH avec un mot de passe cesse de fonctionner. Utilisez un utilisateur normal et sudo, ou une clé.
+ssh-may-affect-password = Sans mots de passe, seuls les utilisateurs ayant une clé autorisée peuvent se connecter. Vérifiez la vôtre d'abord, sinon vous risquez de vous enfermer dehors.
+detect-ssh-title = SSH sur cet ordinateur
+detect-ssh-absent = Aucun serveur SSH n'est configuré ici, donc il n'y a rien à durcir.
+detect-ssh-hardened = Le serveur SSH (port { $port }) n'autorise ni root avec un mot de passe, ni les mots de passe vides, ni le transfert X11. La connexion root est { $root }.
+detect-ssh-hardened-password = Le serveur SSH (port { $port }) est durci, sauf que toute personne ayant un mot de passe peut se connecter. Ne le désactivez qu'après avoir copié une clé pour chaque compte qui en a besoin, sinon vous serez enfermé dehors.
+detect-ssh-weak = Le serveur SSH (port { $port }) autorise quelque chose de risqué : la connexion root est { $root }, ou les mots de passe vides ou le transfert X11 sont activés. Une modification suggérée qui les ferme est prête à être examinée ci-dessous ; elle conserve la connexion par mot de passe.

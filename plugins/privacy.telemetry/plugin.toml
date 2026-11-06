@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "Telemetry"
 pt-BR = "Telemetria"
+es = "Telemetría"
+fr = "Télémétrie"
+de = "Telemetrie"
 
 [description]
 en = "Lists the usage reporting the distribution and some apps send, so you can decide about it."
 pt-BR = "Lista os relatórios de uso que a distribuição e alguns apps enviam, para você decidir sobre eles."
+es = "Enumera los informes de uso que envían la distribución y algunas aplicaciones, para que puedas decidir al respecto."
+fr = "Liste les rapports d'usage que la distribution et certaines applications envoient, pour que vous puissiez décider."
+de = "Listet die Nutzungsberichte auf, die die Distribution und einige Apps senden, damit Sie darüber entscheiden können."
 
 [privileges]
 # Read-only check: the core executes nothing on its behalf.

@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "Firmware"
 pt-BR = "Firmware"
+es = "Firmware"
+fr = "Micrologiciels"
+de = "Firmware"
 
 [description]
 en = "Checks that the firmware update service (fwupd) is installed and refreshing its list."
 pt-BR = "Verifica se o serviço de atualização de firmware (fwupd) está instalado e atualizando sua lista."
+es = "Comprueba que el servicio de actualización de firmware (fwupd) está instalado y actualizando su lista."
+fr = "Vérifie que le service de mise à jour des micrologiciels (fwupd) est installé et actualise sa liste."
+de = "Prüft, ob der Firmware-Update-Dienst (fwupd) installiert ist und seine Liste aktualisiert."
 
 [privileges]
 units = ["fwupd-refresh.timer"]

@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "Wi-Fi privacy"
 pt-BR = "Privacidade do Wi-Fi"
+es = "Privacidad del Wi-Fi"
+fr = "Confidentialité du Wi-Fi"
+de = "WLAN-Datenschutz"
 
 [description]
 en = "Checks that Wi-Fi uses a changed hardware address and that open networks are not remembered, and sets the address."
 pt-BR = "Verifica se o Wi-Fi usa um endereço de hardware alterado e se redes abertas não ficam salvas, e configura o endereço."
+es = "Comprueba que el Wi-Fi usa una dirección de hardware cambiada y que no se recuerdan las redes abiertas, y establece la dirección."
+fr = "Vérifie que le Wi-Fi utilise une adresse matérielle modifiée et que les réseaux ouverts ne sont pas mémorisés, et définit l'adresse."
+de = "Prüft, ob das WLAN eine geänderte Hardware-Adresse verwendet und offene Netzwerke nicht gespeichert werden, und setzt die Adresse."
 
 [privileges]
 write_paths = ["/etc/NetworkManager/conf.d"]

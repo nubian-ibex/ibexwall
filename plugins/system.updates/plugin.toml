@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian"]
 [name]
 en = "Automatic updates"
 pt-BR = "Atualizações automáticas"
+es = "Actualizaciones automáticas"
+fr = "Mises à jour automatiques"
+de = "Automatische Updates"
 
 [description]
 en = "Checks that security updates install themselves, and turns it on when the distro's tool is installed."
 pt-BR = "Verifica se as atualizações de segurança se instalam sozinhas, e liga isso quando a ferramenta da distro está instalada."
+es = "Comprueba que las actualizaciones de seguridad se instalan solas y lo activa cuando la herramienta de la distribución está instalada."
+fr = "Vérifie que les mises à jour de sécurité s'installent d'elles-mêmes, et l'active lorsque l'outil de la distribution est installé."
+de = "Prüft, ob sich Sicherheitsupdates selbst installieren, und schaltet dies ein, wenn das Werkzeug der Distribution installiert ist."
 
 [privileges]
 write_paths = ["/etc/apt/apt.conf.d", "/etc/dnf/dnf5-plugins/automatic.d"]

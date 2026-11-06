@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "AI assistants"
 pt-BR = "Assistentes de IA"
+es = "Asistentes de IA"
+fr = "Assistants IA"
+de = "KI-Assistenten"
 
 [description]
 en = "What an AI assistant may read, plan or propose, and the access tokens for assistants on other machines."
 pt-BR = "O que um assistente de IA pode ler, planejar ou propor, e as chaves de acesso para assistentes em outras máquinas."
+es = "Qué puede leer, planificar o proponer un asistente de IA, y los tokens de acceso para asistentes en otras máquinas."
+fr = "Ce qu'un assistant IA peut lire, planifier ou proposer, et les jetons d'accès pour les assistants sur d'autres machines."
+de = "Was ein KI-Assistent lesen, planen oder vorschlagen darf, und die Zugriffstoken für Assistenten auf anderen Rechnern."
 
 [privileges]
 write_paths = ["/etc/ibexwall/mcp.toml", "/etc/ibexwall/mcp"]

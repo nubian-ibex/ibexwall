@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "Secure time (NTS)"
 pt-BR = "Hora segura (NTS)"
+es = "Hora segura (NTS)"
+fr = "Heure sécurisée (NTS)"
+de = "Sichere Zeit (NTS)"
 
 [description]
 en = "Checks that chrony takes the time from servers it can authenticate (NTS), and adds them."
 pt-BR = "Verifica se o chrony obtém a hora de servidores que ele consegue autenticar (NTS), e os adiciona."
+es = "Comprueba que chrony toma la hora de servidores que puede autenticar (NTS), y los añade."
+fr = "Vérifie que chrony prend l'heure auprès de serveurs qu'il peut authentifier (NTS), et les ajoute."
+de = "Prüft, ob chrony die Zeit von Servern bezieht, die es authentifizieren kann (NTS), und fügt solche hinzu."
 
 [privileges]
 write_paths = [

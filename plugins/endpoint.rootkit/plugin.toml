@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "Rootkit scan"
 pt-BR = "Busca por rootkits"
+es = "Análisis de rootkits"
+fr = "Analyse de rootkits"
+de = "Rootkit-Scan"
 
 [description]
 en = "Runs rkhunter and chkrootkit, on demand or on a schedule, and reports what they flag. Their warnings need a person's review: they are not proof."
 pt-BR = "Executa o rkhunter e o chkrootkit, sob demanda ou em horário marcado, e relata o que eles apontam. Os avisos precisam da revisão de uma pessoa: não são prova."
+es = "Ejecuta rkhunter y chkrootkit, bajo demanda o de forma programada, e informa de lo que marcan. Sus avisos necesitan la revisión de una persona: no son una prueba."
+fr = "Exécute rkhunter et chkrootkit, à la demande ou selon un calendrier, et signale ce qu'ils relèvent. Leurs avertissements demandent l'examen d'une personne : ce ne sont pas des preuves."
+de = "Führt rkhunter und chkrootkit auf Anforderung oder nach Zeitplan aus und meldet, was sie markieren. Ihre Warnungen müssen von einem Menschen geprüft werden: Sie sind kein Beweis."
 
 [privileges]
 write_paths = ["/etc/systemd/system/ibexwall-rootkit-scan.service", "/etc/systemd/system/ibexwall-rootkit-scan.timer", "/var/lib/ibexwall/rootkit/.managed"]

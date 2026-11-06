@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "System posture"
 pt-BR = "Segurança do sistema"
+es = "Postura del sistema"
+fr = "État du système"
+de = "Systemzustand"
 
 [description]
 en = "Checks how well this computer is protected: boot, disk, firewall and accounts."
 pt-BR = "Verifica o quanto este computador está protegido: boot, disco, firewall e contas."
+es = "Comprueba lo bien protegido que está este equipo: arranque, disco, cortafuegos y cuentas."
+fr = "Vérifie à quel point cet ordinateur est protégé : démarrage, disque, pare-feu et comptes."
+de = "Prüft, wie gut dieser Computer geschützt ist: Start, Festplatte, Firewall und Konten."
 
 [privileges]
 # Read-only check: the core executes nothing on its behalf.

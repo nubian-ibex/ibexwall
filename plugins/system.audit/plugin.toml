@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "Security audit"
 pt-BR = "Auditoria de segurança"
+es = "Auditoría de seguridad"
+fr = "Audit de sécurité"
+de = "Sicherheitsaudit"
 
 [description]
 en = "Shows the warnings and suggestions of Lynis when it is installed. IbexWall does not bundle or run it."
 pt-BR = "Mostra os avisos e sugestões do Lynis quando ele está instalado. O IbexWall não o inclui nem o executa."
+es = "Muestra las advertencias y sugerencias de Lynis cuando está instalado. IbexWall no lo incluye ni lo ejecuta."
+fr = "Affiche les avertissements et suggestions de Lynis lorsqu'il est installé. IbexWall ne l'embarque ni ne l'exécute."
+de = "Zeigt die Warnungen und Vorschläge von Lynis, wenn es installiert ist. IbexWall bringt es nicht mit und führt es nicht aus."
 
 [privileges]
 # Read-only check: the core executes nothing on its behalf.

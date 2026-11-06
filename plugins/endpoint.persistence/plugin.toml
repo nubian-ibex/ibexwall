@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "Persistence"
 pt-BR = "Persistência"
+es = "Persistencia"
+fr = "Persistance"
+de = "Persistenz"
 
 [description]
 en = "Watches the places a program can use to stay on this computer (units, cron, autostart, shell start-up, LD_PRELOAD) and reports what changed."
 pt-BR = "Vigia os lugares que um programa pode usar para ficar neste computador (units, cron, autostart, inicialização do shell, LD_PRELOAD) e relata o que mudou."
+es = "Vigila los lugares que un programa puede usar para quedarse en este equipo (unidades, cron, inicio automático, arranque del shell, LD_PRELOAD) e informa de lo que cambió."
+fr = "Surveille les endroits qu'un programme peut utiliser pour rester sur cet ordinateur (unités, cron, démarrage automatique, démarrage du shell, LD_PRELOAD) et signale ce qui a changé."
+de = "Überwacht die Stellen, über die sich ein Programm auf diesem Computer halten kann (Units, cron, Autostart, Shell-Start, LD_PRELOAD), und meldet, was sich geändert hat."
 
 [privileges]
 write_paths = ["/var/lib/ibexwall/persistence"]

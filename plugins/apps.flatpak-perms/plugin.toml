@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "Flatpak permissions"
 pt-BR = "Permissões dos Flatpak"
+es = "Permisos de Flatpak"
+fr = "Permissions Flatpak"
+de = "Flatpak-Berechtigungen"
 
 [description]
 en = "Lists Flatpak apps that can reach your files, devices or the sandbox's own controls."
 pt-BR = "Lista os apps Flatpak que alcançam seus arquivos, dispositivos ou os controles do próprio sandbox."
+es = "Enumera las aplicaciones Flatpak que pueden acceder a tus archivos, dispositivos o a los controles del propio sandbox."
+fr = "Liste les applications Flatpak qui peuvent atteindre vos fichiers, vos appareils ou les contrôles propres au bac à sable."
+de = "Listet Flatpak-Apps auf, die Ihre Dateien, Geräte oder die eigenen Steuerungen der Sandbox erreichen können."
 
 [privileges]
 # Read-only check: the core executes nothing on its behalf.

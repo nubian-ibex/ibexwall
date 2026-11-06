@@ -1,0 +1,7 @@
+firewall-may-affect-remote = L'accès à distance, comme SSH, cesse de fonctionner s'il n'est pas autorisé.
+firewall-may-affect-sharing = Les services que d'autres ordinateurs utilisent sur celui-ci, comme le partage de fichiers, cessent de fonctionner.
+firewall-may-affect-containers = Le réseau des conteneurs et des machines virtuelles peut cesser de fonctionner dans certaines configurations.
+detect-firewall-title = Le pare-feu de cet ordinateur
+detect-firewall-active = { $manager } fonctionne et filtre. IbexWall travaille à travers lui et laisse ses règles telles quelles.
+detect-firewall-inactive = { $manager } est installé mais ne fonctionne pas, donc rien n'est filtré. Pour le démarrer, exécutez : { $start }
+detect-firewall-none = Aucun gestionnaire de pare-feu n'a été trouvé. IbexWall peut quand même garder ses propres règles, mais un gestionnaire est la voie habituelle. Pour installer { $package }, exécutez : { $install }

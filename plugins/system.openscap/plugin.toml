@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian"]
 [name]
 en = "Security profile check (OpenSCAP)"
 pt-BR = "Verificação de perfil de segurança (OpenSCAP)"
+es = "Comprobación del perfil de seguridad (OpenSCAP)"
+fr = "Vérification du profil de sécurité (OpenSCAP)"
+de = "Prüfung des Sicherheitsprofils (OpenSCAP)"
 
 [description]
 en = "Checks this computer against a published security profile (for example ANSSI or CIS) with OpenSCAP and lists the rules that fail. It changes nothing."
 pt-BR = "Confere este computador com um perfil de segurança publicado (por exemplo ANSSI ou CIS) usando o OpenSCAP e lista as regras que falham. Não altera nada."
+es = "Comprueba este equipo con un perfil de seguridad publicado (por ejemplo ANSSI o CIS) mediante OpenSCAP y enumera las reglas que fallan. No cambia nada."
+fr = "Vérifie cet ordinateur par rapport à un profil de sécurité publié (par exemple ANSSI ou CIS) avec OpenSCAP et liste les règles en échec. Il ne modifie rien."
+de = "Prüft diesen Computer mit OpenSCAP gegen ein veröffentlichtes Sicherheitsprofil (zum Beispiel ANSSI oder CIS) und listet die nicht erfüllten Regeln auf. Es ändert nichts."
 
 [privileges]
 write_paths = ["/etc/systemd/system/ibexwall-openscap-scan.service", "/etc/systemd/system/ibexwall-openscap-scan.timer", "/var/lib/ibexwall/openscap/.managed"]

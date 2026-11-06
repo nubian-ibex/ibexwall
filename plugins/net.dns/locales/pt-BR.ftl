@@ -12,5 +12,15 @@ detect-dns-ibexwall = O DNS seguro já está rodando: as consultas saem deste co
 detect-dns-resolved-tls = Seu sistema usa { $stack } e já criptografa as consultas com TLS. Servidores em uso: { $servers }.
 detect-dns-resolved-plain = Seu sistema usa { $stack } e envia as consultas sem criptografia para: { $servers }. Uma configuração sugerida está pronta para revisar abaixo.
 detect-dns-other = Seu sistema usa { $stack } para o DNS. O IbexWall ainda não consegue gerenciar essa configuração, então nada é sugerido. Servidores em uso: { $servers }.
-detect-dns-proxy = Seu DNS já sai deste computador cifrado pelo { $proxy }, que escuta em { $listen }. Resolvedores: { $resolvers }. Ele { $dnssec -> [yes] exige *[other] não exige } DNSSEC, { $nolog -> [yes] só usa *[other] não insiste em } resolvedores que não guardam registros, e { $nofilter -> [yes] evita *[other] pode usar } resolvedores que filtram. O IbexWall deixa como está e não oferece mudança.
+detect-dns-proxy =
+    Seu DNS já sai deste computador cifrado pelo { $proxy }, que escuta em { $listen }. Resolvedores: { $resolvers }. Ele { $dnssec ->
+        [yes] exige
+       *[other] não exige
+    } DNSSEC, { $nolog ->
+        [yes] só usa
+       *[other] não insiste em
+    } resolvedores que não guardam registros, e { $nofilter ->
+        [yes] evita
+       *[other] pode usar
+    } resolvedores que filtram. O IbexWall deixa como está e não oferece mudança.
 detect-dns-proxy-idle = O { $proxy } está rodando aqui (escuta em { $listen }), mas as consultas deste computador não passam por ele. Aponte o resolvedor do sistema para ele para usá-lo. O IbexWall não sugere nada.

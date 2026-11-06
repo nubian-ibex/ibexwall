@@ -9,11 +9,17 @@
       "recommended": true,
       "title": {
         "en": "Hide kernel addresses",
-        "pt-BR": "Esconder endereços do kernel"
+        "pt-BR": "Esconder endereços do kernel",
+        "es": "Ocultar las direcciones del kernel",
+        "fr": "Masquer les adresses du noyau",
+        "de": "Kernel-Adressen verbergen"
       },
       "summary": {
         "en": "Programs without special rights can no longer read where things sit in kernel memory. Attackers use those addresses to aim exploits.",
-        "pt-BR": "Programas sem direitos especiais deixam de ler onde as coisas ficam na memória do kernel. Atacantes usam esses endereços para mirar explorações."
+        "pt-BR": "Programas sem direitos especiais deixam de ler onde as coisas ficam na memória do kernel. Atacantes usam esses endereços para mirar explorações.",
+        "es": "Los programas sin derechos especiales ya no pueden leer dónde está cada cosa en la memoria del kernel. Los atacantes usan esas direcciones para apuntar sus ataques.",
+        "fr": "Les programmes sans droits spéciaux ne peuvent plus lire où se trouvent les éléments dans la mémoire du noyau. Les attaquants utilisent ces adresses pour viser leurs exploits.",
+        "de": "Programme ohne besondere Rechte können nicht mehr lesen, wo etwas im Kernel-Speicher liegt. Angreifer nutzen diese Adressen, um Exploits gezielt auszurichten."
       },
       "breaks": null,
       "sources": [
@@ -55,11 +61,17 @@
       "recommended": true,
       "title": {
         "en": "Keep the kernel log for administrators",
-        "pt-BR": "Deixar o log do kernel só para administradores"
+        "pt-BR": "Deixar o log do kernel só para administradores",
+        "es": "Reservar el registro del kernel para los administradores",
+        "fr": "Réserver le journal du noyau aux administrateurs",
+        "de": "Kernel-Protokoll Administratoren vorbehalten"
       },
       "summary": {
         "en": "The kernel log can reveal addresses and hardware details. Only an administrator may read it.",
-        "pt-BR": "O log do kernel pode revelar endereços e detalhes do hardware. Só um administrador pode lê-lo."
+        "pt-BR": "O log do kernel pode revelar endereços e detalhes do hardware. Só um administrador pode lê-lo.",
+        "es": "El registro del kernel puede revelar direcciones y detalles del hardware. Solo un administrador puede leerlo.",
+        "fr": "Le journal du noyau peut révéler des adresses et des détails sur le matériel. Seul un administrateur peut le lire.",
+        "de": "Das Kernel-Protokoll kann Adressen und Hardware-Details verraten. Nur ein Administrator darf es lesen."
       },
       "breaks": null,
       "sources": [
@@ -101,15 +113,24 @@
       "recommended": true,
       "title": {
         "en": "Restrict eBPF to administrators",
-        "pt-BR": "Restringir o eBPF a administradores"
+        "pt-BR": "Restringir o eBPF a administradores",
+        "es": "Restringir eBPF a los administradores",
+        "fr": "Réserver eBPF aux administrateurs",
+        "de": "eBPF auf Administratoren beschränken"
       },
       "summary": {
         "en": "eBPF lets programs run code inside the kernel and has been a steady source of flaws. This limits it to privileged programs and hardens its compiler.",
-        "pt-BR": "O eBPF deixa programas executar código dentro do kernel e é fonte constante de falhas. Isto o limita a programas privilegiados."
+        "pt-BR": "O eBPF deixa programas executar código dentro do kernel e é fonte constante de falhas. Isto o limita a programas privilegiados.",
+        "es": "eBPF permite que los programas ejecuten código dentro del kernel y ha sido una fuente constante de fallos. Esto lo limita a los programas con privilegios y refuerza su compilador.",
+        "fr": "eBPF permet aux programmes d'exécuter du code dans le noyau et a été une source constante de failles. Ce réglage le limite aux programmes privilégiés et durcit son compilateur.",
+        "de": "Mit eBPF können Programme Code im Kernel ausführen, und es war immer wieder die Quelle von Fehlern. Dies beschränkt es auf privilegierte Programme und härtet seinen Compiler."
       },
       "breaks": {
         "en": "Tools that load eBPF without privileges stop working. IbexWall itself is not affected.",
-        "pt-BR": "Ferramentas que carregam eBPF sem privilégios deixam de funcionar. O próprio IbexWall não é afetado."
+        "pt-BR": "Ferramentas que carregam eBPF sem privilégios deixam de funcionar. O próprio IbexWall não é afetado.",
+        "es": "Las herramientas que cargan eBPF sin privilegios dejan de funcionar. IbexWall no se ve afectado.",
+        "fr": "Les outils qui chargent eBPF sans privilèges cessent de fonctionner. IbexWall lui-même n'est pas concerné.",
+        "de": "Werkzeuge, die eBPF ohne Rechte laden, funktionieren nicht mehr. IbexWall selbst ist nicht betroffen."
       },
       "sources": [
         {
@@ -150,11 +171,17 @@
       "recommended": true,
       "title": {
         "en": "Harden the eBPF compiler",
-        "pt-BR": "Endurecer o compilador do eBPF"
+        "pt-BR": "Endurecer o compilador do eBPF",
+        "es": "Reforzar el compilador de eBPF",
+        "fr": "Durcir le compilateur eBPF",
+        "de": "eBPF-Compiler härten"
       },
       "summary": {
         "en": "Makes the code the eBPF compiler produces harder to abuse for attacks that smuggle in chosen instructions.",
-        "pt-BR": "Torna mais difícil abusar do código que o compilador do eBPF produz em ataques que introduzem instruções escolhidas."
+        "pt-BR": "Torna mais difícil abusar do código que o compilador do eBPF produz em ataques que introduzem instruções escolhidas.",
+        "es": "Hace que el código que produce el compilador de eBPF sea más difícil de aprovechar en ataques que introducen instrucciones elegidas.",
+        "fr": "Rend le code produit par le compilateur eBPF plus difficile à détourner pour les attaques qui y glissent des instructions choisies.",
+        "de": "Macht den Code, den der eBPF-Compiler erzeugt, schwerer missbrauchbar für Angriffe, die gewählte Anweisungen einschleusen."
       },
       "breaks": null,
       "sources": [
@@ -196,11 +223,17 @@
       "recommended": true,
       "title": {
         "en": "Do not load terminal line disciplines on demand",
-        "pt-BR": "Não carregar disciplinas de linha de terminal sob demanda"
+        "pt-BR": "Não carregar disciplinas de linha de terminal sob demanda",
+        "es": "No cargar disciplinas de línea de terminal bajo demanda",
+        "fr": "Ne pas charger les disciplines de ligne de terminal à la demande",
+        "de": "Terminal-Leitungsdisziplinen nicht bei Bedarf laden"
       },
       "summary": {
         "en": "Stops an ordinary program from making the kernel load rarely used terminal code that has been exploited before.",
-        "pt-BR": "Impede que um programa comum faça o kernel carregar código de terminal pouco usado que já foi explorado."
+        "pt-BR": "Impede que um programa comum faça o kernel carregar código de terminal pouco usado que já foi explorado.",
+        "es": "Impide que un programa normal haga que el kernel cargue código de terminal poco usado que ya se ha explotado antes.",
+        "fr": "Empêche un programme ordinaire de faire charger au noyau du code de terminal rarement utilisé, qui a déjà été exploité.",
+        "de": "Verhindert, dass ein gewöhnliches Programm den Kernel dazu bringt, selten genutzten Terminal-Code zu laden, der schon ausgenutzt wurde."
       },
       "breaks": null,
       "sources": [
@@ -237,11 +270,17 @@
       "recommended": true,
       "title": {
         "en": "Restrict userfaultfd",
-        "pt-BR": "Restringir o userfaultfd"
+        "pt-BR": "Restringir o userfaultfd",
+        "es": "Restringir userfaultfd",
+        "fr": "Restreindre userfaultfd",
+        "de": "userfaultfd einschränken"
       },
       "summary": {
         "en": "A system call that attackers use to freeze the kernel at a chosen moment while they exploit a race. Only privileged programs keep it.",
-        "pt-BR": "Uma chamada de sistema que atacantes usam para congelar o kernel num momento escolhido enquanto exploram uma corrida. Só programas privilegiados a mantêm."
+        "pt-BR": "Uma chamada de sistema que atacantes usam para congelar o kernel num momento escolhido enquanto exploram uma corrida. Só programas privilegiados a mantêm.",
+        "es": "Una llamada al sistema que los atacantes usan para congelar el kernel en un momento elegido mientras explotan una condición de carrera. Solo los programas con privilegios la conservan.",
+        "fr": "Un appel système que les attaquants utilisent pour figer le noyau à un moment choisi pendant qu'ils exploitent une situation de concurrence. Seuls les programmes privilégiés le conservent.",
+        "de": "Ein Systemaufruf, mit dem Angreifer den Kernel zu einem gewählten Zeitpunkt anhalten, während sie eine Race Condition ausnutzen. Nur privilegierte Programme behalten ihn."
       },
       "breaks": null,
       "sources": [
@@ -278,15 +317,24 @@
       "recommended": false,
       "title": {
         "en": "Restrict performance events",
-        "pt-BR": "Restringir os eventos de desempenho"
+        "pt-BR": "Restringir os eventos de desempenho",
+        "es": "Restringir los eventos de rendimiento",
+        "fr": "Restreindre les événements de performance",
+        "de": "Leistungsereignisse einschränken"
       },
       "summary": {
         "en": "Profiling hooks add a lot of kernel code that ordinary users can reach. This limits most of it to administrators.",
-        "pt-BR": "Os ganchos de profiling acrescentam muito código do kernel ao alcance de usuários comuns. Isto limita a maior parte aos administradores."
+        "pt-BR": "Os ganchos de profiling acrescentam muito código do kernel ao alcance de usuários comuns. Isto limita a maior parte aos administradores.",
+        "es": "Los ganchos de perfilado añaden mucho código del kernel al que pueden acceder los usuarios normales. Esto limita la mayor parte a los administradores.",
+        "fr": "Les points d'analyse de performance ajoutent beaucoup de code noyau accessible aux utilisateurs ordinaires. Ce réglage en limite la plus grande partie aux administrateurs.",
+        "de": "Profiling-Hooks fügen viel Kernel-Code hinzu, den gewöhnliche Benutzer erreichen können. Dies beschränkt das meiste davon auf Administratoren."
       },
       "breaks": {
         "en": "Developers can no longer profile their own programs with perf without extra rights.",
-        "pt-BR": "Desenvolvedores deixam de perfilar os próprios programas com o perf sem direitos extras."
+        "pt-BR": "Desenvolvedores deixam de perfilar os próprios programas com o perf sem direitos extras.",
+        "es": "Los desarrolladores ya no pueden perfilar sus propios programas con perf sin derechos adicionales.",
+        "fr": "Les développeurs ne peuvent plus profiler leurs propres programmes avec perf sans droits supplémentaires.",
+        "de": "Entwickler können eigene Programme nicht mehr ohne zusätzliche Rechte mit perf profilieren."
       },
       "sources": [
         {
@@ -327,15 +375,24 @@
       "recommended": false,
       "title": {
         "en": "Forbid loading another kernel while running",
-        "pt-BR": "Proibir carregar outro kernel em execução"
+        "pt-BR": "Proibir carregar outro kernel em execução",
+        "es": "Prohibir cargar otro kernel mientras el sistema funciona",
+        "fr": "Interdire le chargement d'un autre noyau en cours d'exécution",
+        "de": "Laden eines anderen Kernels im Betrieb verbieten"
       },
       "summary": {
         "en": "Closes a way for an attacker with administrator rights to switch to a kernel they prepared.",
-        "pt-BR": "Fecha um caminho para um atacante com direitos de administrador trocar para um kernel que ele preparou."
+        "pt-BR": "Fecha um caminho para um atacante com direitos de administrador trocar para um kernel que ele preparou.",
+        "es": "Cierra una vía para que un atacante con derechos de administrador cambie a un kernel que haya preparado.",
+        "fr": "Ferme un moyen pour un attaquant disposant de droits d'administrateur de basculer vers un noyau qu'il a préparé.",
+        "de": "Schließt einen Weg, auf dem ein Angreifer mit Administratorrechten zu einem von ihm vorbereiteten Kernel wechseln kann."
       },
       "breaks": {
         "en": "Cannot be undone until the next restart. Tools that rely on kexec (fast reboot, crash dumps) stop working.",
-        "pt-BR": "Não pode ser desfeito até a próxima reinicialização. Ferramentas que usam kexec (reinício rápido, dumps de falha) deixam de funcionar."
+        "pt-BR": "Não pode ser desfeito até a próxima reinicialização. Ferramentas que usam kexec (reinício rápido, dumps de falha) deixam de funcionar.",
+        "es": "No se puede deshacer hasta el próximo reinicio. Las herramientas que dependen de kexec (reinicio rápido, volcados de fallos) dejan de funcionar.",
+        "fr": "Ne peut pas être annulé avant le prochain redémarrage. Les outils qui reposent sur kexec (redémarrage rapide, vidages de plantage) cessent de fonctionner.",
+        "de": "Lässt sich bis zum nächsten Neustart nicht rückgängig machen. Werkzeuge, die auf kexec angewiesen sind (schneller Neustart, Absturzabbilder), funktionieren nicht mehr."
       },
       "sources": [
         {
@@ -376,15 +433,24 @@
       "recommended": false,
       "title": {
         "en": "Turn off the SysRq emergency keys",
-        "pt-BR": "Desligar as teclas de emergência SysRq"
+        "pt-BR": "Desligar as teclas de emergência SysRq",
+        "es": "Desactivar las teclas de emergencia SysRq",
+        "fr": "Désactiver les touches d'urgence SysRq",
+        "de": "SysRq-Notfalltasten ausschalten"
       },
       "summary": {
         "en": "The SysRq keys can reboot or dump a machine from the keyboard, and can be triggered remotely in some setups.",
-        "pt-BR": "As teclas SysRq podem reiniciar ou despejar a máquina pelo teclado e, em alguns cenários, ser acionadas remotamente."
+        "pt-BR": "As teclas SysRq podem reiniciar ou despejar a máquina pelo teclado e, em alguns cenários, ser acionadas remotamente.",
+        "es": "Las teclas SysRq pueden reiniciar o volcar una máquina desde el teclado, y en algunas configuraciones pueden activarse de forma remota.",
+        "fr": "Les touches SysRq peuvent redémarrer ou vider une machine depuis le clavier, et peuvent être déclenchées à distance dans certaines configurations.",
+        "de": "Mit den SysRq-Tasten lässt sich ein Rechner per Tastatur neu starten oder abbilden, und in manchen Konfigurationen können sie aus der Ferne ausgelöst werden."
       },
       "breaks": {
         "en": "You lose the emergency keys for a frozen machine.",
-        "pt-BR": "Você perde as teclas de emergência para uma máquina travada."
+        "pt-BR": "Você perde as teclas de emergência para uma máquina travada.",
+        "es": "Pierdes las teclas de emergencia para una máquina congelada.",
+        "fr": "Vous perdez les touches d'urgence pour une machine figée.",
+        "de": "Sie verlieren die Notfalltasten für einen eingefrorenen Rechner."
       },
       "sources": [
         {
@@ -425,15 +491,24 @@
       "recommended": true,
       "title": {
         "en": "Limit one program inspecting another",
-        "pt-BR": "Limitar um programa que inspeciona outro"
+        "pt-BR": "Limitar um programa que inspeciona outro",
+        "es": "Limitar que un programa inspeccione a otro",
+        "fr": "Limiter l'inspection d'un programme par un autre",
+        "de": "Untersuchen eines Programms durch ein anderes begrenzen"
       },
       "summary": {
         "en": "A program may only attach to its own children, so malware in your session cannot read or change your other programs.",
-        "pt-BR": "Um programa só pode se anexar aos próprios filhos, então um malware na sua sessão não lê nem altera seus outros programas."
+        "pt-BR": "Um programa só pode se anexar aos próprios filhos, então um malware na sua sessão não lê nem altera seus outros programas.",
+        "es": "Un programa solo puede engancharse a sus propios hijos, así que el malware de tu sesión no puede leer ni cambiar tus otros programas.",
+        "fr": "Un programme ne peut s'attacher qu'à ses propres enfants, donc un malware dans votre session ne peut ni lire ni modifier vos autres programmes.",
+        "de": "Ein Programm darf sich nur an seine eigenen Kindprozesse anhängen, sodass Schadsoftware in Ihrer Sitzung Ihre anderen Programme weder lesen noch ändern kann."
       },
       "breaks": {
         "en": "Attaching a debugger (gdb, strace) to a program that is already running needs administrator rights.",
-        "pt-BR": "Anexar um depurador (gdb, strace) a um programa já em execução exige direitos de administrador."
+        "pt-BR": "Anexar um depurador (gdb, strace) a um programa já em execução exige direitos de administrador.",
+        "es": "Enganchar un depurador (gdb, strace) a un programa que ya se está ejecutando requiere derechos de administrador.",
+        "fr": "Attacher un débogueur (gdb, strace) à un programme déjà en cours d'exécution demande des droits d'administrateur.",
+        "de": "Um einen Debugger (gdb, strace) an ein bereits laufendes Programm anzuhängen, sind Administratorrechte nötig."
       },
       "sources": [
         {
@@ -474,15 +549,24 @@
       "recommended": false,
       "title": {
         "en": "Turn off unprivileged sandboxes (user namespaces)",
-        "pt-BR": "Desligar sandboxes sem privilégio (user namespaces)"
+        "pt-BR": "Desligar sandboxes sem privilégio (user namespaces)",
+        "es": "Desactivar los sandboxes sin privilegios (espacios de nombres de usuario)",
+        "fr": "Désactiver les bacs à sable sans privilèges (espaces de noms utilisateur)",
+        "de": "Sandboxes ohne Rechte (User Namespaces) ausschalten"
       },
       "summary": {
         "en": "User namespaces give ordinary programs a lot of kernel code to attack. Turning them off removes a large part of the surface.",
-        "pt-BR": "Os user namespaces dão aos programas comuns muito código do kernel para atacar. Desligá-los remove boa parte da superfície."
+        "pt-BR": "Os user namespaces dão aos programas comuns muito código do kernel para atacar. Desligá-los remove boa parte da superfície.",
+        "es": "Los espacios de nombres de usuario ofrecen a los programas normales mucho código del kernel que atacar. Desactivarlos elimina una gran parte de la superficie.",
+        "fr": "Les espaces de noms utilisateur donnent aux programmes ordinaires beaucoup de code noyau à attaquer. Les désactiver supprime une grande partie de la surface d'attaque.",
+        "de": "User Namespaces geben gewöhnlichen Programmen viel Kernel-Code als Angriffsfläche. Das Ausschalten beseitigt einen großen Teil dieser Fläche."
       },
       "breaks": {
         "en": "Flatpak, the Chromium and Firefox sandboxes, rootless containers and many AppImages stop working.",
-        "pt-BR": "Flatpak, os sandboxes do Chromium e do Firefox, contêineres sem root e muitos AppImages deixam de funcionar."
+        "pt-BR": "Flatpak, os sandboxes do Chromium e do Firefox, contêineres sem root e muitos AppImages deixam de funcionar.",
+        "es": "Flatpak, los sandboxes de Chromium y Firefox, los contenedores sin root y muchos AppImage dejan de funcionar.",
+        "fr": "Flatpak, les bacs à sable de Chromium et de Firefox, les conteneurs sans root et de nombreux AppImages cessent de fonctionner.",
+        "de": "Flatpak, die Sandboxes von Chromium und Firefox, Rootless-Container und viele AppImages funktionieren nicht mehr."
       },
       "sources": [
         {
@@ -523,11 +607,17 @@
       "recommended": true,
       "title": {
         "en": "Protect shared folders from link and file tricks",
-        "pt-BR": "Proteger pastas compartilhadas de truques com links e arquivos"
+        "pt-BR": "Proteger pastas compartilhadas de truques com links e arquivos",
+        "es": "Proteger las carpetas compartidas de trucos con enlaces y archivos",
+        "fr": "Protéger les dossiers partagés des astuces de liens et de fichiers",
+        "de": "Gemeinsame Ordner vor Link- und Dateitricks schützen"
       },
       "summary": {
         "en": "Blocks the classic attacks that plant a link or a file in /tmp so a privileged program writes where the attacker wants.",
-        "pt-BR": "Bloqueia os ataques clássicos que plantam um link ou um arquivo em /tmp para que um programa privilegiado escreva onde o atacante quer."
+        "pt-BR": "Bloqueia os ataques clássicos que plantam um link ou um arquivo em /tmp para que um programa privilegiado escreva onde o atacante quer.",
+        "es": "Bloquea los ataques clásicos que colocan un enlace o un archivo en /tmp para que un programa con privilegios escriba donde quiere el atacante.",
+        "fr": "Bloque les attaques classiques qui déposent un lien ou un fichier dans /tmp pour qu'un programme privilégié écrive là où l'attaquant le souhaite.",
+        "de": "Blockiert die klassischen Angriffe, die einen Link oder eine Datei in /tmp platzieren, damit ein privilegiertes Programm dorthin schreibt, wo der Angreifer es will."
       },
       "breaks": null,
       "sources": [
@@ -587,11 +677,17 @@
       "recommended": true,
       "title": {
         "en": "No memory dumps of privileged programs",
-        "pt-BR": "Sem dumps de memória de programas privilegiados"
+        "pt-BR": "Sem dumps de memória de programas privilegiados",
+        "es": "Sin volcados de memoria de programas con privilegios",
+        "fr": "Pas de vidages mémoire des programmes privilégiés",
+        "de": "Keine Speicherabbilder privilegierter Programme"
       },
       "summary": {
         "en": "A crashing program that runs with extra rights no longer writes its memory, which may hold secrets, to a file.",
-        "pt-BR": "Um programa que roda com direitos extras e trava deixa de gravar a memória, que pode ter segredos, em um arquivo."
+        "pt-BR": "Um programa que roda com direitos extras e trava deixa de gravar a memória, que pode ter segredos, em um arquivo.",
+        "es": "Un programa que falla y se ejecuta con derechos adicionales ya no escribe su memoria, que puede contener secretos, en un archivo.",
+        "fr": "Un programme qui plante en s'exécutant avec des droits supplémentaires n'écrit plus sa mémoire, qui peut contenir des secrets, dans un fichier.",
+        "de": "Ein abstürzendes Programm mit zusätzlichen Rechten schreibt seinen Speicher, der Geheimnisse enthalten kann, nicht mehr in eine Datei."
       },
       "breaks": null,
       "sources": [
@@ -633,11 +729,17 @@
       "recommended": true,
       "title": {
         "en": "Survive connection floods",
-        "pt-BR": "Resistir a inundações de conexões"
+        "pt-BR": "Resistir a inundações de conexões",
+        "es": "Resistir las inundaciones de conexiones",
+        "fr": "Résister aux inondations de connexions",
+        "de": "Verbindungsfluten überstehen"
       },
       "summary": {
         "en": "Keeps the machine answering when someone floods it with half-open connections.",
-        "pt-BR": "Mantém a máquina respondendo quando alguém a inunda com conexões pela metade."
+        "pt-BR": "Mantém a máquina respondendo quando alguém a inunda com conexões pela metade.",
+        "es": "Mantiene la máquina respondiendo cuando alguien la inunda con conexiones a medio abrir.",
+        "fr": "Garde la machine réactive quand quelqu'un l'inonde de connexions à moitié ouvertes.",
+        "de": "Hält den Rechner ansprechbar, wenn jemand ihn mit halb offenen Verbindungen überflutet."
       },
       "breaks": null,
       "sources": [
@@ -679,11 +781,17 @@
       "recommended": true,
       "title": {
         "en": "Ignore resets of closing connections",
-        "pt-BR": "Ignorar resets de conexões em encerramento"
+        "pt-BR": "Ignorar resets de conexões em encerramento",
+        "es": "Ignorar los reinicios de conexiones que se están cerrando",
+        "fr": "Ignorer les réinitialisations de connexions en cours de fermeture",
+        "de": "Resets schließender Verbindungen ignorieren"
       },
       "summary": {
         "en": "Protects against a trick that ends a connection by sending a forged reset while it winds down.",
-        "pt-BR": "Protege contra um truque que encerra uma conexão enviando um reset forjado enquanto ela termina."
+        "pt-BR": "Protege contra um truque que encerra uma conexão enviando um reset forjado enquanto ela termina.",
+        "es": "Protege contra un truco que termina una conexión enviando un reinicio falsificado mientras se está cerrando.",
+        "fr": "Protège contre une astuce qui met fin à une connexion en envoyant une fausse réinitialisation pendant sa fermeture.",
+        "de": "Schützt vor einem Trick, der eine Verbindung beendet, indem er während des Abbaus einen gefälschten Reset sendet."
       },
       "breaks": null,
       "sources": [
@@ -720,11 +828,17 @@
       "recommended": true,
       "title": {
         "en": "Ignore and never send ICMP redirects",
-        "pt-BR": "Ignorar e nunca enviar redirecionamentos ICMP"
+        "pt-BR": "Ignorar e nunca enviar redirecionamentos ICMP",
+        "es": "Ignorar y no enviar nunca redirecciones ICMP",
+        "fr": "Ignorer et ne jamais envoyer de redirections ICMP",
+        "de": "ICMP-Redirects ignorieren und nie senden"
       },
       "summary": {
         "en": "A network device can tell this computer to send its traffic through someone else. This refuses such messages and stops sending them.",
-        "pt-BR": "Um dispositivo da rede pode mandar este computador enviar o tráfego por outra pessoa. Isto recusa essas mensagens e para de enviá-las."
+        "pt-BR": "Um dispositivo da rede pode mandar este computador enviar o tráfego por outra pessoa. Isto recusa essas mensagens e para de enviá-las.",
+        "es": "Un dispositivo de red puede decirle a este equipo que envíe su tráfico a través de otro. Esto rechaza esos mensajes y deja de enviarlos.",
+        "fr": "Un équipement réseau peut dire à cet ordinateur d'envoyer son trafic par quelqu'un d'autre. Ce réglage refuse ces messages et cesse d'en envoyer.",
+        "de": "Ein Netzwerkgerät kann diesem Computer sagen, seinen Datenverkehr über jemand anderen zu leiten. Dies lehnt solche Nachrichten ab und sendet selbst keine."
       },
       "breaks": null,
       "sources": [
@@ -808,11 +922,17 @@
       "recommended": true,
       "title": {
         "en": "Refuse source-routed packets",
-        "pt-BR": "Recusar pacotes com roteamento pela origem"
+        "pt-BR": "Recusar pacotes com roteamento pela origem",
+        "es": "Rechazar paquetes con enrutamiento de origen",
+        "fr": "Refuser les paquets à routage par la source",
+        "de": "Pakete mit Quellrouting ablehnen"
       },
       "summary": {
         "en": "A packet can carry its own route, which lets an attacker steer traffic through a machine they control. This refuses them.",
-        "pt-BR": "Um pacote pode levar a própria rota, o que deixa um atacante guiar o tráfego por uma máquina que ele controla. Isto os recusa."
+        "pt-BR": "Um pacote pode levar a própria rota, o que deixa um atacante guiar o tráfego por uma máquina que ele controla. Isto os recusa.",
+        "es": "Un paquete puede llevar su propia ruta, lo que permite a un atacante dirigir el tráfico a través de una máquina que controla. Esto los rechaza.",
+        "fr": "Un paquet peut porter sa propre route, ce qui permet à un attaquant de détourner le trafic vers une machine qu'il contrôle. Ce réglage les refuse.",
+        "de": "Ein Paket kann seine eigene Route mitbringen, womit ein Angreifer Datenverkehr über einen Rechner unter seiner Kontrolle lenken kann. Dies lehnt solche Pakete ab."
       },
       "breaks": null,
       "sources": [
@@ -872,15 +992,24 @@
       "recommended": false,
       "title": {
         "en": "Drop packets with a forged sender address",
-        "pt-BR": "Descartar pacotes com endereço de origem forjado"
+        "pt-BR": "Descartar pacotes com endereço de origem forjado",
+        "es": "Descartar paquetes con dirección de origen falsificada",
+        "fr": "Rejeter les paquets dont l'adresse d'expéditeur est falsifiée",
+        "de": "Pakete mit gefälschter Absender-Adresse verwerfen"
       },
       "summary": {
         "en": "Checks that a packet could really have arrived on the link it came in on, which stops address spoofing.",
-        "pt-BR": "Confere se um pacote poderia mesmo ter chegado pelo enlace em que entrou, o que impede a falsificação de endereço."
+        "pt-BR": "Confere se um pacote poderia mesmo ter chegado pelo enlace em que entrou, o que impede a falsificação de endereço.",
+        "es": "Comprueba que un paquete pudo llegar realmente por el enlace por el que entró, lo que impide la suplantación de direcciones.",
+        "fr": "Vérifie qu'un paquet a pu réellement arriver par la liaison où il est entré, ce qui empêche l'usurpation d'adresse.",
+        "de": "Prüft, ob ein Paket tatsächlich über die Verbindung gekommen sein kann, auf der es eintraf, und verhindert so Adressfälschung."
       },
       "breaks": {
         "en": "Can break some VPNs and machines with several network routes.",
-        "pt-BR": "Pode quebrar algumas VPNs e máquinas com várias rotas de rede."
+        "pt-BR": "Pode quebrar algumas VPNs e máquinas com várias rotas de rede.",
+        "es": "Puede romper algunas VPN y equipos con varias rutas de red.",
+        "fr": "Peut casser certains VPN et les machines avec plusieurs routes réseau.",
+        "de": "Kann manche VPNs und Rechner mit mehreren Netzwerkrouten beeinträchtigen."
       },
       "sources": [
         {
@@ -927,15 +1056,24 @@
       "recommended": false,
       "title": {
         "en": "Ignore IPv6 router announcements",
-        "pt-BR": "Ignorar anúncios de roteador IPv6"
+        "pt-BR": "Ignorar anúncios de roteador IPv6",
+        "es": "Ignorar los anuncios de router IPv6",
+        "fr": "Ignorer les annonces de routeur IPv6",
+        "de": "IPv6-Router-Ankündigungen ignorieren"
       },
       "summary": {
         "en": "A malicious device on the network can announce itself as the router and sit in the middle. This ignores such announcements.",
-        "pt-BR": "Um dispositivo malicioso na rede pode se anunciar como roteador e ficar no meio do caminho. Isto ignora esses anúncios."
+        "pt-BR": "Um dispositivo malicioso na rede pode se anunciar como roteador e ficar no meio do caminho. Isto ignora esses anúncios.",
+        "es": "Un dispositivo malicioso en la red puede anunciarse como el router y colocarse en medio. Esto ignora esos anuncios.",
+        "fr": "Un appareil malveillant sur le réseau peut s'annoncer comme routeur et se placer au milieu. Ce réglage ignore de telles annonces.",
+        "de": "Ein bösartiges Gerät im Netzwerk kann sich als Router ausgeben und sich dazwischenschalten. Dies ignoriert solche Ankündigungen."
       },
       "breaks": {
         "en": "IPv6 may stop working on networks that hand out addresses this way, which is most home networks.",
-        "pt-BR": "O IPv6 pode parar em redes que distribuem endereços assim, o que vale para a maioria das redes domésticas."
+        "pt-BR": "O IPv6 pode parar em redes que distribuem endereços assim, o que vale para a maioria das redes domésticas.",
+        "es": "IPv6 puede dejar de funcionar en redes que reparten direcciones de esta manera, que son la mayoría de las redes domésticas.",
+        "fr": "IPv6 peut cesser de fonctionner sur les réseaux qui distribuent les adresses de cette façon, ce qui est le cas de la plupart des réseaux domestiques.",
+        "de": "IPv6 funktioniert möglicherweise nicht mehr in Netzwerken, die Adressen auf diese Weise vergeben, was bei den meisten Heimnetzwerken der Fall ist."
       },
       "sources": [
         {
@@ -977,15 +1115,24 @@
       "recommended": false,
       "title": {
         "en": "Turn off selective acknowledgements",
-        "pt-BR": "Desligar confirmações seletivas"
+        "pt-BR": "Desligar confirmações seletivas",
+        "es": "Desactivar las confirmaciones selectivas",
+        "fr": "Désactiver les accusés de réception sélectifs",
+        "de": "Selektive Bestätigungen ausschalten"
       },
       "summary": {
         "en": "This TCP feature has been the target of remote attacks. Turning it off removes that target.",
-        "pt-BR": "Este recurso do TCP já foi alvo de ataques remotos. Desligá-lo remove esse alvo."
+        "pt-BR": "Este recurso do TCP já foi alvo de ataques remotos. Desligá-lo remove esse alvo.",
+        "es": "Esta función de TCP ha sido objetivo de ataques remotos. Desactivarla elimina ese objetivo.",
+        "fr": "Cette fonction TCP a été la cible d'attaques à distance. La désactiver supprime cette cible.",
+        "de": "Diese TCP-Funktion war das Ziel von Angriffen aus der Ferne. Das Ausschalten beseitigt dieses Ziel."
       },
       "breaks": {
         "en": "Downloads can be slower on connections that lose packets.",
-        "pt-BR": "Downloads podem ficar mais lentos em conexões que perdem pacotes."
+        "pt-BR": "Downloads podem ficar mais lentos em conexões que perdem pacotes.",
+        "es": "Las descargas pueden ser más lentas en conexiones que pierden paquetes.",
+        "fr": "Les téléchargements peuvent être plus lents sur les connexions qui perdent des paquets.",
+        "de": "Downloads können bei Verbindungen mit Paketverlust langsamer sein."
       },
       "sources": [
         {
@@ -1021,15 +1168,24 @@
       "recommended": true,
       "title": {
         "en": "Block obscure network protocols",
-        "pt-BR": "Bloquear protocolos de rede obscuros"
+        "pt-BR": "Bloquear protocolos de rede obscuros",
+        "es": "Bloquear protocolos de red poco comunes",
+        "fr": "Bloquer les protocoles réseau obscurs",
+        "de": "Unbekannte Netzwerkprotokolle blockieren"
       },
       "summary": {
         "en": "An ordinary program can make the kernel load old or rare network protocols (DCCP, SCTP, AX.25, ATM and others), and several have had serious flaws. Almost no computer needs them.",
-        "pt-BR": "Um programa comum pode fazer o kernel carregar protocolos de rede antigos ou raros (DCCP, SCTP, AX.25, ATM e outros), e vários já tiveram falhas graves. Quase nenhum computador precisa deles."
+        "pt-BR": "Um programa comum pode fazer o kernel carregar protocolos de rede antigos ou raros (DCCP, SCTP, AX.25, ATM e outros), e vários já tiveram falhas graves. Quase nenhum computador precisa deles.",
+        "es": "Un programa normal puede hacer que el kernel cargue protocolos de red antiguos o raros (DCCP, SCTP, AX.25, ATM y otros), y varios han tenido fallos graves. Casi ningún equipo los necesita.",
+        "fr": "Un programme ordinaire peut faire charger au noyau des protocoles réseau anciens ou rares (DCCP, SCTP, AX.25, ATM et d'autres), et plusieurs ont eu de graves failles. Presque aucun ordinateur n'en a besoin.",
+        "de": "Ein gewöhnliches Programm kann den Kernel dazu bringen, alte oder seltene Netzwerkprotokolle zu laden (DCCP, SCTP, AX.25, ATM und andere), und mehrere hatten schwere Fehler. Fast kein Computer braucht sie."
       },
       "breaks": {
         "en": "Software that uses SCTP, CAN or amateur radio networking stops working.",
-        "pt-BR": "Programas que usam SCTP, CAN ou rede de radioamador deixam de funcionar."
+        "pt-BR": "Programas que usam SCTP, CAN ou rede de radioamador deixam de funcionar.",
+        "es": "El software que usa SCTP, CAN o redes de radioaficionados deja de funcionar.",
+        "fr": "Les logiciels qui utilisent SCTP, CAN ou les réseaux de radioamateurs cessent de fonctionner.",
+        "de": "Software, die SCTP, CAN oder Amateurfunk-Netzwerke nutzt, funktioniert nicht mehr."
       },
       "sources": [
         {
@@ -1059,15 +1215,24 @@
       "recommended": false,
       "title": {
         "en": "Block rarely used file systems",
-        "pt-BR": "Bloquear sistemas de arquivos pouco usados"
+        "pt-BR": "Bloquear sistemas de arquivos pouco usados",
+        "es": "Bloquear sistemas de archivos poco usados",
+        "fr": "Bloquer les systèmes de fichiers rarement utilisés",
+        "de": "Selten genutzte Dateisysteme blockieren"
       },
       "summary": {
         "en": "Mounting a crafted disk or stick can exploit the code of an old file system. This keeps the kernel from loading the ones almost nobody uses.",
-        "pt-BR": "Montar um disco ou pendrive adulterado pode explorar o código de um sistema de arquivos antigo. Isto impede o kernel de carregar os que quase ninguém usa."
+        "pt-BR": "Montar um disco ou pendrive adulterado pode explorar o código de um sistema de arquivos antigo. Isto impede o kernel de carregar os que quase ninguém usa.",
+        "es": "Montar un disco o una memoria manipulados puede explotar el código de un sistema de archivos antiguo. Esto evita que el kernel cargue los que casi nadie usa.",
+        "fr": "Monter un disque ou une clé piégés peut exploiter le code d'un ancien système de fichiers. Ce réglage empêche le noyau de charger ceux que presque personne n'utilise.",
+        "de": "Das Einhängen eines präparierten Datenträgers oder Sticks kann den Code eines alten Dateisystems ausnutzen. Dies hindert den Kernel daran, die Dateisysteme zu laden, die fast niemand nutzt."
       },
       "breaks": {
         "en": "Optical discs and images in UDF format, and old Mac or embedded media, can no longer be mounted.",
-        "pt-BR": "Discos ópticos e imagens em UDF, e mídias antigas de Mac ou embarcadas, não podem mais ser montados."
+        "pt-BR": "Discos ópticos e imagens em UDF, e mídias antigas de Mac ou embarcadas, não podem mais ser montados.",
+        "es": "Los discos ópticos e imágenes en formato UDF, y los medios antiguos de Mac o empotrados, ya no se pueden montar.",
+        "fr": "Les disques optiques et les images au format UDF, ainsi que les anciens supports Mac ou embarqués, ne peuvent plus être montés.",
+        "de": "Optische Datenträger und Abbilder im UDF-Format sowie alte Mac- oder Embedded-Medien lassen sich nicht mehr einhängen."
       },
       "sources": [
         {
@@ -1097,15 +1262,24 @@
       "recommended": false,
       "title": {
         "en": "Block network file systems",
-        "pt-BR": "Bloquear sistemas de arquivos de rede"
+        "pt-BR": "Bloquear sistemas de arquivos de rede",
+        "es": "Bloquear sistemas de archivos de red",
+        "fr": "Bloquer les systèmes de fichiers réseau",
+        "de": "Netzwerk-Dateisysteme blockieren"
       },
       "summary": {
         "en": "If you never mount shares from NFS or Windows file servers, the kernel does not need to carry that code.",
-        "pt-BR": "Se você nunca monta compartilhamentos NFS ou de servidores de arquivos do Windows, o kernel não precisa carregar esse código."
+        "pt-BR": "Se você nunca monta compartilhamentos NFS ou de servidores de arquivos do Windows, o kernel não precisa carregar esse código.",
+        "es": "Si nunca montas recursos compartidos de NFS o de servidores de archivos de Windows, el kernel no necesita llevar ese código.",
+        "fr": "Si vous ne montez jamais de partages NFS ou de serveurs de fichiers Windows, le noyau n'a pas besoin de porter ce code.",
+        "de": "Wenn Sie nie Freigaben von NFS- oder Windows-Dateiservern einhängen, muss der Kernel diesen Code nicht mitbringen."
       },
       "breaks": {
         "en": "NFS and SMB/CIFS shares can no longer be mounted.",
-        "pt-BR": "Compartilhamentos NFS e SMB/CIFS não podem mais ser montados."
+        "pt-BR": "Compartilhamentos NFS e SMB/CIFS não podem mais ser montados.",
+        "es": "Los recursos compartidos NFS y SMB/CIFS ya no se pueden montar.",
+        "fr": "Les partages NFS et SMB/CIFS ne peuvent plus être montés.",
+        "de": "NFS- und SMB/CIFS-Freigaben lassen sich nicht mehr einhängen."
       },
       "sources": [
         {
@@ -1135,15 +1309,24 @@
       "recommended": false,
       "title": {
         "en": "Turn off Bluetooth",
-        "pt-BR": "Desligar o Bluetooth"
+        "pt-BR": "Desligar o Bluetooth",
+        "es": "Desactivar Bluetooth",
+        "fr": "Désactiver le Bluetooth",
+        "de": "Bluetooth ausschalten"
       },
       "summary": {
         "en": "Bluetooth has a long history of security flaws. If you do not use it, keeping its code out of the kernel removes that exposure.",
-        "pt-BR": "O Bluetooth tem um longo histórico de falhas de segurança. Se você não o usa, manter o código dele fora do kernel remove essa exposição."
+        "pt-BR": "O Bluetooth tem um longo histórico de falhas de segurança. Se você não o usa, manter o código dele fora do kernel remove essa exposição.",
+        "es": "Bluetooth tiene un largo historial de fallos de seguridad. Si no lo usas, mantener su código fuera del kernel elimina esa exposición.",
+        "fr": "Le Bluetooth a un long historique de failles de sécurité. Si vous ne l'utilisez pas, garder son code hors du noyau supprime cette exposition.",
+        "de": "Bluetooth hat eine lange Geschichte von Sicherheitslücken. Wenn Sie es nicht nutzen, beseitigt es diese Angriffsfläche, seinen Code aus dem Kernel herauszuhalten."
       },
       "breaks": {
         "en": "Bluetooth keyboards, mice, headphones and file transfer stop working.",
-        "pt-BR": "Teclados, mouses, fones e transferência de arquivos por Bluetooth deixam de funcionar."
+        "pt-BR": "Teclados, mouses, fones e transferência de arquivos por Bluetooth deixam de funcionar.",
+        "es": "Los teclados, ratones, auriculares y la transferencia de archivos por Bluetooth dejan de funcionar.",
+        "fr": "Les claviers, souris et casques Bluetooth ainsi que le transfert de fichiers cessent de fonctionner.",
+        "de": "Bluetooth-Tastaturen, -Mäuse, -Kopfhörer und die Dateiübertragung funktionieren nicht mehr."
       },
       "sources": [
         {
@@ -1173,11 +1356,17 @@
       "recommended": true,
       "title": {
         "en": "Block the test video driver",
-        "pt-BR": "Bloquear o driver de vídeo de teste"
+        "pt-BR": "Bloquear o driver de vídeo de teste",
+        "es": "Bloquear el controlador de vídeo de prueba",
+        "fr": "Bloquer le pilote vidéo de test",
+        "de": "Den Test-Videotreiber blockieren"
       },
       "summary": {
         "en": "The vivid driver exists only for testing and has caused privilege escalation flaws.",
-        "pt-BR": "O driver vivid existe só para testes e já causou falhas de escalonamento de privilégio."
+        "pt-BR": "O driver vivid existe só para testes e já causou falhas de escalonamento de privilégio.",
+        "es": "El controlador vivid existe solo para pruebas y ha causado fallos de escalada de privilegios.",
+        "fr": "Le pilote vivid n'existe que pour les tests et a causé des failles d'élévation de privilèges.",
+        "de": "Der Treiber vivid existiert nur zu Testzwecken und hat Lücken zur Rechteausweitung verursacht."
       },
       "breaks": null,
       "sources": [
@@ -1208,15 +1397,24 @@
       "recommended": false,
       "title": {
         "en": "Do not run programs from /tmp",
-        "pt-BR": "Não executar programas a partir de /tmp"
+        "pt-BR": "Não executar programas a partir de /tmp",
+        "es": "No ejecutar programas desde /tmp",
+        "fr": "Ne pas exécuter de programmes depuis /tmp",
+        "de": "Keine Programme aus /tmp ausführen"
       },
       "summary": {
         "en": "Malware and exploits often drop a program into /tmp and run it. This stops anything from running there.",
-        "pt-BR": "Malwares e explorações costumam deixar um programa em /tmp e executá-lo. Isto impede que algo rode ali."
+        "pt-BR": "Malwares e explorações costumam deixar um programa em /tmp e executá-lo. Isto impede que algo rode ali.",
+        "es": "El malware y los exploits suelen dejar un programa en /tmp y ejecutarlo. Esto impide que se ejecute nada allí.",
+        "fr": "Les malwares et les exploits déposent souvent un programme dans /tmp et l'exécutent. Ce réglage empêche toute exécution à cet endroit.",
+        "de": "Schadsoftware und Exploits legen oft ein Programm in /tmp ab und führen es aus. Dies verhindert, dass dort etwas läuft."
       },
       "breaks": {
         "en": "Installers, build tools and some scripts that run from /tmp stop working.",
-        "pt-BR": "Instaladores, ferramentas de compilação e alguns scripts que rodam de /tmp deixam de funcionar."
+        "pt-BR": "Instaladores, ferramentas de compilação e alguns scripts que rodam de /tmp deixam de funcionar.",
+        "es": "Los instaladores, las herramientas de compilación y algunos scripts que se ejecutan desde /tmp dejan de funcionar.",
+        "fr": "Les installateurs, les outils de compilation et certains scripts qui s'exécutent depuis /tmp cessent de fonctionner.",
+        "de": "Installer, Build-Werkzeuge und manche Skripte, die aus /tmp laufen, funktionieren nicht mehr."
       },
       "sources": [
         {

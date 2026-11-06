@@ -1,0 +1,15 @@
+ssh-root-title = Der SSH-Server lässt root sich mit einem Passwort anmelden
+ssh-root-summary = PermitRootLogin ist { $value }. Wer das root-Passwort errät, erhält volle Kontrolle.
+ssh-empty-title = Der SSH-Server akzeptiert leere Passwörter
+ssh-empty-summary = PermitEmptyPasswords ist yes: Ein Konto ohne Passwort kann sich über das Netzwerk anmelden.
+ssh-x11-title = Der SSH-Server leitet grafische Sitzungen weiter
+ssh-x11-summary = X11Forwarding ist yes. Ein kompromittierter Server kann den Bildschirm und die Tastatur des Clients erreichen.
+ssh-password-title = Der SSH-Server akzeptiert Passwörter
+ssh-password-summary = Die Anmeldung per Passwort kann über das Netzwerk erraten werden; Schlüssel nicht.
+ssh-may-affect-root = Die Anmeldung als root über SSH mit einem Passwort funktioniert nicht mehr. Verwenden Sie einen normalen Benutzer und sudo oder einen Schlüssel.
+ssh-may-affect-password = Wenn Passwörter ausgeschaltet sind, können sich nur Benutzer mit einem autorisierten Schlüssel anmelden. Prüfen Sie zuerst Ihren eigenen, sonst sperren Sie sich möglicherweise aus.
+detect-ssh-title = SSH auf diesem Computer
+detect-ssh-absent = Hier ist kein SSH-Server eingerichtet, daher gibt es nichts zu härten.
+detect-ssh-hardened = Der SSH-Server (Port { $port }) erlaubt weder root mit Passwort noch leere Passwörter noch X11-Weiterleitung. Die Anmeldung als root ist { $root }.
+detect-ssh-hardened-password = Der SSH-Server (Port { $port }) ist gehärtet, nur dass sich jeder mit einem Passwort anmelden kann. Schalten Sie das erst aus, nachdem Sie einen Schlüssel auf jedes Konto kopiert haben, das ihn braucht, sonst sperren Sie sich aus.
+detect-ssh-weak = Der SSH-Server (Port { $port }) erlaubt etwas Riskantes: Die Anmeldung als root ist { $root }, oder leere Passwörter oder X11-Weiterleitung sind an. Eine vorgeschlagene Änderung, die sie schließt, steht unten zur Prüfung bereit; sie behält die Anmeldung per Passwort bei.

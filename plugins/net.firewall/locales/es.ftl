@@ -1,0 +1,7 @@
+firewall-may-affect-remote = El acceso remoto, como SSH, deja de funcionar si no está permitido.
+firewall-may-affect-sharing = Los servicios que otros equipos usan en este, como compartir archivos, dejan de funcionar.
+firewall-may-affect-containers = La red de contenedores y máquinas virtuales puede fallar en algunas configuraciones.
+detect-firewall-title = El cortafuegos de este equipo
+detect-firewall-active = { $manager } está en marcha y filtrando. IbexWall trabaja a través de él y deja sus reglas como están.
+detect-firewall-inactive = { $manager } está instalado pero no está en marcha, así que no se filtra nada. Para iniciarlo, ejecuta: { $start }
+detect-firewall-none = No se encontró ningún gestor de cortafuegos. IbexWall puede mantener sus propias reglas, pero lo habitual es usar un gestor. Para instalar { $package }, ejecuta: { $install }

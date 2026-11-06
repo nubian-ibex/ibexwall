@@ -1,0 +1,6 @@
+audit-warning-title = Lynis-Warnung: { $text }
+audit-warning-summary = Der Lynis-Test { $test } hat eine Warnung gemeldet. { $detail }
+audit-suggestion-title = Lynis-Vorschlag: { $text }
+audit-suggestion-summary = Der Lynis-Test { $test } schlägt eine Änderung vor. { $detail }
+audit-index-title = Lynis-Härtungsindex { $index } von 100
+audit-index-summary = Lynis hat { $tests } Tests ausgeführt; der Index ist ein grober Anhaltspunkt, kein Urteil.

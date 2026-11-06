@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "Kernel hardening"
 pt-BR = "Endurecimento do kernel"
+es = "Refuerzo del kernel"
+fr = "Durcissement du noyau"
+de = "Kernel-Härtung"
 
 [description]
 en = "Checks the kernel's security settings against the reference table, and applies them."
 pt-BR = "Compara as configurações de segurança do kernel com a tabela de referência, e aplica."
+es = "Comprueba los ajustes de seguridad del kernel con la tabla de referencia y los aplica."
+fr = "Vérifie les réglages de sécurité du noyau par rapport au tableau de référence, et les applique."
+de = "Prüft die Sicherheitseinstellungen des Kernels gegen die Referenztabelle und wendet sie an."
 
 [privileges]
 sysctl_keys = [

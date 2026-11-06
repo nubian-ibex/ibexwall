@@ -1,0 +1,7 @@
+firewall-may-affect-remote = Fernzugriff, etwa per SSH, funktioniert nicht mehr, wenn er nicht erlaubt ist.
+firewall-may-affect-sharing = Dienste, die andere Computer auf diesem nutzen, etwa Dateifreigabe, funktionieren nicht mehr.
+firewall-may-affect-containers = Container- und Netzwerke virtueller Maschinen funktionieren bei manchen Konfigurationen möglicherweise nicht mehr.
+detect-firewall-title = Die Firewall auf diesem Computer
+detect-firewall-active = { $manager } läuft und filtert. IbexWall arbeitet damit und lässt seine Regeln unverändert.
+detect-firewall-inactive = { $manager } ist installiert, läuft aber nicht, daher wird nichts gefiltert. Um es zu starten, führen Sie aus: { $start }
+detect-firewall-none = Es wurde keine Firewall-Verwaltung gefunden. IbexWall kann trotzdem eigene Regeln führen, aber üblich ist eine Verwaltung. Um { $package } zu installieren, führen Sie aus: { $install }

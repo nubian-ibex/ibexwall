@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "Camera and microphone"
 pt-BR = "Câmera e microfone"
+es = "Cámara y micrófono"
+fr = "Caméra et microphone"
+de = "Kamera und Mikrofon"
 
 [description]
 en = "Shows which programs are using the camera or the microphone right now."
 pt-BR = "Mostra quais programas estão usando a câmera ou o microfone agora."
+es = "Muestra qué programas están usando ahora mismo la cámara o el micrófono."
+fr = "Montre quels programmes utilisent la caméra ou le microphone en ce moment."
+de = "Zeigt, welche Programme gerade die Kamera oder das Mikrofon verwenden."
 
 [privileges]
 # Read-only check: the core executes nothing on its behalf.

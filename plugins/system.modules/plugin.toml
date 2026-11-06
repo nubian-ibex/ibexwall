@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "Kernel modules"
 pt-BR = "Módulos do kernel"
+es = "Módulos del kernel"
+fr = "Modules du noyau"
+de = "Kernel-Module"
 
 [description]
 en = "Stops groups of rarely needed kernel modules from being loaded, which shrinks what an attacker can reach through the kernel."
 pt-BR = "Impede que grupos de módulos do kernel raramente necessários sejam carregados, o que reduz o que um atacante alcança pelo kernel."
+es = "Impide que se carguen grupos de módulos del kernel que rara vez se necesitan, lo que reduce lo que un atacante puede alcanzar a través del kernel."
+fr = "Empêche le chargement de groupes de modules du noyau rarement nécessaires, ce qui réduit ce qu'un attaquant peut atteindre via le noyau."
+de = "Verhindert das Laden von Gruppen selten benötigter Kernel-Module, was verkleinert, was ein Angreifer über den Kernel erreichen kann."
 
 [privileges]
 write_paths = ["/etc/modprobe.d"]

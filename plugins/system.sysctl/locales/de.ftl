@@ -1,0 +1,14 @@
+sysctl-off-title = Eine Sicherheitseinstellung des Kernels liegt unter dem Referenzwert
+sysctl-off-summary = { $key } ist { $current }; der Referenzwert ist { $want }.
+sysctl-may-affect-ptrace = Das Anhängen eines Debuggers an ein bereits laufendes Programm (gdb, strace) funktioniert nicht mehr.
+sysctl-may-affect-bpf = Programme, die eBPF ohne Rechte laden, funktionieren nicht mehr. IbexWall ist nicht betroffen: Es läuft mit Rechten.
+sysctl-may-affect-kexec = Lässt sich ohne Neustart nicht rückgängig machen: Das Laden mit kexec bleibt bis dahin deaktiviert.
+sysctl-may-affect-rp-filter = Kann VPNs und Rechner mit mehreren Netzwerkrouten beeinträchtigen.
+sysctl-may-affect-sysrq = Die SysRq-Notfalltasten funktionieren nicht mehr.
+sysctl-may-affect-ipv6-ra = IPv6-Adressen und -Routen, die Ihr Router ankündigt, werden nicht mehr akzeptiert, daher funktioniert IPv6 in Netzwerken, die darauf angewiesen sind, möglicherweise nicht mehr.
+sysctl-may-affect-sack = Downloads können bei verlustbehafteten Verbindungen langsamer sein.
+sysctl-may-affect-userns = Programme, die ohne Rechte ihre eigene Sandbox aufbauen, funktionieren nicht mehr: Flatpak, die Sandboxes von Chromium und Firefox, Rootless-Container.
+detect-sysctl-title = Kernel-Sicherheitseinstellungen heute
+detect-sysctl-ok = Alle { $total } empfohlenen Kernel-Einstellungen sind bereits aktiv.
+detect-sysctl-open = { $have } von { $total } empfohlenen Kernel-Einstellungen sind aktiv. Es fehlen: { $missing } (und { $more } weitere). Eine vorgeschlagene Änderung, die sie setzt, steht unten zur Prüfung bereit.
+detect-sysctl-unreadable = Die Kernel-Einstellungen konnten hier nicht gelesen werden, daher wird nichts vorgeschlagen.

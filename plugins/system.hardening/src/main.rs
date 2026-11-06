@@ -37,11 +37,15 @@ pub struct Item {
     pub doc: String,
 }
 
+/// A text by language tag; English is the source and always there.
 #[derive(Debug, Deserialize)]
-pub struct Text {
-    pub en: String,
-    #[serde(rename = "pt-BR")]
-    pub pt_br: String,
+#[serde(transparent)]
+pub struct Text(pub std::collections::BTreeMap<String, String>);
+
+impl Text {
+    pub fn en(&self) -> &str {
+        self.0.get("en").map_or("", String::as_str)
+    }
 }
 
 #[derive(Debug, Deserialize)]

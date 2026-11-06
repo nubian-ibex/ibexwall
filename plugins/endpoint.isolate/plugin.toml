@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "Emergency mode"
 pt-BR = "Modo emergência"
+es = "Modo de emergencia"
+fr = "Mode d'urgence"
+de = "Notfallmodus"
 
 [description]
 en = "Cuts the network except for the addresses you name, and is undone from History."
 pt-BR = "Corta a rede, exceto os endereços que você indicar, e é desfeito pelo Histórico."
+es = "Corta la red salvo las direcciones que indiques, y se deshace desde el Historial."
+fr = "Coupe le réseau sauf pour les adresses que vous indiquez, et s'annule depuis l'Historique."
+de = "Trennt das Netzwerk bis auf die Adressen, die Sie nennen, und wird im Verlauf rückgängig gemacht."
 
 [privileges]
 write_paths = ["/etc/ibexwall/isolate"]

@@ -1,0 +1,11 @@
+av-infected-title = Un analizador marcó un archivo
+av-infected-summary = { $path } coincidió con { $signature }. No lo abras; elimínalo o examínalo en un lugar seguro.
+av-more-title = Y { $count } más
+av-more-summary = Se marcaron { $count } archivos más. Ejecuta la comprobación con --json para verlos todos.
+av-nosignatures-title = ClamAV no tiene base de datos de firmas
+av-nosignatures-summary = ClamAV está instalado pero no tiene con qué comparar los archivos. Ejecuta antes freshclam (o el temporizador de actualización de tu distribución).
+av-noscanner-title = No hay ningún analizador antimalware instalado
+av-noscanner-summary = Instala ClamAV (y YARA, para reglas personalizadas) desde tu distribución para analizar archivos. IbexWall no instala nada por sí mismo.
+av-may-affect-load = Un análisis lee muchos archivos y ralentiza el equipo mientras se ejecuta.
+av-selinux-title = SELinux impide que ClamAV lea tus archivos
+av-selinux-summary = Un análisis se ejecutaría sin ver nada. Permítelo con: sudo setsebool -P antivirus_can_scan_system on

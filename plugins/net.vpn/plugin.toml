@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "VPN and kill switch"
 pt-BR = "VPN e kill switch"
+es = "VPN e interruptor de corte"
+fr = "VPN et kill switch"
+de = "VPN und Kill Switch"
 
 [description]
 en = "Imports WireGuard profiles into NetworkManager and blocks all traffic outside the tunnel if it drops."
 pt-BR = "Importa perfis WireGuard no NetworkManager e bloqueia todo o tráfego fora do túnel se ele cair."
+es = "Importa perfiles de WireGuard en NetworkManager y bloquea todo el tráfico fuera del túnel si este se cae."
+fr = "Importe des profils WireGuard dans NetworkManager et bloque tout le trafic hors du tunnel si celui-ci tombe."
+de = "Importiert WireGuard-Profile in NetworkManager und blockiert den gesamten Datenverkehr außerhalb des Tunnels, wenn dieser abbricht."
 
 [privileges]
 write_paths = ["/etc/NetworkManager/system-connections", "/etc/ibexwall/vpn"]

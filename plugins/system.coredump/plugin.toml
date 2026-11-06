@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "Core dumps"
 pt-BR = "Core dumps"
+es = "Volcados de memoria"
+fr = "Vidages mémoire (core dumps)"
+de = "Core Dumps"
 
 [description]
 en = "Checks whether crash dumps (which can hold passwords and keys) are stored, and turns storage off."
 pt-BR = "Verifica se os despejos de falha (que podem conter senhas e chaves) são guardados, e desliga o armazenamento."
+es = "Comprueba si se guardan los volcados de fallos (que pueden contener contraseñas y claves) y desactiva el almacenamiento."
+fr = "Vérifie si les vidages de plantage (qui peuvent contenir des mots de passe et des clés) sont stockés, et désactive leur stockage."
+de = "Prüft, ob Absturzabbilder (die Passwörter und Schlüssel enthalten können) gespeichert werden, und schaltet das Speichern aus."
 
 [privileges]
 write_paths = ["/etc/systemd/coredump.conf.d"]

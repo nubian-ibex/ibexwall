@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "Hardening"
 pt-BR = "Endurecimento"
+es = "Refuerzo"
+fr = "Durcissement"
+de = "Härtung"
 
 [description]
 en = "Tells which of the recommended hardening settings this machine already has. It changes nothing; each setting is applied through the plugin that owns it."
 pt-BR = "Diz quais das configurações de endurecimento recomendadas esta máquina já tem. Não altera nada; cada configuração é aplicada pelo plugin que a controla."
+es = "Indica cuáles de los ajustes de refuerzo recomendados ya tiene esta máquina. No cambia nada; cada ajuste se aplica mediante el plugin al que pertenece."
+fr = "Indique lesquels des réglages de durcissement recommandés cette machine a déjà. Il ne modifie rien ; chaque réglage est appliqué par le plugin qui en est responsable."
+de = "Zeigt, welche der empfohlenen Härtungseinstellungen dieser Rechner bereits hat. Es ändert nichts; jede Einstellung wird über das Plugin angewendet, dem sie gehört."
 
 [privileges]
 

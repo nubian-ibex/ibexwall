@@ -12,10 +12,16 @@ distros = ["fedora", "ubuntu", "debian", "arch"]
 [name]
 en = "Secure DNS"
 pt-BR = "DNS seguro"
+es = "DNS seguro"
+fr = "DNS sécurisé"
+de = "Sicheres DNS"
 
 [description]
 en = "Encrypts DNS lookups, blocks trackers and malware domains, and keeps browsers from bypassing it."
 pt-BR = "Criptografa as consultas DNS, bloqueia rastreadores e domínios maliciosos e impede que os navegadores contornem a proteção."
+es = "Cifra las consultas DNS, bloquea rastreadores y dominios de malware, e impide que los navegadores lo eludan."
+fr = "Chiffre les requêtes DNS, bloque les traqueurs et les domaines de malwares, et empêche les navigateurs de le contourner."
+de = "Verschlüsselt DNS-Abfragen, blockiert Tracker und Malware-Domains und hindert Browser daran, es zu umgehen."
 
 [privileges]
 write_paths = [

@@ -1,0 +1,9 @@
+persistence-new-title = Neu: { $kind }, das vorher nicht da war
+persistence-new-summary = { $path } ist neu, seit die Basislinie akzeptiert wurde. Wenn Sie es nicht hinzugefügt haben, sehen Sie es sich an und entfernen Sie es.
+persistence-changed-title = { $kind } geändert
+persistence-changed-summary = { $path } hat sich geändert, seit die Basislinie akzeptiert wurde. Wenn Sie es nicht geändert haben, sehen Sie es sich an.
+persistence-preload-title = Etwas wird in jedes Programm geladen
+persistence-preload-summary = { $path } listet Bibliotheken auf, die das System in jedes Programm lädt. Das tut fast nur Schadsoftware.
+persistence-more-title = Und { $count } weitere
+persistence-more-summary = { $count } weitere Änderungen bei { $kind } wurden gefunden. Führen Sie die Prüfung mit --json aus, um alle zu sehen.
+persistence-may-affect = Das Akzeptieren der Basislinie hält fest, was jetzt auf dem Computer ist, sodass nur spätere Änderungen gemeldet werden.

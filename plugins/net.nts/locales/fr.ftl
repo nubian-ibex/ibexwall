@@ -1,0 +1,13 @@
+nts-missing-title = L'horloge n'est pas tenue par un client capable d'authentifier les serveurs
+nts-missing-summary = chrony n'est pas installé. Sans lui, l'heure vient du NTP non authentifié ou de nulle part, et toute personne sur le chemin peut la modifier. Installez chrony, puis activez cette option.
+nts-off-title = L'horloge prend l'heure de serveurs qu'elle ne peut pas authentifier
+nts-off-summary = chrony n'a aucune source NTS. Une fausse réponse d'heure peut fausser les vérifications de certificats et les journaux.
+nts-may-affect-firewall-4460 = NTS demande d'abord des clés à chaque serveur sur le port TCP 4460. Un pare-feu qui le bloque laisse l'horloge sur ses autres sources.
+nts-may-affect-clock = L'heure vient des serveurs choisis en plus de ceux déjà définis ; IbexWall ne supprime pas ceux de la distribution.
+detect-time-title = Ce qui maintient votre horloge aujourd'hui
+detect-time-chrony-nts = chrony fonctionne avec { $sources } sources authentifiées (NTS). Une fausse réponse d'heure serait refusée.
+detect-time-chrony-plain = chrony règle l'horloge à partir de { $sources } sources qui ne peuvent pas être authentifiées. Une configuration suggérée qui ajoute une source authentifiée est prête à être examinée ci-dessous.
+detect-time-chrony-unreadable = chrony est installé mais ses réglages n'ont pas pu être lus, donc rien n'est suggéré.
+detect-time-timesyncd = L'horloge est tenue par systemd-timesyncd, qui ne peut pas authentifier les serveurs. Installez chrony, puis revenez ici : { $install }
+detect-time-ntpd = L'horloge est tenue par ntpd, qu'IbexWall ne gère pas. Pour une heure authentifiée, installez chrony : { $install }
+detect-time-none = Aucun service de temps n'a été trouvé. Installez chrony, puis revenez ici : { $install }

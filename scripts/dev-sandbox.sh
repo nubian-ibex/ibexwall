@@ -21,7 +21,7 @@ for bin in ibexwalld ibexwall-desktop; do
 done
 
 plugins="$root/usr/lib/ibexwall/plugins"
-for id in system.posture system.ports net.dns net.nts net.firewall system.assistant system.hardening system.modules; do
+for id in system.posture system.ports net.dns net.nts net.firewall system.assistant system.hardening system.modules endpoint.rootkit net.exposure system.openscap; do
     mkdir -p "$plugins/$id"
     bin="ibexwall-plugin-${id#*.}"
     # Copy then rename: a running plugin binary cannot be overwritten in

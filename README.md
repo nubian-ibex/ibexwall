@@ -1,7 +1,12 @@
 <!-- SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors -->
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 
-# IbexWall — Security Center for Linux
+# IbexWall: Security Center for Linux
+
+[![CI](https://github.com/nubian-ibex/ibexwall/actions/workflows/ci.yml/badge.svg)](https://github.com/nubian-ibex/ibexwall/actions/workflows/ci.yml)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](https://www.gnu.org/licenses/gpl-3.0.html)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/nubian-ibex/ibexwall/badge)](https://securityscorecards.dev/viewer/?uri=github.com/nubian-ibex/ibexwall)
+[![REUSE compliant](https://img.shields.io/badge/REUSE-compliant-green.svg)](https://reuse.software/)
 
 IbexWall is an open source security center for the Linux desktop. It brings
 the firewall, per-app network control, secure DNS, system posture, updates,
@@ -12,12 +17,13 @@ It orchestrates the tools your distro already ships (firewalld/ufw,
 systemd-resolved, chrony, fwupd, PackageKit, USBGuard, ClamAV) instead of
 replacing them, and it is extensible through sandboxed plugins.
 
-**Status: pre-alpha.** The core, the CLI, the desktop app, secure DNS,
-per-app and inbound firewalling, hardening and endpoint plugins, and the AI
-assistant server exist and are tested in virtual machines on Fedora, Ubuntu,
-Debian and Arch (phases F0 to F9). There are no packages yet (F10). See
-`docs/STATUS.md` for where things stand and `docs/reports/` for what each
-phase proved.
+**Status: version 1.0 in preparation.** The daemon, CLI, desktop app, secure
+DNS, firewalling, hardening and endpoint plugins, and the AI assistant server
+are built and tested in virtual machines on Fedora, Ubuntu 24.04 and 26.04,
+Debian and Arch, with packages, an SELinux module and AppArmor profiles,
+signed releases, an SBOM and reproducibility (F0 to F10). See
+`docs/STATUS.md` for where things stand, `docs/release-checklist.md` for what
+v1.0 still needs, and `docs/reports/` for what each phase proved.
 
 ## Guarantees
 

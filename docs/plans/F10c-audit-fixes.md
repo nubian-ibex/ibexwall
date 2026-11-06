@@ -5,9 +5,8 @@
 
 Requested by the maintainer on 2026-11-06: validate the project and its
 code so far, then fix what a review finds. Status: M1 through M4 are
-done, except the two items noted below (config hot-reload and FakeFs
-symlink semantics). The maintainer approved the plan and the Compliance
-naming on 2026-11-06.
+done. The maintainer approved the plan and the Compliance naming on
+2026-11-06.
 
 ## Method and scope
 
@@ -210,8 +209,9 @@ review belongs to M4.
    f10` on the five distros.
    Accepted, not fixed: the DNS answers socket chmod and the status file
    read are unreachable to a local user because the runtime directory is
-   root-owned 0755. Still open: `core.config` is never reloaded, so a
-   config change only takes effect after a restart.
+   root-owned 0755. The configuration is now re-read before planning,
+   applying and reading config, so a lock or setting change takes effect
+   without a restart.
 4. M4, the rest of the audit: full-depth pass over every plugin and the
    DNS and MCP internals, `FakeFs` symlink semantics, the weak tests
    above, and the fuzz decision. Verify: findings folded in, battery and
@@ -224,11 +224,9 @@ review belongs to M4.
    non-loopback DNS listen, a missed `Defaults !authenticate` in
    system.posture, and a catalog vs sysctl disagreement on ptrace_scope
    and tcp_syncookies. The WireGuard, OpenVPN, blocklist, MCP HTTP, nfq
-   and net-common parsers are clean. One item is recorded as a design
-   limitation rather than fixed: net.dns cannot see the nft enforcement
-   guard from its sandbox, so a future core-side enforcement check should
-   report it. `FakeFs` symlink semantics are still open test
-   infrastructure.
+   and net-common parsers are clean. The core now reports the DNS
+   enforcement chain on GetDnsStatus, and FakeFs normalizes `..` and
+   refuses a symlinked parent like the real filesystem.
 
 ## Clean areas, for the record
 

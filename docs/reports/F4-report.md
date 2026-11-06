@@ -18,12 +18,12 @@ Date: 2026-11-03. Plan: `docs/archive/plans/F4-apps-traffic.md`. ADRs: 0031, 003
 - `ibexwall-apps`: a TTL-aware, bounded IP-to-domain correlator, SQLite
   rollups (counts, first and last seen only), and the first-connection
   and changed-binary alerts (a package transaction explains a new hash).
-- The monitor is its own hardened unit, `ibexwall-monitor.service`
-  (ADR-0032), feeding a root-only core socket; the resolver reports
+- The monitor is its own hardened unit, `ibexwall-monitor.service`,
+  feeding a root-only core socket; the resolver reports
   answers over a datagram socket in its own runtime directory.
 - Contract: `ListApps` and `GetAppDestinations` (spec regenerated).
-- `flatpak.override` executor and the `apps.flatpak-network` plugin
-  (ADR-0033): the block writes the file Flatpak reads, merges into an
+- `flatpak.override` executor and the `apps.flatpak-network` plugin:
+  the block writes the file Flatpak reads, merges into an
   administrator's entries and rolls back byte for byte.
 - Clients: `ibexctl apps list|info`, the Apps and network screen (mockup
   02, en and pt-BR, axe clean) and a TUI Apps tab.
@@ -53,9 +53,9 @@ Date: 2026-11-03. Plan: `docs/archive/plans/F4-apps-traffic.md`. ADRs: 0031, 003
   "monitor" blocked every outbound connection while loaded. Found when DNS
   stopped working in the end-to-end VM run; the earlier spike tests
   ignored `OSError`. Fixed, with a scenario that requires real IPv4 and
-  IPv6 connections to complete (ADR-0031 correction).
+  IPv6 connections to complete.
 - The monitor could not live as a child of `ibexwalld`: it would inherit
-  the daemon's capability bounding set. It became its own unit (ADR-0032).
+  the daemon's capability bounding set. It became its own unit.
 - Debian's `perf_event_paranoid=3` denies the exec tracepoint without
   `CAP_SYS_ADMIN`; the loader degrades, says so, and still attributes.
 - A process that exited before `/proc` was read lost its cgroup; the

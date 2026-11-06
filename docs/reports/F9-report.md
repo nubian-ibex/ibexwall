@@ -98,7 +98,7 @@ Engine and tooling changes:
 
 ## Deviations and open points
 
-- OpenVPN import was added after acceptance (ADR-0040 accepted, subset in
+- OpenVPN import was added after acceptance (subset in
   `docs/openvpn-subset.md`, VM scenario v2 on five distros).
 - Scan folders are explicit. The daemon's unit hides `/home`, so a plugin
   cannot discover Downloads folders; own units per plugin (F10) fix this.
@@ -119,4 +119,4 @@ Engine and tooling changes:
 
 ## Decisions for the maintainer
 
-- ADR-0040: decided, option 2 (done after acceptance).
+- option 2 (done after acceptance).

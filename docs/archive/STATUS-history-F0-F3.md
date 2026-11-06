@@ -31,7 +31,7 @@ Pending items closed (2026-11-01):
 - Daemon now runs under its systemd socket and unit in the VM suite
   (`systemd-analyze security` 2.7); packaging/ holds the units, polkit
   policy (all ten actions, test-checked).
-- ADR-0026 (transient-unit executor) written after a VM spike; status
+- the transient-unit executor written after a VM spike; status
   Proposed, needs a maintainer decision.
 - Coverage measured: core 90.5%, engine+ops 95.7%, proto 89.8%, sys 80.8%,
   varlink at the target after added tests (see docs/testing.md).
@@ -45,7 +45,6 @@ Findings worth remembering:
 - Rollback bugs fixed: previously inactive or masked units were left active.
 
 Still open:
-- Decision on ADR-0026.
 - Omarchy and EndeavourOS manual runs on the user's hosts.
 - Adapter ops stay validate-only until F3-F5.
 - Fedora VM first provision needs network (also true for every distro
@@ -54,7 +53,7 @@ Still open:
 ## F2 progress (2026-11-01)
 
 Done and verified (workspace 157 tests, clippy/fmt/deny clean, pushed):
-- M1 SDK + check results contract + real score (ADR-0027 permissive
+- M1 SDK + check results contract + real score (permissive
   varlink crate; core stores results, computes the spec formula).
 - M2 system.ports; M3 system.posture (14 checks) with real fixtures from
   five distros collected by `xtask vm-test --phase fixtures`; two check
@@ -73,7 +72,7 @@ Done and verified (workspace 157 tests, clippy/fmt/deny clean, pushed):
 
 - M6 Tauri shell (com.ibexwall.IbexWall, strict CSP, core:default only,
   no updater); RUSTSEC-2024-0370 ignored in deny.toml (GTK stack).
-- M9 ADR-0026 executor: ibexwall-exec in a transient unit; daemon unit
+- M9 executor: ibexwall-exec in a transient unit; daemon unit
   no longer writes /etc; VM scenario s8 proves out-of-dir writes fail.
 - M10 VM phase f2 (posture/ports through the daemon, UI contract) and
   F1 suite (9/9) pass on fedora, ubuntu-24.04, ubuntu-26.04, debian, arch.
@@ -92,14 +91,14 @@ Notes:
 ## F3 progress (2026-11-02)
 
 Done and verified (workspace 202 tests, clippy/fmt/deny clean, pushed):
-- `ibexwall-dns` forwarding stub (hickory 0.26, ADR-0028): block policy,
+- `ibexwall-dns` forwarding stub (hickory 0.26): block policy,
   encrypted upstreams (DoT, DoH, DoQ, DoH3 probed against Cloudflare and
   Quad9), counters without query logs, 5 s upstream cap, `--failsafe`.
 - Block lists: parser for hosts, domain and adblock formats, counts match
   the declared sizes of HaGeZi, OISD and StevenBlack; https-only download
   with a 64 MiB cap, atomic replace, jitter, a bad download never replaces
   a good list.
-- `net.dns` plugin for systemd-resolved (ADR-0029), Quad9 and Cloudflare
+- `net.dns` plugin for systemd-resolved, Quad9 and Cloudflare
   presets with sources and dates, hardened units (exposure 1.4 and 1.1).
 - Core: units restarted by a transaction are restarted again after
   rollback; fixed an F1 defect where a disabled unit was snapshotted as
@@ -127,7 +126,7 @@ Done and verified (workspace 202 tests, clippy/fmt/deny clean, pushed):
 
 - Both failure modes (`restore` by default, `block` failing closed) are
   proven in VM (d5, d10); the agent detects captive portals and announces
-  the relief steps (ADR-0030, never auto-relieved).
+  the relief steps (never auto-relieved).
 
 Next (see `docs/archive/plans/F3-secure-dns.md`): the TUI DNS view (M7), M4 adapters B2 to B4; M6 captive portal and
 `block` mode; M7 DNS screen; more provider presets after their docs are

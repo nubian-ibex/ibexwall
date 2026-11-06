@@ -6,7 +6,7 @@
 Goal: the hardening catalog ships as plugins that check, and where the spec
 says so, change the system through plans with snapshot and rollback, with
 the "may affect" and reboot-to-revert warnings the spec demands. Spec phase
-F7; decisions ADR-0036 to 0038 are in force (plugin ids use hyphens).
+F7; plugin ids use hyphens.
 
 Status: delivered (report: `docs/reports/F7-report.md`).
 
@@ -16,7 +16,7 @@ Every plugin follows the shapes that already exist: checks read files under
 a sandbox and never run commands (like `system.posture`, `system.ports`);
 controls plan typed `Op`s the core executes (like `net.firewall`); adapters
 that must drive another program use the fixed-argv `Exec` op or a dedicated
-adapter op (ADR-0034 pattern). Each milestone lands with its own VM
+adapter op. Each milestone lands with its own VM
 scenarios under `--phase f7` and the battery (fmt, clippy, nextest, deny,
 schemas, UI checks) before the commit.
 

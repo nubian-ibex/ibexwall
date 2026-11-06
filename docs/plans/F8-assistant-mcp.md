@@ -23,8 +23,7 @@ refuses if the operations changed since the human looked.
 M2 `ibexwall-mcp` (stdio, no root, runs as the user): protocol, the tools
 and resources of 4.12, per-client scopes from `/etc/ibexwall/mcp.toml`
 (Appendix F), redaction before every answer, `untrusted` objects, a rate
-limit, and an audit line for every call. ADR-0039 explains why the protocol
-is implemented here instead of through the `rmcp` crate.
+limit, and an audit line for every call. The protocol is implemented here instead of through the `rmcp` crate.
 
 M3 `ibexctl mcp config <client>` for Claude Code, OpenCode and VS Code.
 

@@ -94,13 +94,13 @@ the core), 0037 (no eBPF means no enforcement, and the UI says so).
 
 ## Deviations and open points (decided 2026-11-03)
 
-- ADR-0036: the Ask chains are derived state reconciled by the core, not a
+- the Ask chains are derived state reconciled by the core, not a
   plugin proposal through plan, approval and rollback; the mode change the
   user makes is the approval and the rollback. If you prefer the strict
   path, they move into a built-in plugin at the cost of an approval prompt
   the first time an app is put in Ask mode. The monitor unit now may open
   netlink sockets (`AF_NETLINK`) for the queue.
-- ADR-0037: the nft `socket cgroupv2` fallback for machines without eBPF was
+- the nft `socket cgroupv2` fallback for machines without eBPF was
   not built; degraded mode is "open, and the UI says why". It could only
   cover system services, not Flatpak scopes or containers.
 - Spec naming: several plugin ids in the spec use `_`

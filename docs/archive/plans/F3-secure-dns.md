@@ -11,10 +11,10 @@ restores the original configuration byte for byte. Spec: PROMPT.md section
 Status: in progress (autonomous mode, 2026-11-02).
 
 Progress:
-- M1 resolver core: done (forwarding stub on hickory 0.26, ADR-0028).
+- M1 resolver core: done (forwarding stub on hickory 0.26).
 - M2 block lists: done (parser, presets verified against each project,
   atomic updates, jitter).
-- M3 plugin `net.dns`: done for the systemd-resolved stack (ADR-0029);
+- M3 plugin `net.dns`: done for the systemd-resolved stack;
   failsafe unit and `--failsafe` mode done.
 - M4 backends: B1 (resolved) verified on all five distros; B2 to B4 pending.
 - M5 enforcement: done, including the known-DoH-endpoints list refused by
@@ -22,7 +22,7 @@ Progress:
   vendor's documentation).
 - M6: both failure modes are done and proven (`restore` by d5, `block`
   failing closed by d10); the captive portal is detected and announced by
-  the agent with manual relief (ADR-0030).
+  the agent with manual relief.
 - M7: the DNS screen is done (providers with verified facts, transport,
   list, enforcement, browser consent, counters); the agent raises the
   portal notice. A dedicated TUI DNS view is pending (the TUI already

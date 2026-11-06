@@ -30,7 +30,7 @@ Date: 2026-11-02. Plan: `docs/archive/plans/F3-secure-dns.md`. ADRs: 0028, 0029,
   transport, list, enforcement, browser consent, counters) in en and
   pt-BR; ChangeFlow shows why a plan was refused.
 - Agent: captive portals are detected and announced with the relief
-  steps (ADR-0030); enforcement is never lifted automatically.
+  steps; enforcement is never lifted automatically.
 
 ## How it was verified
 
@@ -63,11 +63,11 @@ Date: 2026-11-02. Plan: `docs/archive/plans/F3-secure-dns.md`. ADRs: 0028, 0029,
 
 ## Deviations
 
-- ADR-0029: backends are adapters inside the plugin proposing
+- backends are adapters inside the plugin proposing
   `file.write`/`systemd.unit`; the `dns.backend` operation stays
   reserved. Only the systemd-resolved stack is supported; others are
   refused with a reason (B2 to B4 pending).
-- ADR-0030: captive portals are announced, not auto-relieved.
+- captive portals are announced, not auto-relieved.
 - DNSSEC validation stays off and is not compiled in until an ADR enables
   it; Mullvad was rejected as a preset (public encrypted DNS discontinued
   2026-11-02).

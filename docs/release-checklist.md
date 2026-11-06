@@ -11,7 +11,7 @@ maintainer or a decision.
 ## Deliverables
 
 - [x] SELinux module and AppArmor profiles, with the resolver, the MCP server
-      and the plugins confined (ADR-0044). Packages `ibexwall-selinux` and
+      and the plugins confined. Packages `ibexwall-selinux` and
       `ibexwall-apparmor`, enforced in the matrix.
 - [x] Signing, SBOM and provenance: `cargo xtask release` signs the artifacts,
       writes a CycloneDX bill of materials and an in-toto SLSA statement;

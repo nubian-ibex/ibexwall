@@ -7,7 +7,7 @@ Goal: someone on Fedora, Ubuntu, Debian or Arch can install IbexWall from a
 package, update it, remove it and get the machine back as it was; the project
 has generated documentation and a site; and a v1.0 release can be cut from a
 checklist. Spec phase F10; the maintainer said "siga para a F10" on
-2026-11-05 and accepted ADR-0041 (official plugins as one multicall binary).
+2026-11-05 and accepted (official plugins as one multicall binary).
 
 Status: in progress (autonomous mode). M2 done 2026-11-05: 26 official plugins in
 one `ibexwall-plugins` binary (9.2 MiB stripped, from 58 MiB over 31), phases
@@ -18,7 +18,7 @@ embedded in the daemon, `ibexwalld --cleanup` for the uninstall, and a VM phase
 (`--phase f10`) that builds, installs, uses, upgrades, removes and purges on
 five distros with no residue. COPR, PPA, OBS and AUR publishing need the
 maintainer's accounts and keys. `docs/systemd-security.md` rates every unit.
-M3 done 2026-11-05 (ADR-0043): every plugin runs in its own socket-activated,
+M3 done 2026-11-05: every plugin runs in its own socket-activated,
 sandboxed unit (dynamic user, manifest capabilities, systemd exposure 1.6 to
 1.8); phases f1 to f9 green on five distros. The F9 limits on /home and kernel
 modules are lifted.
@@ -49,7 +49,7 @@ M1 Maintainability pass (before adding more): split the files over 600 lines
 cheap, and the CI gaps (a UI job, `cargo doc`, a coverage report). Behaviour
 unchanged: the existing tests are the proof.
 
-M2 Multicall plugins (ADR-0041) and a size-minded release profile: plugin
+M2 Multicall plugins and a size-minded release profile: plugin
 crates become libraries with `run()`, one `ibexwall-plugins` binary dispatches
 on argv[0], the packages ship it with a link per plugin; release profile with
 strip and LTO. Measure before and after.

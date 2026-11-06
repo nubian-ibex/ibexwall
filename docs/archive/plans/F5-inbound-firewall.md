@@ -8,7 +8,7 @@ firewall the distribution already uses. Spec phase F5 and section 4.7.
 
 Status: in progress (autonomous mode).
 
-Progress: M1 to M6 done (ADR-0034). `--phase f5` passes on the five
+Progress: M1 to M6 done. `--phase f5` passes on the five
 distros; see `docs/reports/F5-report.md`. Spike S5-b (input chain and
 Docker) answered by the p4 scenario: no interference, `docker0` trusted
 is the administrator's part. Open: profiles per connection through
@@ -23,7 +23,7 @@ NetworkManager's connection.zone, rich rules, ufw application profiles.
 - **One typed operation.** `firewall.adapter` carries a structured action
   (allow or remove a port, allow or remove a service). The core validates
   it and maps it to a fixed argv; no free-form arguments reach a tool and
-  no shell is involved (ADR-0034).
+  no shell is involved.
 - **Reversible by snapshot.** The files the tool writes are captured
   before (`/etc/firewalld/zones/<zone>.xml`, `/etc/ufw/user*.rules`), and
   rollback restores them and reloads. The confirmation window with

@@ -93,7 +93,7 @@ are already integrated.
 
 Recorded for the maintainer's question, not built here: device enrolment and
 identity (mTLS with rotation and revocation), signed and versioned policy with
-rollback, the report sealed to the organization's key (ADR-0042), local consent
+rollback, the report sealed to the organization's key, local consent
 and the right to refuse, a signed posture attestation, a reference server and a
 console outside the open repository, and a test that breaks the build if a
 forbidden field (browsing, DNS, files) appears in a report.

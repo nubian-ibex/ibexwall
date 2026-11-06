@@ -13,7 +13,7 @@ Block-Flatpak are functional. Spec phase F4.
 Status: in progress (autonomous mode).
 
 Progress:
-- S4-a done (ADR-0031): the connect monitor loads, attaches and
+- S4-a done: the connect monitor loads, attaches and
   attributes on all five distros; ring-buffer wake-on-event; overhead
   bounded (< 3 us per connect in the hook, < 20 us per event in the
   loader); `cargo xtask ebpf` builds the ELF outside the workspace.
@@ -28,14 +28,14 @@ Progress:
   argv runner. The loader enriches events with kind, id, hash and package
   (cached per exe). Verified on the five distros (curl is a `cli`
   owned by `curl`). Origin and signature status come with M3.
-- M3 done (ADR-0032): `ibexwall-apps` (correlator, rollups, alerts),
+- M3 done: `ibexwall-apps` (correlator, rollups, alerts),
   migration 0003, `ibexwall-monitor.service` (own hardened unit) feeding
   the core over a root-only socket, the resolver reporting answers over a
   datagram socket for IP-to-domain, `ListApps` and `GetAppDestinations`
   in the contract, events for first connection and changed binary. The
   hardened unit passes on the five distros (Debian degrades: no kernel
   exec capture, documented).
-- M4 done (ADR-0033): `flatpak.override` executor, `apps.flatpak-network`
+- M4 done: `flatpak.override` executor, `apps.flatpak-network`
   plugin, byte-for-byte rollback; the real Flatpak reads the file and
   the VM scenario proves apply, read-back and rollback on the five
   distros. Snap via interface is still to do.
@@ -44,7 +44,7 @@ Progress:
   monitor unit, attribution of curl (package), a system service, a
   Flatpak scope, a Podman container and a snap (Ubuntu), plus domain
   correlation over the resolver socket; found and fixed a hook that
-  returned 0 and blocked connects (ADR-0031 correction). Still open:
+  returned 0 and blocked connects. Still open:
   Firefox as a package, the GUI Apps screen, the TUI apps view.
 - Overhead measured against the spec criterion (hook plus loader CPU
   per connection, non-loopback destinations, best of five): fedora 1.26%,
@@ -117,7 +117,7 @@ M6 VM phase `--phase f4`
 
 ## Spikes
 
-- S4-a: done (ADR-0031).
+- S4-a: done.
 - S4-b (M3, 1 day): cgroup id to path resolution cost; caching strategy.
 - S4-c (M4, 0.5 day): `flatpak override` behavior and file layout per
   distro (verification against Flatpak's own docs).

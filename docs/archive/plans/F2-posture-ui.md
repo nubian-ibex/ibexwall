@@ -2,14 +2,14 @@
 
 Goal: first user-visible release. Read-only posture plugins, a score the
 user can understand, a Svelte web UI inside a Tauri shell, a TUI, and a
-minimal session agent. Plus the ADR-0026 executor, because it must land
+minimal session agent. Plus the executor, because it must land
 before v0.1.
 
 Status: in progress (autonomous mode, decided 2026-11-01).
 
 ## Preconditions and blockers
 
-- [x] F1 accepted; ADR-0026 accepted (option 2)
+- [x] F1 accepted (option 2)
 - [ ] Host packages for Tauri 2 builds (needs sudo, user action, needed at
       M6 only): `sudo dnf install webkit2gtk4.1-devel libsoup3-devel librsvg2-devel`
 - Node 22 and pnpm 10 are present.
@@ -104,7 +104,7 @@ Status: in progress (autonomous mode, decided 2026-11-01).
   notifications for new high or critical findings; `.desktop` inventory
   scanner with tests. User unit in `packaging/`.
 
-### M9 — ADR-0026 executor
+### M9 — the executor
 - `ibexwall-exec` helper started through `StartTransientUnit` with
   `ReadWritePaths=` limited to the directories of one transaction; the
   daemon unit drops `/etc` from its own `ReadWritePaths`. Fake in
@@ -125,7 +125,7 @@ Status: in progress (autonomous mode, decided 2026-11-01).
 - [ ] axe reports no serious violations; keyboard navigation is complete
 - [ ] Dark and light themes; `en` and `pt-BR` complete
 - [ ] Score formula visible in the UI and covered by unit tests
-- [ ] ADR-0026 executor: out-of-directory write attempt is blocked in a VM
+- [ ] the executor: out-of-directory write attempt is blocked in a VM
 - [ ] Coverage targets unchanged (core 80%, engine 90%)
 
 ## Risks

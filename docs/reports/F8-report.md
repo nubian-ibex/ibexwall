@@ -125,7 +125,7 @@ core and polkit, so a client that bypasses the server gains nothing.
 
 ## Decisions for the maintainer
 
-- ADR-0039 (own MCP protocol instead of `rmcp`) was taken in autonomous
+- (own MCP protocol instead of `rmcp`) was taken in autonomous
   mode; it is local and reversible.
 - Accepted 2026-11-04: access through a packaged polkit rule for the group
   `ibexwall-assistants` (done), `ibexctl mcp config` tells people to join it.
@@ -159,4 +159,4 @@ Built at the maintainer's request, with a key or token the user defines.
   and holds no secret (neither does the journal).
 - Limits: a stolen token works until it is removed or expires; a self-signed
   certificate is only as good as the fingerprint check on the client; a
-  TLS-terminating proxy in front would end the end-to-end property (ADR-0042).
+  TLS-terminating proxy in front would end the end-to-end property.

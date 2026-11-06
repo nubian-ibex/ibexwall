@@ -10,7 +10,7 @@ Last updated: 2026-11-04 (F9 delivered, report ready for acceptance)
 F0 to F5 and F9 are accepted. F6 to F8 are delivered and wait for the
 maintainer's acceptance. After acceptance, on 2026-11-04: OpenVPN import
 (subset), the HTTPS MCP transport with user-defined tokens, own DNS servers
-with a secondary and split DNS, ADR-0042 (nothing in the clear) and its
+with a secondary and split DNS, (nothing in the clear) and its
 guard, and signed commits from now on. Next: F10 (packaging, release, docs, site). Run the app with
 `scripts/dev-sandbox.sh` (sandboxed daemon, host untouched). Manual runs on
 Omarchy and EndeavourOS, and with real assistant clients, are deferred by the
@@ -19,15 +19,15 @@ maintainer.
 Phases, newest first (report, plan, ADRs):
 
 - **F9, VPN and endpoint, accepted 2026-11-04** (`docs/reports/F9-report.md`,
-  `docs/archive/plans/F9-vpn-and-endpoint.md`, ADR-0040 proposed). `endpoint.isolate`,
+  `docs/archive/plans/F9-vpn-and-endpoint.md`). `endpoint.isolate`,
   `net.vpn` (WireGuard through NetworkManager and a kill switch),
   `endpoint.persistence`, `endpoint.integrity`, `endpoint.av`; address and
   interface matches in nft rules, private-file previews, symmetric execs.
   `--phase f9` green on five distros, with a `tcpdump` proof that a dropped
   tunnel leaks nothing under the kill switch and the EICAR file flagged by
-  ClamAV and YARA. OpenVPN import (a documented subset, ADR-0040 accepted, `docs/openvpn-subset.md`) was added after acceptance, verified on five distros. Open: scan-folder discovery and a file watcher (need plugin units, F10).
+  ClamAV and YARA. OpenVPN import (a documented subset, `docs/openvpn-subset.md`) was added after acceptance, verified on five distros. Open: scan-folder discovery and a file watcher (need plugin units, F10).
 - **F8, AI assistant (MCP)** (`docs/reports/F8-report.md`,
-  `docs/plans/F8-assistant-mcp.md`, ADR-0039 accepted). `ibexwall-mcp` over
+  `docs/plans/F8-assistant-mcp.md`). `ibexwall-mcp` over
   stdio with nine tools and no way to apply, approve or revert; the core's
   proposal queue (irreversible plans refused, approval re-plans and compares);
   `ListAudit`; `ibexctl proposals` and `ibexctl mcp config`; the Assistant
@@ -36,7 +36,7 @@ Phases, newest first (report, plan, ADRs):
   green on five distros with a scripted client (no language model) and an
   injection corpus in the suite. Open: OAuth (not built; a user-defined token instead).
 - **F7, hardening and system plugins** (`docs/reports/F7-report.md`,
-  `docs/plans/F7-hardening-and-system.md`, ADR-0038). Sixteen plugins;
+  `docs/plans/F7-hardening-and-system.md`). Sixteen plugins;
   `--phase f7` green on five distros (15 scenarios). Open: pending firmware
   and HSI, a plugin monitor interface, GNOME user lock settings, telemetry
   control, OSV lookup.
@@ -76,7 +76,7 @@ assistants rule, manual runs on real desktops.
   Fedora 44 (kernel 6.19.10), running `ibexctl` inside the VM.
 - CI: fmt, clippy `-D warnings`, nextest, cargo-deny, schema drift,
   DCO + Conventional Commits; actions pinned by SHA, zero default
-  permissions; no VM jobs (ADR-0023).
+  permissions; no VM jobs.
 - Community files, repo AGENTS.md, 23 ADRs, threat model v1.
 - `.github-org/` workspace repo ready to become the org `.github`
   (profile README, SECURITY, conduct, issue/PR templates).
@@ -107,7 +107,7 @@ assistants rule, manual runs on real desktops.
   checklist, docs/release-checklist.md). M1 to M4 (maintainability, multicall plugin
   binary, a unit per plugin, RPM/DEB/Arch packages with `ibexwalld --cleanup`),
   M5 (AppArmor profiles enforcing on Ubuntu 24.04 and 26.04, an SELinux module
-  enforcing on Fedora, ADR-0044; packages `ibexwall-apparmor` and
+  enforcing on Fedora; packages `ibexwall-apparmor` and
   `ibexwall-selinux`), M6 (`cargo xtask release`: signed artifacts, a CycloneDX
   SBOM, an in-toto provenance statement, `verify-release`, `repro` (192 files
   identical), docs/release.md, the release workflow), M7 (five languages in

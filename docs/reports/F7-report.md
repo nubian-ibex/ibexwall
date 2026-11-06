@@ -4,7 +4,7 @@
 # F7 report: hardening and system plugins
 
 Date: 2026-11-04. Plan: `docs/plans/F7-hardening-and-system.md`. ADR: 0038
-(plugin ids use hyphens; ADR-0036 and 0037 were accepted at the start).
+(plugin ids use hyphens).
 
 ## What was done
 
@@ -132,5 +132,5 @@ How they follow the rules of the project:
 - Plugins still run as children of the daemon in this phase, so the
   capabilities and read paths in their manifests are not yet enforced by a
   unit of their own (F10).
-- Spec naming applied (ADR-0038): `apps.flatpak-perms`, `system.session-lock`,
+- Spec naming applied: `apps.flatpak-perms`, `system.session-lock`,
   `privacy.camera-mic`.

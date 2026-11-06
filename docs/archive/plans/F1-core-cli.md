@@ -42,11 +42,11 @@ Status: awaiting approval.
   `varlink` crate (sans-io core), or hand-rolled framing over tokio.
   Criteria: `more`/`continues` streaming, named errors, maintenance
   health, permissive license, audit surface, fit with our
-  proto-first/IDL-generated workflow. → ADR-0024.
+  proto-first/IDL-generated workflow.
 - **S1-b (0.5d) — caller identity + polkit subject.** Verify
   `SO_PEERPIDFD` (kernel >= 6.5; host and VM are 6.19) and whether the
   VM's polkit accepts pidfd subjects; fallback is `unix-process` with
-  pid + start time. Never authorize by bare PID. → ADR-0025.
+  pid + start time. Never authorize by bare PID.
 
 ### M1 — ibexwall-sys: the testability seam
 
@@ -60,8 +60,8 @@ Status: awaiting approval.
 
 - `ibexwalld` binary: tokio runtime, socket activation
   (`LISTEN_FDS`), direct bind under `IBEXWALL_ROOT` for dev/tests;
-  varlink server per ADR-0024; `GetInfo` (api = 1).
-- Per-method polkit authorization (ADR-0025) with the action map from
+  varlink server; `GetInfo` (api = 1).
+- Per-method polkit authorization with the action map from
   `names`; `PermissionDenied` mapped to exit code 3 on the CLI.
 - Structured logging: `tracing` + `tracing-journald` (SYSLOG_IDENTIFIER
   per binary; `IBEXWALL_PLUGIN`/`IBEXWALL_TX` fields), no secrets.
@@ -109,7 +109,7 @@ Status: awaiting approval.
 - Crash recovery: on startup, revert any `applying`/`pending_confirm`
   and notify (event + journal).
 - **S1-c (1d) — transient-unit executor spike** (`StartTransientUnit`
-  with `ReadWritePaths` = exact transaction paths) → ADR-0026 with
+  with `ReadWritePaths` = exact transaction paths) with
   adopt/defer recommendation; in-process executor is the default until
   then.
 - Tests: state machine unit tests; apply/rollback byte-for-byte with

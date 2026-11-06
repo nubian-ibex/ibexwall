@@ -10,7 +10,7 @@ Date: 2026-11-03. Plan: `docs/archive/plans/F5-inbound-firewall.md`. ADRs: 0034.
 - `ibexwall-firewall`: the unified model (manager, zone, allowed ports and
   services, ports listening on every address, rules read but not edited),
   parsers for firewalld zone files and ufw rule files, the typed actions
-  with the exact argv each becomes (ADR-0034: `firewall-cmd` and `ufw`
+  with the exact argv each becomes (`firewall-cmd` and `ufw`
   through a fixed allowlist, never a shell), network profiles and their
   conservative recommendation.
 - `net.firewall` plugin: plans `firewall.adapter` ops for a running
@@ -65,7 +65,7 @@ Date: 2026-11-03. Plan: `docs/archive/plans/F5-inbound-firewall.md`. ADRs: 0034.
 
 ## Deviations and open points
 
-- firewalld and ufw are driven by their CLIs with fixed argv (ADR-0034),
+- firewalld and ufw are driven by their CLIs with fixed argv,
   not over D-Bus; reads come from their own files.
 - Profiles map to firewalld's default zone; per-connection zones through
   NetworkManager, rich-rule editing and ufw application profiles are not

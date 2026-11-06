@@ -9,7 +9,7 @@ the daemon leaves the network open (fail open, by design). Spec phase F6
 and section 4.7 (outbound per app).
 
 Status: delivered (report: `docs/reports/F6-report.md`). M5's eBPF-less
-fallback became ADR-0037 (degraded mode is open and says so).
+fallback became (degraded mode is open and says so).
 
 ## Scope decisions
 

@@ -20,7 +20,7 @@ Date: 2026-11-02. Plan: `docs/archive/plans/F2-posture-ui.md`.
   org shield as logo and icon.
 - TUI (`ibexctl tui`) and the session agent (notifications, `.desktop`
   inventory scanner).
-- ADR-0026 executor: `ibexwall-exec` runs each transaction (apply and
+- `ibexwall-exec` runs each transaction (apply and
   rollback) in a transient unit limited to that transaction's
   directories; the daemon unit no longer writes `/etc`.
 
@@ -44,7 +44,7 @@ Date: 2026-11-02. Plan: `docs/archive/plans/F2-posture-ui.md`.
 
 ## Deviations
 
-- ADR-0027: `ibexwall-varlink` is Apache-2.0 OR MIT (permissive crate).
+- `ibexwall-varlink` is Apache-2.0 OR MIT (permissive crate).
 - RUSTSEC-2024-0370 (unmaintained `proc-macro-error`, from the GTK stack
   under Tauri) is ignored in `deny.toml` with a note.
 - Under `IBEXWALL_ROOT` the daemon authorizes every action for its own uid

@@ -17,19 +17,21 @@ GitHub CI is green on every job (fmt, lint, tests with cargo-deny,
 docs, coverage, the UI checks, commit hygiene) plus Scorecard, and the
 commit history is signed and verified.
 
-Two plans are proposed and wait for the maintainer:
+Two plans are approved and in flight:
 
 - `docs/plans/F10c-audit-fixes.md`, from the 2026-11-06 validation pass.
-  The automated battery is green (646 Rust tests, 119 UI tests, clippy,
+  The automated battery is green (664 Rust tests, 119 UI tests, clippy,
   deny, no schema drift, 81% coverage), and the review found five P0,
-  fourteen P1 and twelve P2 issues, mostly in the transaction engine.
-  No v1.0 tag before its M1 and M2 are done.
+  fourteen P1 and twelve P2 issues. M1 (the five P0) is done and the
+  transaction-engine work (M2) is mostly landed, all with unit or e2e
+  tests and a green Fedora VM run; the remaining M2 items, M3 (the P2
+  set) and M4 (the rest of the audit) are still open. No v1.0 tag before
+  M1 and M2 are done and verified.
 - `docs/plans/F11a-compliance.md`, the Compliance section the maintainer
   asked for: the machine against a named framework, with compliant,
   non-compliant, not-assessed, attestation and exception states, and a
-  signed export (JSON, CSV, OSCAL). Four decisions wait for the
-  maintainer: the UI name, the order against F11b, the first-release
-  framework list, and the CIS stance.
+  signed export (JSON, CSV, OSCAL). Its name is decided (Compliance); its
+  milestones start after the audit fixes (its M0 prerequisite).
 
 Architecture decisions are recorded internally, outside this repository;
 the public plans and reports are self-contained without them.

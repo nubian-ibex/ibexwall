@@ -4,8 +4,10 @@
 # F10c: the 2026-11-06 audit and what it fixes
 
 Requested by the maintainer on 2026-11-06: validate the project and its
-code so far, then fix what a review finds. Status: proposed, waiting for
-approval. Nothing here is built yet.
+code so far, then fix what a review finds. Status: M1 (the P0 set) and
+most of M2 (the transaction engine) are done and committed the same day.
+M3 and M4, and the rest of M2, are next. The maintainer approved the
+plan and the Compliance naming on 2026-11-06.
 
 ## Method and scope
 
@@ -170,14 +172,31 @@ review belongs to M4.
 
 ## Milestones
 
-1. M1, the P0 set. Verify: unit tests per fix plus VM scenarios where an
-   unprivileged user cannot read the executor file, a traversal plan is
-   refused at validate, socket exhaustion leaves the daemon serving, and
-   a corrupt persistence file keeps the firewall on reboot.
-2. M2, the transaction engine (findings 6 to 19). Verify: interleaving
-   and double-approval tests, a crash injected between steps, a property
-   test that no plan without a real inverse passes the gate, and an
-   audit chain whose truncated tail is detected.
+1. M1, the P0 set. Done on 2026-11-06: five commits with a unit test
+   each (paths, executor privacy, nft persistence, accept robustness,
+   identity binding), the battery green at 656 tests, and a VM run per
+   the phase matrix. Verify: unit tests per fix plus VM scenarios where
+   an unprivileged user cannot read the executor file, a traversal plan
+   is refused at validate, socket exhaustion leaves the daemon serving,
+   and a corrupt persistence file keeps the firewall on reboot.
+2. M2, the transaction engine (findings 6 to 19). Landed on 2026-11-06,
+   except the parts noted below. Verify: interleaving and double-approval
+   tests, a crash injected between steps, a property test that no plan
+   without a real inverse passes the gate, and an audit chain whose
+   truncated tail is detected.
+   Done: a single semaphore serializes every engine mutation, a plan is
+   consumed once and a proposal claimed once, Rollback checks state and
+   refuses to restore over a newer transaction, every inverse is
+   attempted and errors aggregated, snapshots are durable, plugin calls
+   have a deadline, the reload runs once, an nft familyless rule is
+   refused, findings are keyed by plugin and id, list limits are clamped,
+   reversibility comes from the ops and an irreversible plan is refused at
+   apply, and the firewall is restored before a broken config or plugin
+   file can stop the daemon.
+   Still open from M2: a transaction that failed at boot is not retried
+   on start, plans/events/snapshots are not pruned, the audit actor is
+   hard-coded, the chain head is not anchored (a deleted tail still
+   verifies), and the proposal approval shows no diff.
 3. M3, the P2 set plus the unit and permissions review. Verify: the full
    battery plus `--phase f0` to `--phase f10` on the five distros.
 4. M4, the rest of the audit: full-depth pass over every plugin and the

@@ -10,6 +10,7 @@
 mod backend;
 mod detect;
 mod presets;
+mod proxy;
 
 use std::collections::BTreeMap;
 
@@ -197,6 +198,20 @@ fn dropin_content() -> String {
 }
 
 fn plan(sandbox: &Sandbox, config: Config) -> Result<Vec<Op>, PluginError> {
+    // Putting IbexWall's resolver in front of a proxy that already encrypts
+    // would break the chain the person built.
+    if let Some(proxy) = proxy::local_encrypting_proxy(sandbox)
+        && proxy.in_use
+    {
+        return Err(PluginError::invalid(
+            "backend",
+            format!(
+                "this computer's DNS already goes through {}, which encrypts it; \
+                 stop using it first if you want IbexWall's resolver instead",
+                proxy.name
+            ),
+        ));
+    }
     match backend::detect(sandbox) {
         Backend::Resolved => {}
         Backend::Unsupported(reason) => return Err(PluginError::invalid("backend", reason)),
@@ -433,7 +448,11 @@ fn plain_upstreams(sandbox: &Sandbox) -> Vec<String> {
 /// Runs against any tree (real system, sandbox or fixture).
 fn evaluate(sandbox: &Sandbox) -> CheckReport {
     let backend = backend::detect(sandbox);
+    let encrypted_by_proxy =
+        proxy::local_encrypting_proxy(sandbox).is_some_and(|proxy| proxy.in_use);
     let outcome = match backend {
+        // A proxy that encrypts is protection the person set up themselves.
+        _ if encrypted_by_proxy => CheckOutcome::Pass,
         Backend::Unsupported(_) => CheckOutcome::NotAssessed,
         Backend::Resolved if dropin_points_at_resolver(sandbox) && resolver_listening(sandbox) => {
             CheckOutcome::Pass

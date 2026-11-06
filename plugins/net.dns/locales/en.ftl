@@ -12,3 +12,5 @@ detect-dns-ibexwall = Secure DNS is already running: lookups leave this computer
 detect-dns-resolved-tls = Your system uses { $stack } and already encrypts lookups with TLS. Servers in use: { $servers }.
 detect-dns-resolved-plain = Your system uses { $stack } and sends lookups without encryption to: { $servers }. A suggested setup is ready to review below.
 detect-dns-other = Your system uses { $stack } for DNS. IbexWall cannot manage that setup yet, so nothing is suggested. Servers in use: { $servers }.
+detect-dns-proxy = Your DNS already leaves this computer encrypted through { $proxy }, listening on { $listen }. Resolvers: { $resolvers }. It { $dnssec -> [yes] requires *[other] does not require } DNSSEC, { $nolog -> [yes] only uses *[other] does not insist on } resolvers that keep no logs, and { $nofilter -> [yes] avoids *[other] may use } resolvers that filter. IbexWall leaves it as it is and offers no change.
+detect-dns-proxy-idle = { $proxy } is running here (listening on { $listen }), but this computer's lookups do not go through it. Point your system resolver at it to use it. IbexWall suggests nothing.

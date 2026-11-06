@@ -1,0 +1,39 @@
+id = "system.openscap"
+version = "0.1.0"
+api = 1
+category = "system"
+kinds = ["check", "control"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-openscap"
+default_enabled = false
+distros = ["fedora", "ubuntu", "debian"]
+
+[name]
+en = "Security profile check (OpenSCAP)"
+pt-BR = "Verificação de perfil de segurança (OpenSCAP)"
+
+[description]
+en = "Checks this computer against a published security profile (for example ANSSI or CIS) with OpenSCAP and lists the rules that fail. It changes nothing."
+pt-BR = "Confere este computador com um perfil de segurança publicado (por exemplo ANSSI ou CIS) usando o OpenSCAP e lista as regras que falham. Não altera nada."
+
+[privileges]
+write_paths = ["/etc/systemd/system/ibexwall-openscap-scan.service", "/etc/systemd/system/ibexwall-openscap-scan.timer", "/var/lib/ibexwall/openscap/.managed"]
+units = ["ibexwall-openscap-scan.service", "ibexwall-openscap-scan.timer"]
+unit_actions = ["start", "enable", "disable"]
+
+[sandbox]
+user = "dynamic"
+capabilities = ["CAP_DAC_READ_SEARCH"]
+read_paths = ["/var/lib/ibexwall/openscap", "/usr/share/xml/scap/ssg/content", "/usr/bin", "/etc/os-release", "/etc/systemd/system"]
+network = false
+
+[risk]
+affects = ["performance"]
+reversible = "immediate"
+confirm_timeout = false
+may_affect = ["openscap-may-affect-load"]
+
+[ui]
+icon = "clipboard-list"
+order = 93

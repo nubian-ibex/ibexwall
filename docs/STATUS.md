@@ -116,13 +116,13 @@ assistants rule, manual runs on real desktops.
   report). Publishing (COPR, PPA, OBS, AUR), the official release key, making
   the three new repos public and the Cloudflare Pages deploy need the
   maintainer.
-- Domain (P-01 resolved): `ibexwall.com`, bought on Cloudflare. The GitHub org
-  `nubian-ibex` Website field points to it. Still to do: org domain
-  verification (TXT `_github-challenge-nubian-ibex-org`, then "Verify" in the
-  org Pages settings), DNS for site (`ibexwall.com`) and docs
-  (`docs.ibexwall.com`), optional Email Routing (`security@ibexwall.com`).
-  Decided: host on Cloudflare Pages. The GitHub free plan is enough. Set
-  `DOCS_BASE` in `ui/src/lib/site.ts` only once the site is live.
+- Domain (P-01 resolved and live): `ibexwall.com` on Cloudflare. The site
+  (ibexwall.com, www redirects to the same project), the documentation
+  (docs.ibexwall.com) and the org Website field all point there, deployed on
+  Cloudflare Pages (projects `ibexwall-website` and `ibexwall-docs`, manual
+  `wrangler pages deploy` until CI is set up). Each hardening setting in the
+  app links to its page on the site (`DOCS_BASE`). Open: the GitHub org
+  verification click in the org Pages settings, and Email Routing if wanted.
 - Translations: the app is complete in en, pt-BR, es, fr, de (see
   docs/translating.md). The website: interface, hardening pages and the four
   standing pages are complete in all five; articles are complete in en and es,

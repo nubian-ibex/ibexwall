@@ -141,14 +141,21 @@ async fn rollback(target: String) -> Result<Value, Value> {
         .map_err(|e| err_text(&e))
 }
 
-/// Tray labels follow the session language (en or pt-BR), like the UI.
+/// Tray labels follow the session language, like the UI.
 fn tray_labels() -> (&'static str, &'static str, &'static str) {
     let lang = std::env::var("LC_ALL")
         .or_else(|_| std::env::var("LC_MESSAGES"))
         .or_else(|_| std::env::var("LANG"))
         .unwrap_or_default();
-    if lang.to_lowercase().starts_with("pt") {
+    let code = lang.to_lowercase();
+    if code.starts_with("pt") {
         ("Abrir o IbexWall", "Sair", "IbexWall")
+    } else if code.starts_with("es") {
+        ("Abrir IbexWall", "Salir", "IbexWall")
+    } else if code.starts_with("fr") {
+        ("Ouvrir IbexWall", "Quitter", "IbexWall")
+    } else if code.starts_with("de") {
+        ("IbexWall öffnen", "Beenden", "IbexWall")
     } else {
         ("Open IbexWall", "Quit", "IbexWall")
     }

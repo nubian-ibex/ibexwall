@@ -192,9 +192,10 @@ pub fn polkit_actions() -> [&'static str; 10] {
     ]
 }
 
-// Locales (source locale plus shipped translations).
+// Locales (source locale plus shipped translations). A language is added
+// here and with its files; see docs/translating.md.
 pub const LOCALE_SOURCE: &str = "en";
-pub const LOCALES: [&str; 5] = ["en", "pt-BR", "de", "fr", "es"];
+pub const LOCALES: [&str; 5] = ["en", "pt-BR", "es", "fr", "de"];
 
 // Structured journal fields.
 pub const JOURNAL_PLUGIN_FIELD: &str = "IBEXWALL_PLUGIN";

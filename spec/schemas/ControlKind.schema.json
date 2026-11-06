@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Whether a control is decided by the machine or by a person.",
+  "enum": [
+    "automated",
+    "attestation"
+  ],
+  "title": "ControlKind",
+  "type": "string"
+}

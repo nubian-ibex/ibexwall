@@ -8,6 +8,7 @@
 pub mod api;
 pub mod ask;
 pub mod audit;
+pub mod compliance;
 pub mod config;
 pub mod engine;
 pub mod events;

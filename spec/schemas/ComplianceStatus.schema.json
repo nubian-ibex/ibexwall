@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The state of one control after evaluation. `NotAssessed` is never a\npass: a control with a missing, stale or unknown check lands here, so\na report that cannot prove a control never claims it.",
+  "enum": [
+    "compliant",
+    "non_compliant",
+    "not_assessed",
+    "needs_attestation",
+    "not_applicable",
+    "excepted"
+  ],
+  "title": "ComplianceStatus",
+  "type": "string"
+}

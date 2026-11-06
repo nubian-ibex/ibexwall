@@ -1,0 +1,82 @@
+{
+  "$defs": {
+    "CheckOutcome": {
+      "description": "Outcome of one check. `NotApplicable` checks are left out of the score\ndenominator; `NotAssessed` checks cannot be evaluated yet (e.g. they\nneed a plugin that ships later) and are shown honestly, never as passes.",
+      "enum": [
+        "pass",
+        "fail",
+        "not_applicable",
+        "not_assessed"
+      ],
+      "type": "string"
+    },
+    "CheckResult": {
+      "additionalProperties": false,
+      "description": "One evaluated check; the score is computed from these (spec §5.4).",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "outcome": {
+          "$ref": "#/$defs/CheckOutcome"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        }
+      },
+      "required": [
+        "id",
+        "severity",
+        "outcome"
+      ],
+      "type": "object"
+    },
+    "ComplianceStatus": {
+      "description": "The state of one control after evaluation. `NotAssessed` is never a\npass: a control with a missing, stale or unknown check lands here, so\na report that cannot prove a control never claims it.",
+      "enum": [
+        "compliant",
+        "non_compliant",
+        "not_assessed",
+        "needs_attestation",
+        "not_applicable",
+        "excepted"
+      ],
+      "type": "string"
+    },
+    "Severity": {
+      "description": "Finding severity. Weights drive the posture score (spec §5.4).",
+      "enum": [
+        "info",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One control's verdict and the checks that decided it.",
+  "properties": {
+    "checks": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/CheckResult"
+      },
+      "type": "array"
+    },
+    "control_id": {
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/ComplianceStatus"
+    }
+  },
+  "required": [
+    "control_id",
+    "status"
+  ],
+  "title": "ControlResult",
+  "type": "object"
+}

@@ -1,0 +1,95 @@
+{
+  "$defs": {
+    "Control": {
+      "additionalProperties": false,
+      "description": "One control: what it requires, and for an automated one the check ids\nthat prove it. `references` cite the framework clause or article.",
+      "properties": {
+        "checks": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "control_id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ControlKind"
+        },
+        "references": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Reference"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "control_id",
+        "title",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "ControlKind": {
+      "description": "Whether a control is decided by the machine or by a person.",
+      "enum": [
+        "automated",
+        "attestation"
+      ],
+      "type": "string"
+    },
+    "Reference": {
+      "additionalProperties": false,
+      "description": "Reference to a control in an external framework (own wording only;\nnever copy protected norm texts).",
+      "properties": {
+        "framework": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "url": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "framework",
+        "id"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A framework's profile: a named set of controls.",
+  "properties": {
+    "controls": {
+      "items": {
+        "$ref": "#/$defs/Control"
+      },
+      "type": "array"
+    },
+    "framework": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "framework",
+    "version",
+    "controls"
+  ],
+  "title": "ComplianceProfile",
+  "type": "object"
+}

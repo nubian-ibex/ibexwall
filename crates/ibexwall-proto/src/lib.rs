@@ -13,6 +13,7 @@
 //! Dual-licensed Apache-2.0 OR MIT so that third-party and proprietary
 //! plugins may link it. It must never depend on GPL-only crates.
 
+pub mod compliance;
 pub mod names;
 pub mod op;
 pub mod plugin;
@@ -20,6 +21,10 @@ pub mod policy;
 pub mod report;
 pub mod types;
 
+pub use compliance::{
+    Attestation, ComplianceProfile, ComplianceReport, ComplianceStatus, Control, ControlKind,
+    ControlResult, Exception,
+};
 pub use op::{Op, Reversible, RiskFlag, UnitAction};
 pub use plugin::{ExecAllow, Manifest, ManifestError, PluginKind, PluginOrigin, SandboxUser};
 pub use policy::{PolicyBundle, PolicyError};
@@ -77,6 +82,14 @@ pub mod export {
         "CheckOutcome" => crate::types::CheckOutcome,
         "CheckResult" => crate::types::CheckResult,
         "CheckReport" => crate::types::CheckReport,
+        "ComplianceProfile" => crate::compliance::ComplianceProfile,
+        "ControlKind" => crate::compliance::ControlKind,
+        "Control" => crate::compliance::Control,
+        "ComplianceStatus" => crate::compliance::ComplianceStatus,
+        "ControlResult" => crate::compliance::ControlResult,
+        "ComplianceReport" => crate::compliance::ComplianceReport,
+        "Attestation" => crate::compliance::Attestation,
+        "Exception" => crate::compliance::Exception,
         "PluginOrigin" => crate::plugin::PluginOrigin,
         "PluginKind" => crate::plugin::PluginKind,
         "PluginInfo" => crate::types::PluginInfo,

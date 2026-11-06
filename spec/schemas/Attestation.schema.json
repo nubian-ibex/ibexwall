@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A person's attestation that an organizational control holds.",
+  "properties": {
+    "control_id": {
+      "type": "string"
+    },
+    "expires_at": {
+      "description": "Unix seconds; `None` means it never expires.",
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "owner": {
+      "type": "string"
+    },
+    "statement": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "control_id",
+    "owner",
+    "statement"
+  ],
+  "title": "Attestation",
+  "type": "object"
+}

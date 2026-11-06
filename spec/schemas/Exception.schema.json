@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "An accepted risk: overrides a control's state until it expires. Shown\napart and never counted as compliant.",
+  "properties": {
+    "control_id": {
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "int64",
+      "type": "integer"
+    },
+    "justification": {
+      "type": "string"
+    },
+    "owner": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "control_id",
+    "owner",
+    "justification",
+    "expires_at"
+  ],
+  "title": "Exception",
+  "type": "object"
+}

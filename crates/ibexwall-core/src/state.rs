@@ -139,6 +139,21 @@ const MIGRATIONS: &[(&str, &str)] = &[
          DROP TABLE findings;
          ALTER TABLE findings_new RENAME TO findings;",
     ),
+    (
+        "0008_compliance",
+        "CREATE TABLE attestations (
+             control_id TEXT PRIMARY KEY,
+             owner TEXT NOT NULL,
+             statement TEXT NOT NULL,
+             expires_at INTEGER
+         );
+         CREATE TABLE exceptions (
+             control_id TEXT PRIMARY KEY,
+             owner TEXT NOT NULL,
+             justification TEXT NOT NULL,
+             expires_at INTEGER NOT NULL
+         );",
+    ),
 ];
 
 impl State {
@@ -290,6 +305,115 @@ impl State {
                 rusqlite::params![id, status, ibexwall_sys::RealClock.unix_now()],
             )?;
             Ok(changed == 1)
+        })
+    }
+
+    /// Records or replaces an attestation for one organizational control.
+    pub fn set_attestation(&self, attestation: &ibexwall_proto::Attestation) -> Result<()> {
+        self.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO attestations (control_id, owner, statement, expires_at)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(control_id) DO UPDATE SET
+                     owner = excluded.owner,
+                     statement = excluded.statement,
+                     expires_at = excluded.expires_at",
+                rusqlite::params![
+                    attestation.control_id,
+                    attestation.owner,
+                    attestation.statement,
+                    attestation.expires_at,
+                ],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// Records or replaces an exception (an accepted risk) for a control.
+    pub fn set_exception(&self, exception: &ibexwall_proto::Exception) -> Result<()> {
+        self.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO exceptions (control_id, owner, justification, expires_at)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(control_id) DO UPDATE SET
+                     owner = excluded.owner,
+                     justification = excluded.justification,
+                     expires_at = excluded.expires_at",
+                rusqlite::params![
+                    exception.control_id,
+                    exception.owner,
+                    exception.justification,
+                    exception.expires_at,
+                ],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn list_attestations(&self) -> Result<Vec<ibexwall_proto::Attestation>> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT control_id, owner, statement, expires_at
+                 FROM attestations ORDER BY control_id",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok(ibexwall_proto::Attestation {
+                    control_id: row.get(0)?,
+                    owner: row.get(1)?,
+                    statement: row.get(2)?,
+                    expires_at: row.get(3)?,
+                })
+            })?;
+            Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+        })
+    }
+
+    pub fn list_exceptions(&self) -> Result<Vec<ibexwall_proto::Exception>> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT control_id, owner, justification, expires_at
+                 FROM exceptions ORDER BY control_id",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok(ibexwall_proto::Exception {
+                    control_id: row.get(0)?,
+                    owner: row.get(1)?,
+                    justification: row.get(2)?,
+                    expires_at: row.get(3)?,
+                })
+            })?;
+            Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+        })
+    }
+
+    /// The enabled plugins' check results with the last-run time as Unix
+    /// seconds, for the compliance evaluator's freshness rule.
+    pub fn compliance_checks(&self) -> Result<Vec<crate::compliance::StoredCheck>> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT r.id, r.severity, r.outcome, r.checked_at FROM check_results r
+                 JOIN plugins p ON p.id = r.plugin WHERE p.enabled = 1
+                 ORDER BY r.plugin, r.id",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })?;
+            let mut out = Vec::new();
+            for row in rows {
+                let (id, severity, outcome, checked_at) = row?;
+                out.push(crate::compliance::StoredCheck {
+                    id,
+                    severity: serde_json::from_value(severity.into())?,
+                    outcome: serde_json::from_value(outcome.into())?,
+                    checked_at: crate::compliance::parse_unix(&checked_at),
+                });
+            }
+            Ok(out)
         })
     }
 
@@ -890,6 +1014,43 @@ mod tests {
             .unwrap();
         assert!(state.claim_proposal("pr1", "approved").unwrap());
         assert!(!state.claim_proposal("pr1", "approved").unwrap());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn attestations_and_exceptions_roundtrip() {
+        let (dir, state) = temp_state();
+        let attestation = ibexwall_proto::Attestation {
+            control_id: "c1".into(),
+            owner: "o".into(),
+            statement: "s".into(),
+            expires_at: Some(123),
+        };
+        state.set_attestation(&attestation).unwrap();
+        assert_eq!(
+            state.list_attestations().unwrap(),
+            vec![attestation.clone()]
+        );
+        // Replacing the same control keeps one row.
+        let replaced = ibexwall_proto::Attestation {
+            statement: "s2".into(),
+            expires_at: None,
+            ..attestation.clone()
+        };
+        state.set_attestation(&replaced).unwrap();
+        let stored = state.list_attestations().unwrap();
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0].statement, "s2");
+        assert_eq!(stored[0].expires_at, None);
+
+        let exception = ibexwall_proto::Exception {
+            control_id: "c2".into(),
+            owner: "o".into(),
+            justification: "j".into(),
+            expires_at: 456,
+        };
+        state.set_exception(&exception).unwrap();
+        assert_eq!(state.list_exceptions().unwrap(), vec![exception]);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

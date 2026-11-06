@@ -102,22 +102,33 @@ assistants rule, manual runs on real desktops.
 
 ## Pending / next
 
-- F10 done so far: M1 to M4 (maintainability, multicall plugin binary, a unit
-  per plugin, RPM/DEB/Arch packages with `ibexwalld --cleanup`, VM phase
-  `f10` green on five distros) and F10b (assistant, detection notes,
-  Hardening, scanner plugins). Remaining: M5 SELinux and AppArmor profiles
-  (plugins get their own SELinux domain), M6 signing, SBOM, provenance,
-  reproducibility (ship the prebuilt eBPF object as a release artifact),
-  M7 docs and site, M8 full matrix, M9 v1.0 checklist. Publishing (COPR, PPA,
-  OBS, AUR) and the official release key need the maintainer's accounts.
+- F10 done so far: M1 to M7. M1 to M4 (maintainability, multicall plugin
+  binary, a unit per plugin, RPM/DEB/Arch packages with `ibexwalld --cleanup`),
+  M5 (AppArmor profiles enforcing on Ubuntu 24.04 and 26.04, an SELinux module
+  enforcing on Fedora, ADR-0044; packages `ibexwall-apparmor` and
+  `ibexwall-selinux`), M6 (`cargo xtask release`: signed artifacts, a CycloneDX
+  SBOM, an in-toto provenance statement, `verify-release`, `repro` (192 files
+  identical), docs/release.md, the release workflow), M7 (five languages in
+  the app and the site, `ibexwall-website`, `ibexwall-docs`,
+  `ibexwall-plugin-index` repos built and pushed private; the site Lighthouse
+  100). F10b done before that. Remaining: M8 (extend the matrix to smoke every
+  earlier phase against installed packages), M9 (the v1.0 checklist and
+  report). Publishing (COPR, PPA, OBS, AUR), the official release key, making
+  the three new repos public and the Cloudflare Pages deploy need the
+  maintainer.
 - Domain (P-01 resolved): `ibexwall.com`, bought on Cloudflare. The GitHub org
-  `nubian-ibex` Website field already points to it. Still to do: org domain
+  `nubian-ibex` Website field points to it. Still to do: org domain
   verification (TXT `_github-challenge-nubian-ibex-org`, then "Verify" in the
   org Pages settings), DNS for site (`ibexwall.com`) and docs
   (`docs.ibexwall.com`), optional Email Routing (`security@ibexwall.com`).
-  Decided: host on Cloudflare Pages (security headers via `_headers`, preview
-  per PR, same panel as DNS); the GitHub free plan is enough. Set `DOCS_BASE`
-  in `ui/src/lib/site.ts` only once the site is live.
+  Decided: host on Cloudflare Pages. The GitHub free plan is enough. Set
+  `DOCS_BASE` in `ui/src/lib/site.ts` only once the site is live.
+- Translations: the app is complete in en, pt-BR, es, fr, de (see
+  docs/translating.md). The website: interface, hardening pages and the four
+  standing pages are complete in all five; articles are complete in en and es,
+  and pt-BR, fr, de have part of the set (the site falls back to English and
+  says so); the docs guides are English so far, with the plugin reference
+  generated in all five.
 - Cloudflare access: `cf` is installed; the token lives in `~/.zshenv`
   (restart the agent session so it is visible; check with `cf auth whoami`).
 - CI VM jobs on a KVM-capable runner.

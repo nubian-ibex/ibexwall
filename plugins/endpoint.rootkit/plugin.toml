@@ -1,0 +1,39 @@
+id = "endpoint.rootkit"
+version = "0.1.0"
+api = 1
+category = "endpoint"
+kinds = ["check", "control"]
+origin = "official"
+license = "GPL-3.0-or-later"
+binary = "ibexwall-plugin-rootkit"
+default_enabled = false
+distros = ["fedora", "ubuntu", "debian", "arch"]
+
+[name]
+en = "Rootkit scan"
+pt-BR = "Busca por rootkits"
+
+[description]
+en = "Runs rkhunter and chkrootkit, on demand or on a schedule, and reports what they flag. Their warnings need a person's review: they are not proof."
+pt-BR = "Executa o rkhunter e o chkrootkit, sob demanda ou em horário marcado, e relata o que eles apontam. Os avisos precisam da revisão de uma pessoa: não são prova."
+
+[privileges]
+write_paths = ["/etc/systemd/system/ibexwall-rootkit-scan.service", "/etc/systemd/system/ibexwall-rootkit-scan.timer", "/var/lib/ibexwall/rootkit/.managed"]
+units = ["ibexwall-rootkit-scan.service", "ibexwall-rootkit-scan.timer"]
+unit_actions = ["start", "enable", "disable"]
+
+[sandbox]
+user = "dynamic"
+capabilities = ["CAP_DAC_READ_SEARCH"]
+read_paths = ["/var/lib/ibexwall/rootkit", "/usr/bin", "/usr/sbin", "/etc/os-release", "/etc/systemd/system"]
+network = false
+
+[risk]
+affects = ["performance"]
+reversible = "immediate"
+confirm_timeout = false
+may_affect = ["rootkit-may-affect-load"]
+
+[ui]
+icon = "bug"
+order = 92

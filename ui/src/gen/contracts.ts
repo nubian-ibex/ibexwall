@@ -100,6 +100,21 @@ export type Op =
       package: string;
     }
   | {
+      cert_path: string;
+      days: number;
+      /**
+       * Names or addresses clients will use.
+       */
+      hosts: string[];
+      /**
+       * Group that may read the key (mode 0640): `root` or one of
+       * IbexWall's own groups.
+       */
+      key_group: string;
+      key_path: string;
+      op: 'tls.keypair';
+    }
+  | {
       args: string[];
       op: 'exec';
       path: string;
@@ -323,6 +338,11 @@ export interface Event {
 export interface ExecAllow {
   args?: string[];
   path: string;
+  /**
+   * This exec is its own inverse: the rollback runs it again after the
+   * files are restored (a manager told to re-read its directory).
+   */
+  symmetric?: boolean;
 }
 /**
  * A network this computer is on and the profile suggested for it.
@@ -478,6 +498,12 @@ export interface Sandbox {
   capabilities?: string[];
   network?: boolean;
   read_paths?: string[];
+  /**
+   * Where the tools this plugin runs keep their own state (a package
+   * manager's cache and database): the only places its sandbox can write.
+   * The plugin itself changes nothing on the system; the core does.
+   */
+  state_paths?: string[];
   user: SandboxUser;
 }
 export interface Ui {
@@ -532,7 +558,17 @@ export interface PluginInfo {
   id: string;
   kinds: string[];
   locked: boolean;
+  /**
+   * The name in the source language (English).
+   */
   name: string;
+  /**
+   * The name in every language the manifest has, by locale tag, so a
+   * screen can show it in the person's language.
+   */
+  names?: {
+    [k: string]: string;
+  };
   origin: PluginOrigin;
   status: string;
   version: string;

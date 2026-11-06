@@ -3,7 +3,6 @@
 # dependencies; GPL is additionally allowed for workspace crates themselves
 # (ibexwall-proto and ibexwall-sdk must stay permissive-only: they never
 # link GPL code, reviewed per PR).
-[graph]
 all-features = true
 
 [advisories]

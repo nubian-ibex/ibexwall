@@ -10,6 +10,7 @@ mod devkey;
 mod ebpf;
 mod egress;
 mod f1;
+mod f10;
 mod f2;
 mod f3;
 mod f4;
@@ -22,6 +23,7 @@ mod fixtures;
 mod idl;
 mod plugin_units;
 mod schemas;
+mod stage;
 mod vm;
 
 const HELP: &str = "\
@@ -37,6 +39,8 @@ Commands:
                      f1 provisions the daemon and runs acceptance tests
   ebpf               Build the eBPF programs into target/bpf/ (nightly,
                      rust-src and bpf-linker required)
+  stage              Lay IbexWall out as installed under one directory, for the
+                     packages (--destdir, --key-dir, --skip-build, --no-desktop)
   plugin-units       Write the systemd socket and service unit of every plugin
                      (--out DIR, default target/plugin-units)
   devkey             Generate the dev plugin-signing key and sign
@@ -76,7 +80,7 @@ fn main() {
             }
             let result = match phase.as_deref() {
                 None | Some("f0") | Some("f1") | Some("f2") | Some("f3") | Some("f4")
-                | Some("f5") | Some("f6") | Some("f7") | Some("f8") | Some("f9")
+                | Some("f5") | Some("f6") | Some("f7") | Some("f8") | Some("f9") | Some("f10")
                 | Some("fixtures") => vm::run(&distro, phase.as_deref()),
                 Some(other) => {
                     eprintln!("error: unknown phase `{other}`");
@@ -96,6 +100,30 @@ fn main() {
                 }
             }
             if let Err(err) = plugin_units::run(&out) {
+                eprintln!("error: {err:#}");
+                std::process::exit(1);
+            }
+        }
+        Some("stage") => {
+            let mut options = stage::Options {
+                destdir: "target/stage/root".into(),
+                key_dir: "target/devkey".into(),
+                build: true,
+                desktop: true,
+            };
+            while let Some(arg) = args.next() {
+                match arg.as_str() {
+                    "--destdir" => options.destdir = args.next().unwrap_or_default().into(),
+                    "--key-dir" => options.key_dir = args.next().unwrap_or_default().into(),
+                    "--skip-build" => options.build = false,
+                    "--no-desktop" => options.desktop = false,
+                    other => {
+                        eprintln!("error: unknown stage flag `{other}`");
+                        std::process::exit(2);
+                    }
+                }
+            }
+            if let Err(err) = stage::run_stage(&options) {
                 eprintln!("error: {err:#}");
                 std::process::exit(1);
             }

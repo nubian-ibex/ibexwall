@@ -218,6 +218,13 @@ impl Sandbox {
         self.path(path).exists()
     }
 
+    /// Whether the path is there at all, a link included even when its
+    /// target is not a file: systemd's `/run/systemd/units/invocation:<unit>`
+    /// entries are links to an id, not to anything on disk.
+    pub fn has_entry(&self, path: &str) -> bool {
+        std::fs::symlink_metadata(self.path(path)).is_ok()
+    }
+
     /// Target of a symlink (not followed), as text.
     pub fn read_link(&self, path: &str) -> Option<String> {
         std::fs::read_link(self.path(path))

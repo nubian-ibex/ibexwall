@@ -274,7 +274,7 @@ fn firewall(sandbox: &Sandbox) -> Check {
     if !sandbox.exists("/run/systemd/units") {
         return Check::new(id, Severity::High, CheckOutcome::NotAssessed);
     }
-    let running = |unit: &str| sandbox.exists(&format!("/run/systemd/units/invocation:{unit}"));
+    let running = |unit: &str| sandbox.has_entry(&format!("/run/systemd/units/invocation:{unit}"));
     let ufw_enabled = sandbox.read("/etc/ufw/ufw.conf").is_some_and(|conf| {
         conf.lines()
             .map(str::trim)

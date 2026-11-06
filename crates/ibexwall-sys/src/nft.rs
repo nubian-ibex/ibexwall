@@ -210,6 +210,28 @@ impl Fragment {
                     parse_network(text)
                         .map_err(|e| anyhow::anyhow!("chain `{name}`: `{text}`: {e}"))?;
                 }
+                // A rule only yields an expression for a family where
+                // every non-empty address list has a matching address. A
+                // source in one family with a destination in the other
+                // would compile to nothing and a blocking rule would
+                // fail open, so refuse it here.
+                let has_v4 = |addrs: &[String]| {
+                    addrs
+                        .iter()
+                        .any(|a| parse_network(a).is_ok_and(|(ip, _)| ip.is_ipv4()))
+                };
+                let has_v6 = |addrs: &[String]| {
+                    addrs
+                        .iter()
+                        .any(|a| parse_network(a).is_ok_and(|(ip, _)| ip.is_ipv6()))
+                };
+                let v4_ok = (rule.saddr.is_empty() || has_v4(&rule.saddr))
+                    && (rule.daddr.is_empty() || has_v4(&rule.daddr));
+                let v6_ok = (rule.saddr.is_empty() || has_v6(&rule.saddr))
+                    && (rule.daddr.is_empty() || has_v6(&rule.daddr));
+                if !v4_ok && !v6_ok {
+                    bail!("chain `{name}`: saddr and daddr share no address family");
+                }
                 if rule.protocols.is_empty() != rule.dports.is_empty() {
                     bail!("chain `{name}`: protocols and dports go together");
                 }
@@ -645,6 +667,23 @@ mod tests {
             ],
         }] }))
         .unwrap()
+    }
+
+    #[test]
+    fn a_rule_whose_address_families_do_not_overlap_is_refused() {
+        // An IPv4 source with an IPv6 destination would have compiled to
+        // no rule at all, turning a drop into an allow.
+        let fragment: Fragment = serde_json::from_value(json!({ "chains": [{
+            "name": "dev_x",
+            "rules": [
+                { "saddr": ["192.0.2.1"], "daddr": ["2001:db8::1"], "verdict": "drop" }
+            ],
+        }] }))
+        .unwrap();
+        assert!(
+            fragment.validate().is_err(),
+            "mismatched families must be refused"
+        );
     }
 
     #[test]

@@ -264,15 +264,19 @@ pub fn execute(op: &Op, sys: &crate::SysBundle) -> Result<()> {
             if !sys.allow_system_executors {
                 return Err(OpError::SandboxBlocked.into());
             }
-            let status = Command::new(path)
+            // `.output()` drains both pipes: `.status()` with piped
+            // stdio deadlocks once the child fills the pipe buffer.
+            let output = Command::new(path)
                 .args(args)
                 .stdin(Stdio::null())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .status()
+                .output()
                 .with_context(|| format!("spawning {path}"))?;
-            if !status.success() {
-                bail!("exec {path} failed with {status}");
+            if !output.status.success() {
+                bail!(
+                    "exec {path} failed with {}: {}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                );
             }
             Ok(())
         }

@@ -190,13 +190,12 @@ impl Supervisor {
             .plugins
             .get(id)
             .ok_or_else(|| anyhow::anyhow!("plugin `{id}` not found"))?;
-        let reply = ibexwall_varlink::call(
+        let reply = call_with_timeout(
             &entry.socket,
             "com.ibexwall.Plugin.Plan",
             serde_json::json!({ "config": patch, "previous": null }),
         )
-        .await
-        .map_err(|e| anyhow::anyhow!("plugin Plan call failed: {e}"))?;
+        .await?;
         let ops = reply.get("ops").cloned().unwrap_or_default();
         Ok(serde_json::from_value(ops)?)
     }
@@ -212,13 +211,12 @@ impl Supervisor {
             .plugins
             .get(id)
             .ok_or_else(|| anyhow::anyhow!("plugin `{id}` not found"))?;
-        let reply = ibexwall_varlink::call(
+        let reply = call_with_timeout(
             &entry.socket,
             "com.ibexwall.Plugin.Check",
             serde_json::json!({ "config": config }),
         )
-        .await
-        .map_err(|e| anyhow::anyhow!("plugin Check call failed: {e}"))?;
+        .await?;
         let mut report: ibexwall_proto::CheckReport = serde_json::from_value(reply)
             .context("plugin Check reply does not match CheckReport")?;
         // A plugin may only report on itself.
@@ -241,15 +239,32 @@ impl Supervisor {
             .plugins
             .get(id)
             .ok_or_else(|| anyhow::anyhow!("plugin `{id}` not found"))?;
-        let reply = ibexwall_varlink::call(
+        let reply = call_with_timeout(
             &entry.socket,
             "com.ibexwall.Plugin.Verify",
             serde_json::json!({ "transaction_id": transaction_id, "ops": ops }),
         )
-        .await
-        .map_err(|e| anyhow::anyhow!("plugin Verify call failed: {e}"))?;
+        .await?;
         Ok(reply.get("ok").and_then(|v| v.as_bool()).unwrap_or(false))
     }
+}
+
+/// A plugin that never answers must not block a check or, worse, hold a
+/// transaction open past its confirmation window.
+const PLUGIN_CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+async fn call_with_timeout(
+    socket: &Path,
+    method: &str,
+    parameters: serde_json::Value,
+) -> Result<serde_json::Value> {
+    tokio::time::timeout(
+        PLUGIN_CALL_TIMEOUT,
+        ibexwall_varlink::call(socket, method, parameters),
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!("plugin {method} call timed out"))?
+    .map_err(|e| anyhow::anyhow!("plugin {method} call failed: {e}"))
 }
 
 fn resolve_binary(_marker: &Path, manifest: &Manifest) -> Result<PathBuf> {

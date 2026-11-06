@@ -60,6 +60,12 @@ daemon and inherit its sandbox, which hides `/home` and `/usr/lib/modules`
 from the integrity, persistence and antivirus plugins). This lifts the limits
 recorded in the F9 report.
 
+M4 to M9 are done (2026-11-06): packages (M4), the SELinux module and
+AppArmor profiles (M5), signing, SBOM, provenance and reproducibility (M6),
+the website, docs and plugin index in five languages (M7), the matrix smoke of
+the earlier phases against the installed packages (M8), and the release
+checklist (M9). The milestones below describe each as originally planned.
+
 M4 Packages: RPM (COPR), DEB (PPA and OBS), PKGBUILD (AUR), split into
 `ibexwall` (daemon, CLI, plugins, units, polkit, sysusers, tmpfiles),
 `ibexwall-desktop` and `ibexwall-mcp`. Install, upgrade and removal leave no

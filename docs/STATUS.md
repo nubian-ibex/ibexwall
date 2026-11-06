@@ -102,7 +102,9 @@ assistants rule, manual runs on real desktops.
 
 ## Pending / next
 
-- F10 done so far: M1 to M7. M1 to M4 (maintainability, multicall plugin
+- F10 done so far: M1 to M9. M8 (a smoke of the earlier phases against the
+  installed packages, green on five distros) and M9 (the v1.0 release
+  checklist, docs/release-checklist.md). M1 to M4 (maintainability, multicall plugin
   binary, a unit per plugin, RPM/DEB/Arch packages with `ibexwalld --cleanup`),
   M5 (AppArmor profiles enforcing on Ubuntu 24.04 and 26.04, an SELinux module
   enforcing on Fedora, ADR-0044; packages `ibexwall-apparmor` and

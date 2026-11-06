@@ -419,6 +419,8 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
         key_dir: workspace.join("target/devkey"),
         build: true,
         desktop: true,
+        target_dir: None,
+        build_env: Vec::new(),
     })?;
     // One archive: the staged tree and the packaging files, laid out as the
     // build script expects (/tmp/ibx/stage/{root,stage-lists}, /tmp/ibx/packaging).

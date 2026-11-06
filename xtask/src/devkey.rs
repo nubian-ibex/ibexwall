@@ -105,6 +105,11 @@ fn key_id_for(secret: &ed25519_dalek::SigningKey) -> [u8; 8] {
 
 /// Produces a 4-line minisign signature file for `data`.
 pub(crate) fn sign(pair: &KeyPair, data: &[u8], comment: &str) -> String {
+    sign_labelled(pair, data, comment, "ibexwall dev signature")
+}
+
+/// The same, with the untrusted comment saying what the signature is for.
+pub(crate) fn sign_labelled(pair: &KeyPair, data: &[u8], comment: &str, label: &str) -> String {
     // Prehash: BLAKE2b-64 like real minisign (matches the `ED` alg).
     use blake2::digest::{Update, VariableOutput};
     let mut hasher = blake2::Blake2bVar::new(64).expect("valid digest size");
@@ -129,9 +134,7 @@ pub(crate) fn sign(pair: &KeyPair, data: &[u8], comment: &str) -> String {
     sig_bytes.extend_from_slice(&signature.to_bytes());
     let sig_b64 = base64::engine::general_purpose::STANDARD.encode(&sig_bytes);
     let global_b64 = base64::engine::general_purpose::STANDARD.encode(global_signature.to_bytes());
-    format!(
-        "untrusted comment: ibexwall dev signature\n{sig_b64}\n{trusted_comment}\n{global_b64}\n"
-    )
+    format!("untrusted comment: {label}\n{sig_b64}\n{trusted_comment}\n{global_b64}\n")
 }
 
 fn getrandom_fill(buf: &mut [u8]) -> Result<()> {

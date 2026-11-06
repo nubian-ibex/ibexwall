@@ -23,6 +23,7 @@ mod fixtures;
 mod idl;
 mod mac;
 mod plugin_units;
+mod release;
 mod schemas;
 mod stage;
 mod vm;
@@ -41,7 +42,15 @@ Commands:
   ebpf               Build the eBPF programs into target/bpf/ (nightly,
                      rust-src and bpf-linker required)
   stage              Lay IbexWall out as installed under one directory, for the
-                     packages (--destdir, --key-dir, --skip-build, --no-desktop)
+                     packages (--destdir, --key-dir, --skip-build, --no-desktop,
+                     --target-dir)
+  release --version V [--key-dir D] [--out DIR] [--skip-build]
+                     Build the release artifacts, their SBOM and provenance,
+                     checksum and sign them (the key is the maintainer's)
+  verify-release DIR PUBKEY
+                     Check the checksums and signatures of a release
+  repro [--key-dir D] [--with-desktop]
+                     Build twice from copies of HEAD and compare every file
   plugin-units       Write the systemd socket and service unit of every plugin
                      (--out DIR, default target/plugin-units)
   devkey             Generate the dev plugin-signing key and sign
@@ -111,6 +120,8 @@ fn main() {
                 key_dir: "target/devkey".into(),
                 build: true,
                 desktop: true,
+                target_dir: None,
+                build_env: Vec::new(),
             };
             while let Some(arg) = args.next() {
                 match arg.as_str() {
@@ -118,6 +129,9 @@ fn main() {
                     "--key-dir" => options.key_dir = args.next().unwrap_or_default().into(),
                     "--skip-build" => options.build = false,
                     "--no-desktop" => options.desktop = false,
+                    "--target-dir" => {
+                        options.target_dir = Some(args.next().unwrap_or_default().into());
+                    }
                     other => {
                         eprintln!("error: unknown stage flag `{other}`");
                         std::process::exit(2);
@@ -125,6 +139,61 @@ fn main() {
                 }
             }
             if let Err(err) = stage::run_stage(&options) {
+                eprintln!("error: {err:#}");
+                std::process::exit(1);
+            }
+        }
+        Some("release") => {
+            let mut options = release::Release {
+                version: String::new(),
+                key_dir: "target/devkey".into(),
+                out: "target/release-artifacts".into(),
+                build: true,
+            };
+            while let Some(arg) = args.next() {
+                match arg.as_str() {
+                    "--version" => options.version = args.next().unwrap_or_default(),
+                    "--key-dir" => options.key_dir = args.next().unwrap_or_default().into(),
+                    "--out" => options.out = args.next().unwrap_or_default().into(),
+                    "--skip-build" => options.build = false,
+                    other => {
+                        eprintln!("error: unknown release flag `{other}`");
+                        std::process::exit(2);
+                    }
+                }
+            }
+            if options.version.is_empty() {
+                eprintln!("error: --version is required");
+                std::process::exit(2);
+            }
+            if let Err(err) = release::run_release(&options) {
+                eprintln!("error: {err:#}");
+                std::process::exit(1);
+            }
+        }
+        Some("verify-release") => {
+            let dir = args.next().unwrap_or_default();
+            let key = args.next().unwrap_or_default();
+            if let Err(err) = release::verify(dir.as_ref(), key.as_ref()) {
+                eprintln!("error: {err:#}");
+                std::process::exit(1);
+            }
+        }
+        Some("repro") => {
+            let mut key_dir: std::path::PathBuf = "target/devkey".into();
+            let mut desktop = false;
+            while let Some(arg) = args.next() {
+                match arg.as_str() {
+                    "--key-dir" => key_dir = args.next().unwrap_or_default().into(),
+                    "--with-desktop" => desktop = true,
+                    other => {
+                        eprintln!("error: unknown repro flag `{other}`");
+                        std::process::exit(2);
+                    }
+                }
+            }
+            let key_dir = key_dir.canonicalize().unwrap_or(key_dir);
+            if let Err(err) = release::repro(&key_dir, desktop) {
                 eprintln!("error: {err:#}");
                 std::process::exit(1);
             }

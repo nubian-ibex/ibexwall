@@ -28,6 +28,11 @@ pub struct Options {
     pub key_dir: PathBuf,
     pub build: bool,
     pub desktop: bool,
+    /// Where cargo builds (`CARGO_TARGET_DIR`); the workspace's `target/` when None.
+    pub target_dir: Option<PathBuf>,
+    /// Extra environment for the build (a reproducible build sets
+    /// `SOURCE_DATE_EPOCH` and `RUSTFLAGS`).
+    pub build_env: Vec<(String, String)>,
 }
 
 /// Which package a file belongs to.
@@ -55,7 +60,7 @@ fn workspace() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
 }
 
-fn run(program: &str, args: &[&str], env: &[(&str, &Path)], what: &str) -> Result<()> {
+fn run(program: &str, args: &[&str], env: &[(String, String)], what: &str) -> Result<()> {
     let mut command = Command::new(program);
     command.args(args).current_dir(workspace());
     for (key, value) in env {
@@ -124,12 +129,18 @@ pub fn run_stage(options: &Options) -> Result<()> {
             args.extend(["-p", "ibexwall-desktop", "--features", "custom-protocol"]);
         }
         // The release public key goes into the daemon at build time.
-        run(
-            "cargo",
-            &args,
-            &[("IBEXWALL_RELEASE_PUBKEY", public.as_path())],
-            "building",
-        )?;
+        let mut env = options.build_env.clone();
+        env.push((
+            "IBEXWALL_RELEASE_PUBKEY".into(),
+            public.to_string_lossy().into_owned(),
+        ));
+        if let Some(target) = &options.target_dir {
+            env.push((
+                "CARGO_TARGET_DIR".into(),
+                target.to_string_lossy().into_owned(),
+            ));
+        }
+        run("cargo", &args, &env, "building")?;
     }
     let object = root.join("target/bpf/ibexwall-ebpf.o");
     if !object.is_file() {
@@ -141,7 +152,11 @@ pub fn run_stage(options: &Options) -> Result<()> {
         std::fs::remove_dir_all(dest)?;
     }
     let mut files: BTreeMap<String, Package> = BTreeMap::new();
-    let release = root.join("target/release");
+    let release = options
+        .target_dir
+        .clone()
+        .unwrap_or_else(|| root.join("target"))
+        .join("release");
     for (name, package) in [
         ("ibexwalld", Package::Core),
         ("ibexctl", Package::Core),

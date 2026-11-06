@@ -695,7 +695,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn two_plugins_can_report_the_same_finding_id() {
         let (dir, state) = temp_state();
         state
@@ -714,6 +713,7 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
+    #[test]
     fn a_plan_is_consumed_exactly_once() {
         let (dir, state) = temp_state();
         let plan = crate::engine::PersistedPlan {

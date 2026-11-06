@@ -178,23 +178,21 @@ pub async fn cleanup(root: PathBuf, dev_key: Option<PathBuf>) -> Result<CleanupR
 }
 
 impl Core {
-    /// Opens state, recovers crashed transactions, loads plugins.
+    /// Opens state, restores the firewall, recovers crashed transactions,
+    /// then loads the configuration and plugins. The firewall restore
+    /// runs first: a broken config or plugin file must not leave the
+    /// machine without its kill switch after a reboot.
     pub async fn open(root: PathBuf, dev_key: Option<PathBuf>) -> Result<Self> {
         let state =
             state::State::open(&ibexwall_proto::names::path_under(&root, names::STATE_DIR))?;
         let events = events::Bus::new();
-        let config = config::Layers::load(&root)?;
-        let plugins = Arc::new(plugins::Supervisor::discover(&root, dev_key).await?);
-        let mut core = Self {
-            config,
-            state,
-            engine: engine::Engine::with(ibexwall_sys::SysBundle::real_under(&root)),
-            plugins,
-            events,
-            monitor: monitor::Monitor::new(root.clone()),
-            root,
-            tx_sem: Arc::new(tokio::sync::Semaphore::new(1)),
-        };
+        let engine = engine::Engine::with(ibexwall_sys::SysBundle::real_under(&root));
+        let nft_file = state
+            .snapshots_dir()
+            .parent()
+            .map(|dir| dir.join("nft-active.json"))
+            .unwrap_or_else(|| PathBuf::from("nft-active.json"));
+
         // nftables keeps nothing across a reboot: put our chains back
         // first, so that recovering an interrupted transaction (which
         // restores chains to what they were) acts on the real state.
@@ -202,7 +200,7 @@ impl Core {
         // after a failure would see no chains and delete the saved
         // firewall (kill switch included) for the next boot.
         let mut restored_ok = true;
-        match core.engine.restore_nft(&core.nft_file()) {
+        match engine.restore_nft(&nft_file) {
             Ok(0) => {}
             Ok(count) => tracing::info!(count, "restored nftables chains after a restart"),
             Err(error) => {
@@ -210,6 +208,19 @@ impl Core {
                 tracing::error!(%error, "restoring nftables chains failed");
             }
         }
+
+        let config = config::Layers::load(&root)?;
+        let plugins = Arc::new(plugins::Supervisor::discover(&root, dev_key).await?);
+        let mut core = Self {
+            config,
+            state,
+            engine,
+            plugins,
+            events,
+            monitor: monitor::Monitor::new(root.clone()),
+            root,
+            tx_sem: Arc::new(tokio::sync::Semaphore::new(1)),
+        };
         core.recover_pending_transactions()?;
         if restored_ok {
             core.persist_nft();

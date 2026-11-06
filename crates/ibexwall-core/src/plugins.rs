@@ -58,11 +58,23 @@ impl Supervisor {
                 let Ok(text) = std::fs::read_to_string(&path) else {
                     continue;
                 };
-                let manifest: Manifest =
-                    toml::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
-                manifest
-                    .validate()
-                    .with_context(|| format!("validating {}", path.display()))?;
+                let manifest: Manifest = match toml::from_str(&text)
+                    .with_context(|| format!("parsing {}", path.display()))
+                    .and_then(|manifest: Manifest| {
+                        manifest
+                            .validate()
+                            .with_context(|| format!("validating {}", path.display()))?;
+                        Ok(manifest)
+                    }) {
+                    Ok(manifest) => manifest,
+                    Err(error) => {
+                        // One broken plugin file must not stop the daemon
+                        // from starting (and thus the firewall restore and
+                        // the uninstall): skip it and carry on.
+                        tracing::error!(path = %path.display(), %error, "skipping a broken plugin");
+                        continue;
+                    }
+                };
                 if !plugins.contains_key(&manifest.id) {
                     let socket = names::path_under(root, names::RUNTIME_DIR)
                         .join("plugins")

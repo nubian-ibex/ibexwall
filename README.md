@@ -47,7 +47,7 @@ v1.0 still needs, and `docs/reports/` for what each phase proved.
 - Clients (Tauri app, `ibexctl`, TUI, MCP) are thin and share the same
   contracts in `ibexwall-proto` (exported to `spec/`).
 
-See `docs/threat-model.md` and the ADRs in `docs/adr/` for details.
+See `docs/threat-model.md` for the threat model; the architecture decisions are internal. See `docs/release-checklist.md` for what v1.0 needs.
 
 ## Development
 

@@ -105,6 +105,25 @@ echo "METRIC: the daemon has no plugin children; plugins are units under systemd
 "#
     );
 
+    scenario!(
+        "p4 system.posture says which access-control system the machine has, with no change offered",
+        r#"
+sudo ibexctl check system.posture --json >/tmp/p4.json 2>&1 || true
+python3 - <<'PYEOF'
+import json
+d = json.JSONDecoder().raw_decode(open("/tmp/p4.json").read())[0]
+n = [f for f in d["findings"] if f["id"] == "detect.mac"]
+assert len(n) == 1, [f["id"] for f in d["findings"]]
+a = n[0]["args"]
+assert n[0]["severity"] == "info", n
+assert a["case"] in ("selinux-enforcing", "apparmor", "selinux-permissive", "selinux-disabled", "none"), a
+assert ("install" in a) == (a["case"] == "none"), a
+assert "patch" not in a, "a boot setting is never changed for the person"
+print("mac", a["case"])
+PYEOF
+"#
+    );
+
     // The UI renders the score and every outcome from GetPosture, and
     // permissions from GetPlugin. Drive the socket directly (the same
     // bytes the Tauri commands forward).

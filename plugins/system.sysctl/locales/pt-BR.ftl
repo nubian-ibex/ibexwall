@@ -8,3 +8,7 @@ sysctl-may-affect-sysrq = As teclas de emergência SysRq deixam de funcionar.
 sysctl-may-affect-ipv6-ra = Endereços e rotas IPv6 anunciados pelo roteador deixam de ser aceitos, então o IPv6 pode parar em redes que dependem deles.
 sysctl-may-affect-sack = Downloads podem ficar mais lentos em conexões com perda de pacotes.
 sysctl-may-affect-userns = Programas que montam o próprio sandbox sem privilégios deixam de funcionar: Flatpak, sandboxes do Chromium e do Firefox, contêineres sem root.
+detect-sysctl-title = Configurações de segurança do kernel hoje
+detect-sysctl-ok = Todas as { $total } configurações recomendadas do kernel já estão aplicadas.
+detect-sysctl-open = { $have } de { $total } configurações recomendadas do kernel estão aplicadas. Faltam: { $missing } (e mais { $more }). Uma mudança sugerida que as define está pronta para revisar abaixo.
+detect-sysctl-unreadable = As configurações do kernel não puderam ser lidas aqui, então nada é sugerido.

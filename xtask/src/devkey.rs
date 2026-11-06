@@ -51,12 +51,12 @@ pub fn run() -> Result<()> {
     Ok(())
 }
 
-struct KeyPair {
+pub(crate) struct KeyPair {
     secret: ed25519_dalek::SigningKey,
     key_id: [u8; 8],
 }
 
-fn ensure_keypair(pub_path: &Path, secret_path: &Path) -> Result<KeyPair> {
+pub(crate) fn ensure_keypair(pub_path: &Path, secret_path: &Path) -> Result<KeyPair> {
     if pub_path.is_file() && secret_path.is_file() {
         let secret_b64 = std::fs::read_to_string(secret_path)?.trim().to_string();
         let bytes = base64::engine::general_purpose::STANDARD
@@ -104,7 +104,7 @@ fn key_id_for(secret: &ed25519_dalek::SigningKey) -> [u8; 8] {
 }
 
 /// Produces a 4-line minisign signature file for `data`.
-fn sign(pair: &KeyPair, data: &[u8], comment: &str) -> String {
+pub(crate) fn sign(pair: &KeyPair, data: &[u8], comment: &str) -> String {
     // Prehash: BLAKE2b-64 like real minisign (matches the `ED` alg).
     use blake2::digest::{Update, VariableOutput};
     let mut hasher = blake2::Blake2bVar::new(64).expect("valid digest size");

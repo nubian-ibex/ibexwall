@@ -551,9 +551,15 @@ pub fn plan(sandbox: &Sandbox, config: &Config) -> Result<Vec<Op>, PluginError> 
     // neither a runtime write nor a drop-in line (writing the reference
     // back would weaken the next boot, and some kernels refuse the write
     // anyway: `unprivileged_bpf_disabled` ships locked at 2).
+    // A key this kernel does not have, or the sandbox cannot read (for
+    // example `bpf_jit_harden` once the BPF JIT is locked down), is also
+    // skipped: the check ignores it the same way, and a write the engine
+    // could not snapshot must never be proposed.
     let chosen: BTreeMap<&str, String> = chosen
         .into_iter()
-        .filter(|(key, value)| !already_stricter(sandbox, key, value))
+        .filter(|(key, value)| {
+            live(sandbox, key).is_some() && !already_stricter(sandbox, key, value)
+        })
         .collect();
 
     let mut ops = Vec::new();
@@ -799,7 +805,7 @@ mod tests {
 
     #[test]
     fn opt_in_keys_come_by_name_and_by_value() {
-        let (root, sandbox) = tree(&[]);
+        let (root, sandbox) = tree(&[("kernel.kexec_load_disabled", "0"), ("kernel.sysrq", "16")]);
         let config = Config {
             include: Some("kernel.kexec_load_disabled".into()),
             keys: BTreeMap::from([("kernel.sysrq".to_string(), "176".to_string())]),
@@ -856,6 +862,47 @@ mod tests {
             op,
             Op::SysctlSet { key, .. } if key == "kernel.unprivileged_bpf_disabled"
         )));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn the_preset_skips_keys_the_kernel_does_not_have() {
+        // Everything recommended is present and at its value except one
+        // that is genuinely absent (a kernel without Yama) and one the
+        // sandbox cannot read (`bpf_jit_harden`). Neither may become a
+        // write: the engine could not snapshot it.
+        let mut seed: Vec<(&str, &str)> = TABLE
+            .iter()
+            .filter(|e| {
+                e.offer == Offer::Recommended
+                    && e.key != "kernel.yama.ptrace_scope"
+                    && e.key != "net.core.bpf_jit_harden"
+            })
+            .map(|e| (e.key, e.value))
+            .collect();
+        seed.push(("kernel.kptr_restrict", "1"));
+        let (root, sandbox) = tree(&seed);
+        let ops = plan(
+            &sandbox,
+            &Config {
+                preset: Some("recommended".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let set_keys: Vec<&String> = ops
+            .iter()
+            .filter_map(|op| match op {
+                Op::SysctlSet { key, .. } => Some(key),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(set_keys, vec![&"kernel.kptr_restrict".to_string()]);
+        let Op::FileWrite { content, .. } = &ops[ops.len() - 1] else {
+            panic!()
+        };
+        assert!(!content.contains("yama.ptrace_scope"));
+        assert!(!content.contains("bpf_jit_harden"));
         std::fs::remove_dir_all(&root).unwrap();
     }
 

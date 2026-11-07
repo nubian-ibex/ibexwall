@@ -5,6 +5,35 @@
 
 use super::*;
 
+pub(crate) async fn compliance(
+    client: &mut ibexwall_varlink::Client,
+    action: &ComplianceCmd,
+    json: bool,
+) -> Result<Finish, CliError> {
+    match action {
+        ComplianceCmd::List => {
+            let value = client
+                .call(
+                    "com.ibexwall.Core.ListComplianceProfiles",
+                    serde_json::json!({}),
+                )
+                .await?;
+            show(&value, json, render_compliance_list);
+            Ok(Finish::Done)
+        }
+        ComplianceCmd::Show { profile } => {
+            let value = client
+                .call(
+                    "com.ibexwall.Core.GetCompliance",
+                    serde_json::json!({ "profile": profile }),
+                )
+                .await?;
+            show(&value, json, render_compliance_report);
+            Ok(Finish::Done)
+        }
+    }
+}
+
 pub(crate) async fn plugins(
     client: &mut ibexwall_varlink::Client,
     action: &PluginsAction,

@@ -116,8 +116,24 @@ enum Command {
         #[command(subcommand)]
         action: FirewallCmd,
     },
+    /// Compliance against a named framework.
+    Compliance {
+        #[command(subcommand)]
+        action: ComplianceCmd,
+    },
     /// Interactive terminal UI.
     Tui,
+}
+
+#[derive(Subcommand)]
+enum ComplianceCmd {
+    /// List the profiles the machine can be evaluated against.
+    List,
+    /// Show one profile's controls and their states.
+    Show {
+        /// The framework name, e.g. "IbexWall Baseline" or "LGPD".
+        profile: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -388,6 +404,7 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
         Command::Mcp { .. } => Ok(Finish::Done),
         Command::Proposals { action } => proposals(client, action, json).await,
         Command::Firewall { action } => firewall(client, action, json).await,
+        Command::Compliance { action } => compliance(client, action, json).await,
         Command::Check { plugin } => {
             let params = serde_json::json!({ "plugin": plugin });
             let value = client.call("com.ibexwall.Core.RunChecks", params).await?;

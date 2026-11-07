@@ -330,6 +330,55 @@ pub(crate) fn render_events(value: &serde_json::Value) -> String {
     out
 }
 
+pub(crate) fn render_compliance_list(value: &serde_json::Value) -> String {
+    let profiles = value["profiles"].as_array().cloned().unwrap_or_default();
+    if profiles.is_empty() {
+        return "no compliance profiles installed\n".into();
+    }
+    let mut out = String::new();
+    for p in &profiles {
+        out.push_str(&format!(
+            "{} {}  ({} controls)\n",
+            text(&p["framework"]),
+            text(&p["version"]),
+            text(&p["controls"])
+        ));
+    }
+    out
+}
+
+pub(crate) fn render_compliance_report(value: &serde_json::Value) -> String {
+    let report = &value["report"];
+    let mut out = format!(
+        "{} {}  evaluated {}\n",
+        text(&report["framework"]),
+        text(&report["version"]),
+        text(&report["evaluated_at"])
+    );
+    let controls = report["controls"].as_array().cloned().unwrap_or_default();
+    let mut counts: std::collections::BTreeMap<&str, usize> = Default::default();
+    for c in &controls {
+        *counts
+            .entry(c["status"].as_str().unwrap_or("unknown"))
+            .or_default() += 1;
+    }
+    let summary = counts
+        .iter()
+        .map(|(k, v)| format!("{k}: {v}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    out.push_str(&format!("{} controls  ({summary})\n", controls.len()));
+    for c in &controls {
+        out.push_str(&format!(
+            "  [{}] {}  {}\n",
+            c["status"].as_str().unwrap_or("unknown"),
+            text(&c["control_id"]),
+            text(&c["title"]),
+        ));
+    }
+    out
+}
+
 pub(crate) fn emit(value: serde_json::Value, json: bool) {
     if json {
         println!(

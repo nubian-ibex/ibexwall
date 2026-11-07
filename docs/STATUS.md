@@ -3,8 +3,8 @@
 
 # STATUS
 
-Last updated: 2026-11-06 (F10 and F10b delivered; audit and compliance
-plans proposed)
+Last updated: 2026-11-06 (F10 and F10b delivered; the audit fixes are done,
+F11a M1 to M5 are mostly done, and Omarchy is validated in a manual run)
 
 ## Current phase
 
@@ -144,7 +144,12 @@ Phases, newest first (report, plan):
    (`packaging/release.pub` plus the `RELEASE_SIGNING_KEY` secret),
    COPR/PPA/OBS/AUR accounts to publish the packages, the from-source
    package builds on a builder with `bpf-linker`, and the manual runs on
-   Omarchy and EndeavourOS and with real assistant clients.
+   EndeavourOS and with real assistant clients. Omarchy (Arch) is
+   validated: the Arch package built from the staged tree via makepkg,
+   installed, and the checks ran against the real system. The run found
+   and fixed a real bug: the manifest `default_enabled` flag was never
+   honored, so a fresh install enabled no plugins and the first run
+   measured nothing.
 4. Translations: the docs guides are English so far (the generated
    reference, including plugins, is in all five); on the site, articles
    are complete in en and es and partial in pt-BR, fr and de with an

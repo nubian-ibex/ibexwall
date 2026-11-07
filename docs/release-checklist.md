@@ -57,7 +57,11 @@ maintainer or a decision.
       `ibexwall-plugin-index`) made public, after a review.
 - [x] The GitHub org domain verification clicked in the org Pages settings.
 - [ ] Manual runs on Omarchy and EndeavourOS, and with real AI assistant
-      clients (deferred by the maintainer).
+      clients. Omarchy (Arch) is validated: the Arch package built from the
+      staged tree via makepkg, installed with pacman, the daemon socket
+      activated, and the checks ran against the real system (27 findings,
+      sensible for a fresh install). EndeavourOS and real assistant clients
+      are still open.
 - [ ] The from-source package builds (spec, `debian/`, PKGBUILD) exercised on a
       builder with the toolchain and `bpf-linker`; the test packages are built
       from the staged tree, and the release ships the prebuilt eBPF object for

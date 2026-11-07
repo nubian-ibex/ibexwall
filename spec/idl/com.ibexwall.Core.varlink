@@ -57,6 +57,9 @@ method RecentEvents(limit: ?int) -> (events: []Event)
 # a risk with an owner and an expiry.
 method SetAttestation(control_id: string, owner: string, statement: string, expires_at: ?int) -> ()
 method SetException(control_id: string, owner: string, justification: string, expires_at: int) -> ()
+method ListComplianceProfiles() -> (profiles: []object)
+method GetCompliance(profile: string) -> (report: object)
+method ExportCompliance(profile: string, format: string) -> (format: string, export: object)
 
 # Added in v1 (additive): per-app traffic from the connection monitor.
 method ListApps() -> (monitor: MonitorStatus, apps: []AppEntry)

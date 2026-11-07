@@ -8,27 +8,24 @@
       ],
       "type": "string"
     },
-    "Reference": {
+    "ProfileReference": {
       "additionalProperties": false,
-      "description": "Reference to a control in an external framework (own wording only;\nnever copy protected norm texts).",
+      "description": "A citation for a control: the clause or article id, its URL and the\ndate it was consulted. The shared `Reference` type (framework, id) is\nfor findings; profiles carry their own shape.",
       "properties": {
-        "framework": {
+        "date": {
           "type": "string"
         },
         "id": {
           "type": "string"
         },
         "url": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string"
         }
       },
       "required": [
-        "framework",
-        "id"
+        "id",
+        "url",
+        "date"
       ],
       "type": "object"
     }
@@ -53,7 +50,7 @@
     "references": {
       "default": [],
       "items": {
-        "$ref": "#/$defs/Reference"
+        "$ref": "#/$defs/ProfileReference"
       },
       "type": "array"
     },

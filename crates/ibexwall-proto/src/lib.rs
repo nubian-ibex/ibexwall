@@ -23,7 +23,7 @@ pub mod types;
 
 pub use compliance::{
     Attestation, ComplianceProfile, ComplianceReport, ComplianceStatus, Control, ControlKind,
-    ControlResult, Exception,
+    ControlResult, Exception, ProfileReference,
 };
 pub use op::{Op, Reversible, RiskFlag, UnitAction};
 pub use plugin::{ExecAllow, Manifest, ManifestError, PluginKind, PluginOrigin, SandboxUser};
@@ -83,6 +83,7 @@ pub mod export {
         "CheckResult" => crate::types::CheckResult,
         "CheckReport" => crate::types::CheckReport,
         "ComplianceProfile" => crate::compliance::ComplianceProfile,
+        "ProfileReference" => crate::compliance::ProfileReference,
         "ControlKind" => crate::compliance::ControlKind,
         "Control" => crate::compliance::Control,
         "ComplianceStatus" => crate::compliance::ComplianceStatus,

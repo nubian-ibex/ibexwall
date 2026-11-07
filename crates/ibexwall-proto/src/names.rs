@@ -48,6 +48,9 @@ pub const STATE_DIR: &str = "/var/lib/ibexwall";
 pub const RUNTIME_DIR: &str = "/run/ibexwall";
 pub const PLUGIN_INSTALL_DIR: &str = "/usr/lib/ibexwall/plugins";
 pub const LOCAL_PLUGIN_DIR: &str = "/etc/ibexwall/plugins.local";
+/// Shipped compliance profiles (read-only), and operator overrides.
+pub const PROFILE_INSTALL_DIR: &str = "/usr/lib/ibexwall/profiles";
+pub const PROFILE_CONFIG_DIR: &str = "/etc/ibexwall/profiles";
 
 // Environment variables.
 pub const ENV_ROOT: &str = "IBEXWALL_ROOT";
@@ -82,6 +85,12 @@ pub fn plugin_install_dir() -> PathBuf {
 }
 pub fn local_plugin_dir() -> PathBuf {
     path_under(&root(), LOCAL_PLUGIN_DIR)
+}
+pub fn profile_install_dir() -> PathBuf {
+    path_under(&root(), PROFILE_INSTALL_DIR)
+}
+pub fn profile_config_dir() -> PathBuf {
+    path_under(&root(), PROFILE_CONFIG_DIR)
 }
 
 /// Where the resolver publishes its counters (refreshed while running).

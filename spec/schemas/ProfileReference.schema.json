@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A citation for a control: the clause or article id, its URL and the\ndate it was consulted. The shared `Reference` type (framework, id) is\nfor findings; profiles carry their own shape.",
+  "properties": {
+    "date": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "url",
+    "date"
+  ],
+  "title": "ProfileReference",
+  "type": "object"
+}

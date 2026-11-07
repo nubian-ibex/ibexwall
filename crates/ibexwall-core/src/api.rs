@@ -530,6 +530,30 @@ async fn dispatch(
             core.audit(&actor, "core", None, "", "exception-set");
             Ok(Reply::result(Value::Null))
         }
+        "ListComplianceProfiles" => {
+            let profiles = crate::profiles::discover(&core.root).map_err(internal)?;
+            let names: Vec<Value> = profiles
+                .iter()
+                .map(|p| {
+                    json!({
+                        "framework": p.framework,
+                        "version": p.version,
+                        "controls": p.controls.len(),
+                    })
+                })
+                .collect();
+            Ok(Reply::result(json!({ "profiles": names })))
+        }
+        "GetCompliance" => {
+            let framework = str_field(&parameters, "profile")?;
+            let report = compliance_report(core, &framework)?;
+            Ok(Reply::result(json!({ "report": report })))
+        }
+        "ExportCompliance" => {
+            let framework = str_field(&parameters, "profile")?;
+            let report = compliance_report(core, &framework)?;
+            Ok(Reply::result(json!({ "format": "json", "export": report })))
+        }
         _ => Err(VarlinkError::new(
             ibexwall_varlink::service_errors::METHOD_NOT_FOUND,
             json!({ "method": method }),
@@ -539,10 +563,26 @@ async fn dispatch(
 
 fn polkit_action(method: &str) -> Option<&'static str> {
     Some(match method {
-        "GetInfo" | "GetPosture" | "GetDnsStatus" | "GetFirewall" | "ListApps" | "ListPrompts"
-        | "GetAppDestinations" | "ListPlugins" | "ListFindings" | "GetConfig" | "History"
-        | "Subscribe" | "RunChecks" | "GetPlugin" | "AuditVerify" | "RecentEvents"
-        | "ListAudit" => names::POLKIT_READ,
+        "GetInfo"
+        | "GetPosture"
+        | "GetDnsStatus"
+        | "GetFirewall"
+        | "ListApps"
+        | "ListPrompts"
+        | "GetAppDestinations"
+        | "ListPlugins"
+        | "ListFindings"
+        | "GetConfig"
+        | "History"
+        | "Subscribe"
+        | "RunChecks"
+        | "GetPlugin"
+        | "AuditVerify"
+        | "RecentEvents"
+        | "ListAudit"
+        | "ListComplianceProfiles"
+        | "GetCompliance"
+        | "ExportCompliance" => names::POLKIT_READ,
         "SetPluginEnabled" => names::POLKIT_PLUGINS_MANAGE,
         "SetAppMode" | "SetDefaultMode" | "AnswerPrompt" => names::POLKIT_APPS_DECIDE,
         "PlanChange" => names::POLKIT_PLAN,
@@ -599,6 +639,28 @@ fn non_empty_field(parameters: &Value, field: &str) -> Result<String, VarlinkErr
         ));
     }
     Ok(value)
+}
+
+/// Evaluates one profile against the stored checks, attestations and
+/// exceptions, and returns its report.
+fn compliance_report(core: &Core, framework: &str) -> Result<Value, VarlinkError> {
+    let profile = crate::profiles::discover(&core.root)
+        .map_err(internal)?
+        .into_iter()
+        .find(|p| p.framework == framework)
+        .ok_or_else(|| not_found("profile", framework))?;
+    let checks = core.state.compliance_checks().map_err(internal)?;
+    let attestations = core.state.list_attestations().map_err(internal)?;
+    let exceptions = core.state.list_exceptions().map_err(internal)?;
+    let report = crate::compliance::evaluate(
+        &profile,
+        &checks,
+        &attestations,
+        &exceptions,
+        ibexwall_sys::RealClock.unix_now(),
+        crate::compliance::STALE_AFTER_SECS,
+    );
+    serde_json::to_value(&report).map_err(internal)
 }
 
 // method implementations -------------------------------------------------

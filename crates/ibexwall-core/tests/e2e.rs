@@ -1766,3 +1766,62 @@ async fn attestations_and_exceptions_are_recorded_and_audited() {
         .unwrap_err();
     assert_eq!(err.name, "com.ibexwall.Core.InvalidArgument");
 }
+
+#[tokio::test]
+async fn compliance_lists_profiles_and_reports_on_them() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    std::fs::create_dir_all(sandbox.root.join("etc/ibexwall/profiles")).unwrap();
+    std::fs::write(
+        sandbox.root.join("etc/ibexwall/profiles/test.yaml"),
+        r#"framework: "Test"
+version: "1"
+controls:
+  - control_id: t.disk
+    title: disk
+    kind: automated
+    checks: [posture.disk_encryption]
+"#,
+    )
+    .unwrap();
+    let (_core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+
+    let v = client
+        .call("com.ibexwall.Core.ListComplianceProfiles", json!({}))
+        .await
+        .unwrap();
+    assert_eq!(v["profiles"].as_array().unwrap().len(), 1);
+    assert_eq!(v["profiles"][0]["framework"], "Test");
+
+    let r = client
+        .call(
+            "com.ibexwall.Core.GetCompliance",
+            json!({ "profile": "Test" }),
+        )
+        .await
+        .unwrap();
+    let report = &r["report"];
+    assert_eq!(report["framework"], "Test");
+    // With no check results yet, the control is not-assessed: a missing
+    // check is never a pass.
+    let control = report["controls"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["control_id"] == "t.disk")
+        .unwrap();
+    assert_eq!(control["status"], "not_assessed");
+
+    // An unknown profile is a clean not-found, not a crash.
+    let err = client
+        .call(
+            "com.ibexwall.Core.GetCompliance",
+            json!({ "profile": "Nope" }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.name, "com.ibexwall.Core.NotFound");
+}

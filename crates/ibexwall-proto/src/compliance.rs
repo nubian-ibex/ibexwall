@@ -9,7 +9,18 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::types::{CheckResult, Reference};
+use crate::types::CheckResult;
+
+/// A citation for a control: the clause or article id, its URL and the
+/// date it was consulted. The shared `Reference` type (framework, id) is
+/// for findings; profiles carry their own shape.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProfileReference {
+    pub id: String,
+    pub url: String,
+    pub date: String,
+}
 
 /// A framework's profile: a named set of controls.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -39,7 +50,7 @@ pub struct Control {
     #[serde(default)]
     pub checks: Vec<String>,
     #[serde(default)]
-    pub references: Vec<Reference>,
+    pub references: Vec<ProfileReference>,
 }
 
 /// The state of one control after evaluation. `NotAssessed` is never a

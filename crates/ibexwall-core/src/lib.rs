@@ -15,6 +15,7 @@ pub mod events;
 pub mod firewall;
 pub mod monitor;
 pub mod plugins;
+pub mod profiles;
 pub mod proposals;
 pub mod state;
 

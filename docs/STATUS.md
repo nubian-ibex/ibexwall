@@ -3,9 +3,7 @@
 
 # STATUS
 
-Last updated: 2026-11-06 (F11a delivered end to end: Compliance with the
-six first-release profiles, the signed JSON/CSV/OSCAL export, the
-`--phase f11a` five-distro run, and the docs and site)
+Last updated: 2026-11-07 (F11b M1-M4 landed; F10c fully closed)
 
 ## Current phase
 
@@ -32,6 +30,9 @@ The audit plan is fully closed:
 F11a (Compliance) was approved and is delivered; see
 `docs/reports/F11a-report.md`.
 
+F11b (Managed-mode) is in flight, with M1-M4 done:
+`docs/plans/F11b-managed-mode.md`.
+
 Architecture decisions are recorded internally, outside this repository;
 the public plans and reports are self-contained without them.
 
@@ -44,7 +45,22 @@ Phases, newest first (report, plan):
   screen and two read-only MCP tools, the device-signed JSON/CSV/OSCAL
   export, and the `--phase f11a` run green on all five distros. The run
   also fixed a sysctl-plan bug that would have made the recommended preset
+  fail on any kernel with `bpf_jit_harden` locked down.- **F11a, compliance** (2026-11-06, `docs/reports/F11a-report.md`). The
+  Compliance section: six shipped profiles (Baseline, LGPD, CMN 4.893/5.274,
+  NIST 800-53 r5, NIST 800-171 r3, ISO 27001:2022 theme 8), the evaluator
+  with six control states and attestations/exceptions, the CLI, the UI
+  screen and two read-only MCP tools, the device-signed JSON/CSV/OSCAL
+  export, and the `--phase f11a` run green on all five distros. The run
+  also fixed a sysctl-plan bug that would have made the recommended preset
   fail on any kernel with `bpf_jit_harden` locked down.
+- **F11b, managed-mode contracts** (2026-11-07, in flight,
+  `docs/plans/F11b-managed-mode.md`). M1-M4 done: policy bundle
+  verification (JCS + ed25519 against trust anchors, expiry and
+  anti-rollback), the `com.ibexwall.Policy` varlink interface (ApplyBundle
+  writes the org layer; GetEffective; BuildReport assembles the spec
+  report; UseBreakGlass verifies a signed break-glass code), and `ibexctl
+  policy apply-bundle`. M5 (the Organisation screen) and M6 (the
+  `--phase f11b` VM run) are open.
 - **F10b, assistant connection, detection, hardening** (2026-11-05,
   `docs/plans/F10b-assistant-detection-hardening.md`). The Assistant
   connect flow, the `system.assistant` plugin owning `mcp.toml`, token

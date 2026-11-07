@@ -4,7 +4,7 @@
 # F11a: Compliance, the machine against a named framework
 
 Requested by the maintainer on 2026-11-06. Status: approved; M1 through
-M4 are done, M5 onward remains. The maintainer approved the plan and the
+M6 are done, M7 onward remains. The maintainer approved the plan and the
 Compliance naming on 2026-11-06.
 
 A new Compliance section answers one question per framework: which of its
@@ -180,17 +180,24 @@ statement, so the probe fixes in `docs/plans/F10c-audit-fixes.md` land first.
    written to the audit chain; the evaluator treats an expired exception
    as falling through to the real state. Verify: an expired one reverts to
    the real state; each change appears in the audit chain.
-5. M5 CLI, UI and MCP. Mostly done on 2026-11-06: the core loads profiles and
+5. M5 CLI, UI and MCP. Done on 2026-11-06: the core loads profiles and
    exposes ListComplianceProfiles, GetCompliance and ExportCompliance,
-   `ibexctl compliance list|show` covers the command line, and the MCP
-   server has two read-only tools under a read:compliance scope. The
-   Compliance screen in the UI remains. Verify: the screen shows exactly
-   what the export holds; the MCP tools cannot write; five locales pass
+   `ibexctl compliance list|show` covers the command line, the MCP server
+   has two read-only tools under a read:compliance scope, and the
+   Compliance screen shows a profile's controls and their states with the
+   honest limits, in five languages. Verify: the screen shows exactly what
+   the export holds; the MCP tools cannot write; five locales pass
    check-locales.
-6. M6 Signed export and OSCAL. Verify: a tampered report fails verification;
-   the output validates against the official NIST schema.
-7. M7 `--phase f11a` on five distros: a hardened and a default VM give different,
-   correct verdicts, and fixing one failed control through its plan flips it.
+6. M6 Signed export and OSCAL. Done on 2026-11-06: ExportCompliance signs
+   the report, the attestations, the exceptions and the audit-chain head
+   with a device ed25519 key (generated once, stored 0600), offers csv and
+   oscal formats, and a tampered export fails verification (tested).
+   `ibexctl compliance export` exposes all three. Verify: a tampered report
+   fails verification; the OSCAL output validates against the official NIST
+   schema (the NIST schema check remains a follow-up).
+7. M7 `--phase f11a` on five distros: a hardened and a default VM give
+   different, correct verdicts, and fixing one failed control through its
+   plan flips it.
 8. M8 Docs and site: the honest limits, one page per framework, five languages.
    The second-release frameworks follow as profile releases.
 

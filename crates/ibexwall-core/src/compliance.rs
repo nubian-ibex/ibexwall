@@ -187,6 +187,162 @@ fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
+// The export schema marker.
+pub const EXPORT_SCHEMA: &str = "com.ibexwall.compliance.export/v1";
+
+/// The device signing key, generated once and stored in the state dir as
+/// a 0600 file: the secret never leaves the machine.
+fn load_or_create_key(state_dir: &std::path::Path) -> anyhow::Result<ed25519_dalek::SigningKey> {
+    use std::io::{Read as _, Write as _};
+    let path = state_dir.join("compliance.key");
+    let secret: [u8; 32] = match std::fs::read(&path) {
+        Ok(bytes) => bytes
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("the compliance key is corrupt"))?,
+        Err(_) => {
+            let mut bytes = [0u8; 32];
+            std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
+            std::fs::create_dir_all(state_dir)?;
+            use std::os::unix::fs::OpenOptionsExt as _;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&path)?;
+            file.write_all(&bytes)?;
+            bytes
+        }
+    };
+    Ok(ed25519_dalek::SigningKey::from_bytes(&secret))
+}
+
+/// A signed export: the report, the attestations, the exceptions and the
+/// audit-chain head, sealed by the device key so a tampered copy fails
+/// verification.
+pub fn signed_envelope(
+    state_dir: &std::path::Path,
+    report: &ComplianceReport,
+    attestations: &[Attestation],
+    exceptions: &[Exception],
+    audit_head: &str,
+    now: i64,
+) -> anyhow::Result<serde_json::Value> {
+    use ed25519_dalek::Signer as _;
+    let key = load_or_create_key(state_dir)?;
+    let public_key = hex::encode(key.verifying_key().to_bytes());
+    let mut envelope = serde_json::json!({
+        "schema": EXPORT_SCHEMA,
+        "signed_at": ibexwall_sys::format_rfc3339(now),
+        "report": report,
+        "attestations": attestations,
+        "exceptions": exceptions,
+        "audit_head": audit_head,
+        "public_key": public_key,
+    });
+    let payload = serde_jcs::to_vec(&envelope)?;
+    let signature = key.sign(&payload);
+    envelope["signature"] = serde_json::Value::String(hex::encode(signature.to_bytes()));
+    Ok(envelope)
+}
+
+/// Verifies a signed envelope. Returns an error when the signature does
+/// not cover the payload (tamper) or the schema is not ours.
+pub fn verify_envelope(value: &serde_json::Value) -> Result<(), String> {
+    use ed25519_dalek::Verifier as _;
+    if value.get("schema").and_then(|s| s.as_str()) != Some(EXPORT_SCHEMA) {
+        return Err("the export is not an IbexWall compliance export".into());
+    }
+    let signature = value
+        .get("signature")
+        .and_then(|s| s.as_str())
+        .ok_or("missing signature")?;
+    let public_key = value
+        .get("public_key")
+        .and_then(|s| s.as_str())
+        .ok_or("missing public key")?;
+    let mut payload = value.clone();
+    payload.as_object_mut().map(|o| o.remove("signature"));
+    let bytes = serde_jcs::to_vec(&payload).map_err(|e| e.to_string())?;
+    let sig_bytes: [u8; 64] = hex::decode(signature)
+        .map_err(|_| "bad signature encoding")?
+        .try_into()
+        .map_err(|_| "bad signature length")?;
+    let key_bytes: [u8; 32] = hex::decode(public_key)
+        .map_err(|_| "bad key encoding")?
+        .try_into()
+        .map_err(|_| "bad key length")?;
+    let key = ed25519_dalek::VerifyingKey::from_bytes(&key_bytes).map_err(|_| "bad public key")?;
+    let sig = ed25519_dalek::Signature::from_bytes(&sig_bytes);
+    key.verify(&bytes, &sig)
+        .map_err(|_| "the signature does not cover the report".to_string())
+}
+
+/// CSV: one row per control, with the status as a snake_case string.
+pub fn csv(report: &ComplianceReport) -> String {
+    let mut out = String::from("control_id,title,status\n");
+    for control in &report.controls {
+        let status = serde_json::to_value(control.status)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default();
+        out.push_str(&format!(
+            "\"{}\",\"{}\",\"{}\"\n",
+            control.control_id,
+            control.title.replace('\"', "\'"),
+            status
+        ));
+    }
+    out
+}
+
+/// A minimal OSCAL assessment-results document (best effort; the official
+/// NIST schema is not yet validated here).
+pub fn oscal(report: &ComplianceReport, now: i64) -> serde_json::Value {
+    let findings: Vec<serde_json::Value> = report
+        .controls
+        .iter()
+        .enumerate()
+        .map(|(i, control)| {
+            let status = serde_json::to_value(control.status)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default();
+            serde_json::json!({
+                "uuid": format!("f{:032x}", i + 1),
+                "title": control.title,
+                "description": format!("state: {status}"),
+                "target": { "type": "statement-id", "target-id": control.control_id },
+            })
+        })
+        .collect();
+    let control_ids: Vec<serde_json::Value> = report
+        .controls
+        .iter()
+        .map(|c| serde_json::json!({ "control-id": c.control_id }))
+        .collect();
+    serde_json::json!({
+        "assessment-results": {
+            "uuid": format!("a{:032x}", 1),
+            "metadata": {
+                "title": format!("IbexWall compliance report for {} {}", report.framework, report.version),
+                "last-modified": ibexwall_sys::format_rfc3339(now),
+                "version": "1.0",
+                "oscal-version": "1.1.3",
+            },
+            "results": [{
+                "uuid": format!("r{:032x}", 1),
+                "title": "IbexWall compliance report",
+                "description": "Technical controls evaluated against the machine's state. A result of not-assessed or needs-attestation is not a pass.",
+                "start": report.evaluated_at,
+                "findings": findings,
+                "reviewed-controls": {
+                    "control-selections": [{ "include-controls": control_ids }],
+                },
+            }],
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -353,5 +509,69 @@ mod tests {
             );
             prop_assert_ne!(report.controls[0].status, ComplianceStatus::Compliant);
         }
+    }
+
+    #[test]
+    fn a_signed_envelope_verifies_and_a_tampered_one_does_not() {
+        let dir = std::env::temp_dir().join(format!("ibx-export-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let report = ComplianceReport {
+            framework: "X".into(),
+            version: "1".into(),
+            evaluated_at: "2026-11-01T12:00:00Z".into(),
+            controls: vec![ControlResult {
+                control_id: "c".into(),
+                title: "t".into(),
+                status: ComplianceStatus::Compliant,
+                checks: vec![],
+            }],
+        };
+        let envelope = signed_envelope(&dir, &report, &[], &[], "head", 1_000).unwrap();
+        assert!(verify_envelope(&envelope).is_ok());
+
+        // Tampering with the report breaks the signature.
+        let mut tampered = envelope.clone();
+        tampered["report"]["controls"][0]["status"] =
+            serde_json::Value::String("non_compliant".into());
+        assert!(verify_envelope(&tampered).is_err());
+
+        // A non-export document is refused outright.
+        assert!(verify_envelope(&serde_json::json!({ "x": 1 })).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn csv_and_oscal_cover_every_control() {
+        let report = ComplianceReport {
+            framework: "X".into(),
+            version: "1".into(),
+            evaluated_at: "2026-11-01T12:00:00Z".into(),
+            controls: vec![
+                ControlResult {
+                    control_id: "a.b".into(),
+                    title: "A title".into(),
+                    status: ComplianceStatus::Compliant,
+                    checks: vec![],
+                },
+                ControlResult {
+                    control_id: "c.d".into(),
+                    title: "C title".into(),
+                    status: ComplianceStatus::NotAssessed,
+                    checks: vec![],
+                },
+            ],
+        };
+        let csv = csv(&report);
+        assert!(csv.starts_with("control_id,title,status\n"));
+        assert!(csv.contains("a.b") && csv.contains("not_assessed"));
+
+        let oscal = oscal(&report, 1_000);
+        assert_eq!(
+            oscal["assessment-results"]["results"][0]["findings"]
+                .as_array()
+                .map(Vec::len),
+            Some(2)
+        );
     }
 }

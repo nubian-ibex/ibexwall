@@ -551,8 +551,40 @@ async fn dispatch(
         }
         "ExportCompliance" => {
             let framework = str_field(&parameters, "profile")?;
-            let report = compliance_report(core, &framework)?;
-            Ok(Reply::result(json!({ "format": "json", "export": report })))
+            let format = parameters
+                .get("format")
+                .and_then(Value::as_str)
+                .unwrap_or("json")
+                .to_string();
+            let (report, attestations, exceptions, audit_head) = compliance_data(core, &framework)?;
+            let state_dir =
+                ibexwall_proto::names::path_under(&core.root, ibexwall_proto::names::STATE_DIR);
+            let now = ibexwall_sys::RealClock.unix_now();
+            match format.as_str() {
+                "json" => {
+                    let envelope = crate::compliance::signed_envelope(
+                        &state_dir,
+                        &report,
+                        &attestations,
+                        &exceptions,
+                        &audit_head,
+                        now,
+                    )
+                    .map_err(internal)?;
+                    Ok(Reply::result(
+                        json!({ "format": "json", "export": envelope }),
+                    ))
+                }
+                "csv" => Ok(Reply::result(json!({
+                    "format": "csv",
+                    "export": crate::compliance::csv(&report),
+                }))),
+                "oscal" => Ok(Reply::result(json!({
+                    "format": "oscal",
+                    "export": crate::compliance::oscal(&report, now),
+                }))),
+                _ => Err(invalid_argument("format", "json, csv or oscal".into())),
+            }
         }
         _ => Err(VarlinkError::new(
             ibexwall_varlink::service_errors::METHOD_NOT_FOUND,
@@ -643,7 +675,20 @@ fn non_empty_field(parameters: &Value, field: &str) -> Result<String, VarlinkErr
 
 /// Evaluates one profile against the stored checks, attestations and
 /// exceptions, and returns its report.
-fn compliance_report(core: &Core, framework: &str) -> Result<Value, VarlinkError> {
+/// The report, the attestations, the exceptions and the audit-chain head
+/// for one profile.
+fn compliance_data(
+    core: &Core,
+    framework: &str,
+) -> Result<
+    (
+        ibexwall_proto::ComplianceReport,
+        Vec<ibexwall_proto::Attestation>,
+        Vec<ibexwall_proto::Exception>,
+        String,
+    ),
+    VarlinkError,
+> {
     let profile = crate::profiles::discover(&core.root)
         .map_err(internal)?
         .into_iter()
@@ -660,6 +705,15 @@ fn compliance_report(core: &Core, framework: &str) -> Result<Value, VarlinkError
         ibexwall_sys::RealClock.unix_now(),
         crate::compliance::STALE_AFTER_SECS,
     );
+    let audit_head = core
+        .state
+        .with_conn(crate::audit::head_hash)
+        .unwrap_or_default();
+    Ok((report, attestations, exceptions, audit_head))
+}
+
+fn compliance_report(core: &Core, framework: &str) -> Result<Value, VarlinkError> {
+    let (report, _, _, _) = compliance_data(core, framework)?;
     serde_json::to_value(&report).map_err(internal)
 }
 

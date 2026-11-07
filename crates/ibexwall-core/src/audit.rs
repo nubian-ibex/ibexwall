@@ -228,6 +228,15 @@ pub fn ops_digest(ops: &[ibexwall_proto::Op]) -> String {
     hex::encode(Sha256::digest(&bytes))
 }
 
+/// The head hash of the audit chain, for an export that binds evidence
+/// to the history. `None` when the chain is empty.
+pub fn head_hash(conn: &Connection) -> Option<String> {
+    conn.query_row("SELECT hash FROM audit_anchor WHERE id = 1", [], |row| {
+        row.get(0)
+    })
+    .ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

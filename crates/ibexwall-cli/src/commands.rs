@@ -31,6 +31,19 @@ pub(crate) async fn compliance(
             show(&value, json, render_compliance_report);
             Ok(Finish::Done)
         }
+        ComplianceCmd::Export { profile, format } => {
+            let value = client
+                .call(
+                    "com.ibexwall.Core.ExportCompliance",
+                    serde_json::json!({ "profile": profile, "format": format }),
+                )
+                .await?;
+            match format.as_str() {
+                "csv" => println!("{}", value["export"].as_str().unwrap_or_default()),
+                _ => emit(value["export"].clone(), json),
+            }
+            Ok(Finish::Done)
+        }
     }
 }
 

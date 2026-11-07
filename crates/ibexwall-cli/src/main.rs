@@ -134,6 +134,14 @@ enum ComplianceCmd {
         /// The framework name, e.g. "IbexWall Baseline" or "LGPD".
         profile: String,
     },
+    /// Export one profile as a signed report.
+    Export {
+        /// The framework name.
+        profile: String,
+        /// json (signed), csv or oscal.
+        #[arg(long, default_value = "json")]
+        format: String,
+    },
 }
 
 #[derive(Subcommand)]

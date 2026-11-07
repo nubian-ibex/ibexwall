@@ -2,10 +2,7 @@
   import { app } from '../lib/app.svelte';
   import { i18n, t } from '../lib/i18n.svelte';
   import { relativeTime } from '../lib/time';
-  import {
-    TransportError,
-    type ComplianceProfileSummary,
-  } from '../lib/transport';
+  import { TransportError, type ComplianceProfileSummary } from '../lib/transport';
   import type { ComplianceReport, ComplianceStatus } from '../gen/contracts';
   import Icon from '../components/Icon.svelte';
   import StateMessage from '../components/StateMessage.svelte';
@@ -132,7 +129,9 @@
     {/if}
   {/if}
 
-  <p class="limit muted"><Icon name="circle-question-mark" size={14} />{t('compliance-not-certified')}</p>
+  <p class="limit muted">
+    <Icon name="circle-question-mark" size={14} />{t('compliance-not-certified')}
+  </p>
 {/if}
 
 <style>

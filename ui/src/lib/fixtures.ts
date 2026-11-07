@@ -465,10 +465,26 @@ export class FixtureTransport implements Transport {
         version: '1.0',
         evaluated_at: '2026-11-01T12:00:00Z',
         controls: [
-          { control_id: 'baseline.disk-encryption', title: 'The disk and swap are encrypted', status: 'compliant' },
-          { control_id: 'baseline.secure-boot', title: 'Secure Boot and kernel lockdown are active', status: 'non_compliant' },
-          { control_id: 'baseline.audit', title: 'Audit and logs are collected', status: 'not_assessed' },
-          { control_id: 'baseline.backups', title: 'Backups are taken and tested', status: 'needs_attestation' },
+          {
+            control_id: 'baseline.disk-encryption',
+            title: 'The disk and swap are encrypted',
+            status: 'compliant',
+          },
+          {
+            control_id: 'baseline.secure-boot',
+            title: 'Secure Boot and kernel lockdown are active',
+            status: 'non_compliant',
+          },
+          {
+            control_id: 'baseline.audit',
+            title: 'Audit and logs are collected',
+            status: 'not_assessed',
+          },
+          {
+            control_id: 'baseline.backups',
+            title: 'Backups are taken and tested',
+            status: 'needs_attestation',
+          },
           { control_id: 'baseline.usb', title: 'USB devices are guarded', status: 'excepted' },
           { control_id: 'baseline.av', title: 'An antivirus is active', status: 'not_applicable' },
         ],

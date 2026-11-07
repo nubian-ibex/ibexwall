@@ -5,6 +5,7 @@ import type {
   AppDestination,
   FirewallState,
   AppEntry,
+  ComplianceReport,
   DnsStatus,
   Finding,
   HistoryEntry,
@@ -17,6 +18,13 @@ import type {
   Proposal,
   Transaction,
 } from '../gen/contracts';
+
+/** A compliance profile the machine can be evaluated against. */
+export interface ComplianceProfileSummary {
+  framework: string;
+  version: string;
+  controls: number;
+}
 
 /** A named varlink error, e.g. `com.ibexwall.Core.PermissionDenied`. */
 export class TransportError extends Error {
@@ -86,4 +94,8 @@ export interface Transport {
   decideProposal(id: string, decision: 'approve' | 'reject'): Promise<void>;
   /** Makes an access token on this machine; the secret never goes through the core. */
   makeAssistantToken(request: NewTokenRequest): Promise<NewToken>;
+  /** Compliance profiles the machine can be evaluated against. */
+  listCompliance(): Promise<ComplianceProfileSummary[]>;
+  /** One profile's controls and their states. */
+  getCompliance(profile: string): Promise<ComplianceReport>;
 }

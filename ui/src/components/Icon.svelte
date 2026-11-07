@@ -18,11 +18,13 @@
   import Check from '@lucide/svelte/icons/check';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import CircleQuestionMark from '@lucide/svelte/icons/circle-question-mark';
+  import BadgeCheck from '@lucide/svelte/icons/badge-check';
 
   const icons = {
     bot: Bot,
     box: Box,
     'brick-wall': BrickWall,
+    'badge-check': BadgeCheck,
     'clipboard-list': ClipboardList,
     clock: Clock,
     globe: Globe,

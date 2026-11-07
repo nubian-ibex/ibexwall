@@ -49,6 +49,14 @@ command!(list_findings, "ListFindings");
 command!(run_checks, "RunChecks");
 command!(history, "History");
 command!(list_prompts, "ListPrompts");
+command!(list_compliance_profiles, "ListComplianceProfiles");
+
+#[tauri::command]
+async fn get_compliance(profile: String) -> Result<Value, Value> {
+    core("GetCompliance", json!({ "profile": profile }))
+        .await
+        .map_err(|e| err_text(&e))
+}
 
 #[tauri::command]
 async fn get_app_destinations(app: String) -> Result<Value, Value> {
@@ -298,6 +306,8 @@ pub fn run() {
             answer_prompt,
             finish_prompt,
             list_plugins,
+            list_compliance_profiles,
+            get_compliance,
             list_findings,
             run_checks,
             history,

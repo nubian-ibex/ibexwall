@@ -7,6 +7,7 @@
   import PromptDialog from './components/PromptDialog.svelte';
   import Assistant from './screens/Assistant.svelte';
   import Apps from './screens/Apps.svelte';
+  import Compliance from './screens/Compliance.svelte';
   import Dns from './screens/Dns.svelte';
   import Hardening from './screens/Hardening.svelte';
   import Firewall from './screens/Firewall.svelte';
@@ -40,6 +41,8 @@
     <Posture />
   {:else if app.route === 'hardening'}
     <Hardening />
+  {:else if app.route === 'compliance'}
+    <Compliance />
   {:else if app.route === 'plugins'}
     <Plugins />
   {:else if app.route === 'history'}

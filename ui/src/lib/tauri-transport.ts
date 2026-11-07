@@ -7,6 +7,7 @@ import type {
   Finding,
   HistoryEntry,
   Info,
+  ComplianceReport,
   Plan,
   PluginInfo,
   Posture,
@@ -17,6 +18,7 @@ import type {
 import {
   TransportError,
   type AppsListing,
+  type ComplianceProfileSummary,
   type NewToken,
   type NewTokenRequest,
   type PromptScope,
@@ -121,6 +123,14 @@ export class TauriTransport implements Transport {
 
   makeAssistantToken(request: NewTokenRequest) {
     return invoke<NewToken>('make_assistant_token', { ...request });
+  }
+
+  listCompliance() {
+    return unwrapped<ComplianceProfileSummary[]>('list_compliance_profiles', 'profiles');
+  }
+
+  getCompliance(profile: string) {
+    return unwrapped<ComplianceReport>('get_compliance', 'report', { profile });
   }
 
   planChange(plugin: string, patch: Record<string, unknown>) {

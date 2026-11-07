@@ -13,6 +13,7 @@ export type Route =
   | 'history'
   | 'assistant'
   | 'hardening'
+  | 'compliance'
   | 'settings';
 
 type Load<T> =

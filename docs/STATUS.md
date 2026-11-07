@@ -18,7 +18,7 @@ GitHub CI is green on every job (fmt, lint, tests with cargo-deny,
 docs, coverage, the UI checks, commit hygiene) plus Scorecard, and the
 commit history is signed and verified.
 
-Two plans are approved:
+One plan is open:
 
 - `docs/plans/F10c-audit-fixes.md`, from the 2026-11-06 validation pass.
   The automated battery is green (clippy, deny, no schema drift), and the
@@ -27,19 +27,16 @@ Two plans are approved:
   tests and a green Fedora VM run; the remaining M3 items and M4 (the
   rest of the audit) are still open. No v1.0 tag before M1 and M2 are
   done and verified.
-- `docs/plans/F11a-compliance.md`, the Compliance section the maintainer
-  asked for: the machine against a named framework, with compliant,
-  non-compliant, not-assessed, attestation and exception states, and a
-  signed export (JSON, CSV, OSCAL). Delivered end to end: six shipped
-  profiles, the CLI, UI and MCP surfaces, the signed export, the
-  `--phase f11a` run green on all five distros, and the docs and site.
+
+F11a (Compliance) was approved and is delivered; see
+`docs/reports/F11a-report.md`.
 
 Architecture decisions are recorded internally, outside this repository;
 the public plans and reports are self-contained without them.
 
 Phases, newest first (report, plan):
 
-- **F11a, compliance** (2026-11-06, `docs/plans/F11a-compliance.md`). The
+- **F11a, compliance** (2026-11-06, `docs/reports/F11a-report.md`). The
   Compliance section: six shipped profiles (Baseline, LGPD, CMN 4.893/5.274,
   NIST 800-53 r5, NIST 800-171 r3, ISO 27001:2022 theme 8), the evaluator
   with six control states and attestations/exceptions, the CLI, the UI

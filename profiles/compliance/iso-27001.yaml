@@ -1,0 +1,103 @@
+# SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# ISO/IEC 27001:2022, Annex A theme 8 (technological controls), the
+# host subset. The ISO text is protected; only the control number and
+# title are cited, the wording here is ours.
+
+framework: "ISO/IEC 27001"
+version: "2022"
+
+controls:
+  - control_id: "iso.8-1"
+    title: "User endpoint devices are protected"
+    kind: automated
+    checks:
+      - posture.disk_encryption
+      - session_lock.automatic
+      - posture.firewall
+    references:
+      - id: "A.8.1"
+        url: "https://www.iso.org/standard/27001"
+        date: "2026-11-06"
+
+  - control_id: "iso.8-5"
+    title: "Secure authentication is enforced"
+    kind: automated
+    checks:
+      - accounts.empty_passwords
+      - accounts.lockout
+    references:
+      - id: "A.8.5"
+        url: "https://www.iso.org/standard/27001"
+        date: "2026-11-06"
+
+  - control_id: "iso.8-7"
+    title: "Protection against malware is active"
+    kind: automated
+    checks:
+      - av.signatures
+      - av.scanner
+    references:
+      - id: "A.8.7"
+        url: "https://www.iso.org/standard/27001"
+        date: "2026-11-06"
+
+  - control_id: "iso.8-8"
+    title: "Technical vulnerabilities are managed"
+    kind: automated
+    checks:
+      - cves.security_updates
+      - posture.updates_pending
+    references:
+      - id: "A.8.8"
+        url: "https://www.iso.org/standard/27001"
+        date: "2026-11-06"
+
+  - control_id: "iso.8-9"
+    title: "Configuration is managed"
+    kind: automated
+    checks:
+      - hardening.state
+      - sysctl.hardening
+    references:
+      - id: "A.8.9"
+        url: "https://www.iso.org/standard/27001"
+        date: "2026-11-06"
+
+  - control_id: "iso.8-15"
+    title: "Logging is configured and reviewed"
+    kind: attestation
+    references:
+      - id: "A.8.15"
+        url: "https://www.iso.org/standard/27001"
+        date: "2026-11-06"
+
+  - control_id: "iso.8-16"
+    title: "Activities are monitored"
+    kind: attestation
+    references:
+      - id: "A.8.16"
+        url: "https://www.iso.org/standard/27001"
+        date: "2026-11-06"
+
+  - control_id: "iso.8-20"
+    title: "Network security is enforced"
+    kind: automated
+    checks:
+      - posture.firewall
+      - dns.secure_resolver
+    references:
+      - id: "A.8.20"
+        url: "https://www.iso.org/standard/27001"
+        date: "2026-11-06"
+
+  - control_id: "iso.8-24"
+    title: "Cryptography is used correctly"
+    kind: automated
+    checks:
+      - posture.disk_encryption
+    references:
+      - id: "A.8.24"
+        url: "https://www.iso.org/standard/27001"
+        date: "2026-11-06"

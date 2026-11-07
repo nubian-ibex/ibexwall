@@ -1,0 +1,174 @@
+# SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# IbexWall's own recommended baseline. No licensed framework text; the
+# controls are our wording and map straight to the product's checks.
+
+framework: "IbexWall Baseline"
+version: "1.0"
+
+controls:
+  - control_id: "baseline.disk-encryption"
+    title: "The disk and swap are encrypted"
+    kind: automated
+    checks:
+      - posture.disk_encryption
+      - posture.swap_encryption
+
+  - control_id: "baseline.secure-boot"
+    title: "Secure Boot and kernel lockdown are active"
+    kind: automated
+    checks:
+      - posture.secure_boot
+      - posture.lockdown
+
+  - control_id: "baseline.firewall"
+    title: "A host firewall is running"
+    kind: automated
+    checks:
+      - posture.firewall
+
+  - control_id: "baseline.dns"
+    title: "DNS is steered to the local encrypted resolver"
+    kind: automated
+    checks:
+      - dns.secure_resolver
+
+  - control_id: "baseline.updates"
+    title: "Updates are installed automatically and on time"
+    kind: automated
+    checks:
+      - posture.updates_automatic
+      - updates.automatic
+
+  - control_id: "baseline.vulnerabilities"
+    title: "No known security update is pending"
+    kind: automated
+    checks:
+      - cves.security_updates
+      - posture.updates_pending
+
+  - control_id: "baseline.accounts"
+    title: "No empty password, no stray uid 0, and lockout on"
+    kind: automated
+    checks:
+      - accounts.empty_passwords
+      - accounts.uid0
+      - accounts.lockout
+
+  - control_id: "baseline.sudo"
+    title: "sudo requires a password"
+    kind: automated
+    checks:
+      - posture.sudo_nopasswd
+
+  - control_id: "baseline.session-lock"
+    title: "The session locks automatically"
+    kind: automated
+    checks:
+      - session_lock.automatic
+
+  - control_id: "baseline.ssh"
+    title: "SSH is hardened"
+    kind: automated
+    checks:
+      - ssh.hardening
+
+  - control_id: "baseline.antivirus"
+    title: "An antivirus with fresh signatures is active"
+    kind: automated
+    checks:
+      - av.signatures
+      - av.scanner
+
+  - control_id: "baseline.integrity"
+    title: "File integrity is monitored"
+    kind: automated
+    checks:
+      - integrity.aide
+
+  - control_id: "baseline.time"
+    title: "The clock uses authenticated time"
+    kind: automated
+    checks:
+      - nts.authenticated_time
+      - nts.synchronized
+
+  - control_id: "baseline.hardening"
+    title: "The hardening catalog and kernel sysctls are applied"
+    kind: automated
+    checks:
+      - hardening.state
+      - sysctl.hardening
+
+  - control_id: "baseline.mounts"
+    title: "World-writable mounts are hardened"
+    kind: automated
+    checks:
+      - mounts.tmp
+      - mounts.shm
+
+  - control_id: "baseline.usb"
+    title: "USB devices are guarded"
+    kind: automated
+    checks:
+      - usb.guard
+
+  - control_id: "baseline.core-dumps"
+    title: "Core dumps are disabled"
+    kind: automated
+    checks:
+      - posture.core_dumps
+
+  - control_id: "baseline.firmware"
+    title: "Firmware is current"
+    kind: automated
+    checks:
+      - posture.firmware_hsi
+
+  - control_id: "baseline.audit"
+    title: "Audit and logs are collected, persisted and bounded"
+    kind: automated
+    checks:
+      - audit.auditd
+      - audit.journald
+
+  - control_id: "baseline.password-policy"
+    title: "Passwords expire and inactive accounts lock"
+    kind: automated
+    checks:
+      - accounts.password_max_age
+      - accounts.inactive
+
+  - control_id: "baseline.file-perms"
+    title: "Sensitive files keep their mode and sudo logs what it runs"
+    kind: automated
+    checks:
+      - accounts.file_perms
+      - accounts.sudo_logging
+
+  - control_id: "baseline.login-banner"
+    title: "A login banner is shown"
+    kind: automated
+    checks:
+      - accounts.login_banner
+
+  - control_id: "baseline.package-signatures"
+    title: "Package signatures are verified"
+    kind: automated
+    checks:
+      - updates.signatures
+
+  - control_id: "baseline.default-deny"
+    title: "The firewall denies inbound by default"
+    kind: automated
+    checks:
+      - firewall.default_deny
+
+  - control_id: "baseline.backups"
+    title: "Backups are taken, tested and restorable"
+    kind: attestation
+
+  - control_id: "baseline.incident-response"
+    title: "An incident response process is defined and rehearsed"
+    kind: attestation

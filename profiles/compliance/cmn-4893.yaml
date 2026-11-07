@@ -1,0 +1,159 @@
+# SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Resolução CMN 4.893/2021 as amended by Resolução CMN 5.274/2025,
+# art. 3 § 2. Fourteen items; the host can give evidence for the nine
+# automated ones, the other five are organizational and carry an
+# attestation control.
+
+framework: "CMN 4.893/2021"
+version: "alterada pela Resolução CMN 5.274/2025"
+
+controls:
+  - control_id: "cmn.authentication"
+    title: "Authentication is enforced on the host"
+    kind: automated
+    checks:
+      - accounts.empty_passwords
+      - accounts.uid0
+      - accounts.lockout
+      - posture.sudo_nopasswd
+    references:
+      - id: "art. 3 § 2 I"
+        url: "https://www.bcb.gov.br/estabilidadefinanceira/exibenormativo?tipo=Resolu%C3%A7%C3%A3o%20CMN&numero=5274"
+        date: "2026-11-06"
+
+  - control_id: "cmn.cryptography"
+    title: "Encryption at rest is active"
+    kind: automated
+    checks:
+      - posture.disk_encryption
+      - posture.swap_encryption
+    references:
+      - id: "art. 3 § 2 II"
+        url: "https://www.bcb.gov.br/estabilidadefinanceira/exibenormativo?tipo=Resolu%C3%A7%C3%A3o%20CMN&numero=5274"
+        date: "2026-11-06"
+
+  - control_id: "cmn.intrusion-detection"
+    title: "Intrusion prevention and detection on the host"
+    kind: automated
+    checks:
+      - posture.firewall
+      - integrity.aide
+      - rootkit.scan_clean
+    references:
+      - id: "art. 3 § 2 III"
+        url: "https://www.bcb.gov.br/estabilidadefinanceira/exibenormativo?tipo=Resolu%C3%A7%C3%A3o%20CMN&numero=5274"
+        date: "2026-11-06"
+
+  - control_id: "cmn.leak-prevention"
+    title: "Information leak prevention is defined and enforced"
+    kind: attestation
+    references:
+      - id: "art. 3 § 2 IV"
+        url: "https://www.bcb.gov.br/estabilidadefinanceira/exibenormativo?tipo=Resolu%C3%A7%C3%A3o%20CMN&numero=5274"
+        date: "2026-11-06"
+
+  - control_id: "cmn.malware"
+    title: "Protection against malicious software is active"
+    kind: automated
+    checks:
+      - av.signatures
+      - av.scanner
+    references:
+      - id: "art. 3 § 2 V"
+        url: "https://www.bcb.gov.br/estabilidadefinanceira/exibenormativo?tipo=Resolu%C3%A7%C3%A3o%20CMN&numero=5274"
+        date: "2026-11-06"
+
+  - control_id: "cmn.traceability"
+    title: "Audit trails are generated and retained"
+    kind: attestation
+    references:
+      - id: "art. 3 § 2 VI e § 7"
+        url: "https://www.bcb.gov.br/estabilidadefinanceira/exibenormativo?tipo=Resolu%C3%A7%C3%A3o%20CMN&numero=5274"
+        date: "2026-11-06"
+
+  - control_id: "cmn.backups"
+    title: "Backups are managed and tested"
+    kind: attestation
+    references:
+      - id: "art. 3 § 2 VII"
+        url: "https://www.bcb.gov.br/estabilidadefinanceira/exibenormativo?tipo=Resolu%C3%A7%C3%A3o%20CMN&numero=5274"
+        date: "2026-11-06"
+
+  - control_id: "cmn.vulnerabilities"
+    title: "Vulnerabilities are found and corrected promptly"
+    kind: automated
+    checks:
+      - cves.security_updates
+      - posture.updates_pending
+      - posture.updates_automatic
+    references:
+      - id: "art. 3 § 2 VIII e § 8"
+        url: "https://www.bcb.gov.br/estabilidadefinanceira/exibenormativo?tipo=Resolu%C3%A7%C3%A3o%20CMN&numero=5274"
+        date: "2026-11-06"
+
+  - control_id: "cmn.access-control"
+    title: "Access to the network and the host is controlled"
+    kind: automated
+    checks:
+      - accounts.empty_passwords
+      - accounts.uid0
+      - accounts.lockout
+      - session_lock.automatic
+      - usb.guard
+    references:
+      - id: "art. 3 § 2 IX e § 9"
+        url: "https://www.bcb.gov.br/estabilidadefinanceira/exibenormativo?tipo=Resolu%C3%A7%C3%A3o%20CMN&numero=5274"
+        date: "2026-11-06"
+
+  - control_id: "cmn.secure-config"
+    title: "Secure configuration profiles are defined and applied"
+    kind: automated
+    checks:
+      - hardening.state
+      - sysctl.hardening
+      - ssh.hardening
+      - mounts.tmp
+      - mounts.shm
+    references:
+      - id: "art. 3 § 2 X"
+        url: "https://www.bcb.gov.br/estabilidadefinanceira/exibenormativo?tipo=Resolu%C3%A7%C3%A3o%20CMN&numero=5274"
+        date: "2026-11-06"
+
+  - control_id: "cmn.network"
+    title: "Network protection is active"
+    kind: automated
+    checks:
+      - posture.firewall
+      - dns.secure_resolver
+      - vpn.killswitch
+      - ports.exposed_services
+    references:
+      - id: "art. 3 § 2 XI"
+        url: "https://www.bcb.gov.br/estabilidadefinanceira/exibenormativo?tipo=Resolu%C3%A7%C3%A3o%20CMN&numero=5274"
+        date: "2026-11-06"
+
+  - control_id: "cmn.certificates"
+    title: "Digital certificates are managed"
+    kind: attestation
+    references:
+      - id: "art. 3 § 2 XII"
+        url: "https://www.bcb.gov.br/estabilidadefinanceira/exibenormativo?tipo=Resolu%C3%A7%C3%A3o%20CMN&numero=5274"
+        date: "2026-11-06"
+
+  - control_id: "cmn.interfaces"
+    title: "Electronic interfaces are integrated securely"
+    kind: attestation
+    references:
+      - id: "art. 3 § 2 XIII"
+        url: "https://www.bcb.gov.br/estabilidadefinanceira/exibenormativo?tipo=Resolu%C3%A7%C3%A3o%20CMN&numero=5274"
+        date: "2026-11-06"
+
+  - control_id: "cmn.threat-intel"
+    title: "Threat intelligence monitors the institution's exposure"
+    kind: attestation
+    references:
+      - id: "art. 3 § 2 XIV"
+        url: "https://www.bcb.gov.br/estabilidadefinanceira/exibenormativo?tipo=Resolu%C3%A7%C3%A3o%20CMN&numero=5274"
+        date: "2026-11-06"

@@ -1,0 +1,94 @@
+# SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Lei 13.709/2018 (LGPD), art. 46, with art. 6 VII and art. 49. The law
+# names no technical control, so this mapping is IbexWall's own reading of
+# what those articles require, stated plainly, never an official ANPD list.
+
+framework: "LGPD"
+version: "Lei 13.709/2018"
+
+controls:
+  - control_id: "lgpd.encryption"
+    title: "Data at rest is encrypted"
+    kind: automated
+    checks:
+      - posture.disk_encryption
+      - posture.swap_encryption
+    references:
+      - id: "art. 46"
+        url: "https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709.htm"
+        date: "2026-11-06"
+
+  - control_id: "lgpd.access-control"
+    title: "Access to the machine is controlled and authenticated"
+    kind: automated
+    checks:
+      - accounts.empty_passwords
+      - accounts.uid0
+      - accounts.lockout
+      - posture.sudo_nopasswd
+    references:
+      - id: "art. 46"
+        url: "https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709.htm"
+        date: "2026-11-06"
+
+  - control_id: "lgpd.malware"
+    title: "Malware protection is active"
+    kind: automated
+    checks:
+      - av.signatures
+      - av.scanner
+    references:
+      - id: "art. 46"
+        url: "https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709.htm"
+        date: "2026-11-06"
+
+  - control_id: "lgpd.network"
+    title: "Network protection and encrypted DNS are in place"
+    kind: automated
+    checks:
+      - posture.firewall
+      - dns.secure_resolver
+    references:
+      - id: "art. 46"
+        url: "https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709.htm"
+        date: "2026-11-06"
+
+  - control_id: "lgpd.vulnerabilities"
+    title: "Vulnerabilities are patched promptly"
+    kind: automated
+    checks:
+      - cves.security_updates
+      - posture.updates_pending
+    references:
+      - id: "art. 46"
+        url: "https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709.htm"
+        date: "2026-11-06"
+
+  - control_id: "lgpd.config"
+    title: "Systems are built to the security and good-practice principles"
+    kind: automated
+    checks:
+      - hardening.state
+      - sysctl.hardening
+    references:
+      - id: "art. 49"
+        url: "https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709.htm"
+        date: "2026-11-06"
+
+  - control_id: "lgpd.incident-record"
+    title: "Security incidents are recorded and answered"
+    kind: attestation
+    references:
+      - id: "art. 46 e art. 48"
+        url: "https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709.htm"
+        date: "2026-11-06"
+
+  - control_id: "lgpd.rights-process"
+    title: "Data-subject rights are answered within the legal terms"
+    kind: attestation
+    references:
+      - id: "art. 18"
+        url: "https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709.htm"
+        date: "2026-11-06"

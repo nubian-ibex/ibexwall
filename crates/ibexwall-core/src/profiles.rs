@@ -67,4 +67,24 @@ mod tests {
         assert_eq!(profile.controls.len(), 1);
         assert_eq!(profile.controls[0].references[0].date, "2026-11-06");
     }
+
+    #[test]
+    fn every_shipped_profile_parses_and_carries_its_checks() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../profiles/compliance");
+        let mut parsed = 0;
+        for entry in std::fs::read_dir(&dir).expect("the shipped profiles") {
+            let profile = parse(&entry.unwrap().path()).expect("a shipped profile parses");
+            assert!(!profile.controls.is_empty());
+            for control in &profile.controls {
+                assert!(
+                    !control.checks.is_empty()
+                        || control.kind == ibexwall_proto::ControlKind::Attestation,
+                    "{}: an automated control needs at least one check",
+                    control.control_id
+                );
+            }
+            parsed += 1;
+        }
+        assert_eq!(parsed, 6, "the six first-release profiles");
+    }
 }

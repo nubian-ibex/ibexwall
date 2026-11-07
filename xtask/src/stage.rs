@@ -344,6 +344,28 @@ pub fn run_stage(options: &Options) -> Result<()> {
         Package::Core,
     )?;
 
+    // The shipped compliance profiles (F11a): the default first-release
+    // set, evaluated against what the plugins measure. The source of truth
+    // is the `ibexwall-profiles` repository; this is a snapshot so the
+    // package works out of the box. Operators shadow them with files in
+    // /etc/ibexwall/profiles.
+    let profile_src = root.join("profiles/compliance");
+    for entry in std::fs::read_dir(&profile_src)?.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("yaml") {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        put(
+            dest,
+            &mut files,
+            &format!("{}/{name}", ibexwall_proto::names::PROFILE_INSTALL_DIR),
+            &path,
+            0o644,
+            Package::Core,
+        )?;
+    }
+
     // AppArmor: the profiles, and the include the manifests generate.
     let apparmor = pk.join("apparmor");
     let mut profiles: Vec<_> = std::fs::read_dir(&apparmor)?

@@ -15,6 +15,17 @@ export type Severity = 'info' | 'low' | 'medium' | 'high' | 'critical';
  * Lifecycle of a finding.
  */
 export type FindingStatus = 'open' | 'accepted_risk' | 'resolved';
+/**
+ * Whether a control is decided by the machine or by a person.
+ */
+export type ControlKind = 'automated' | 'attestation';
+/**
+ * The state of one control after evaluation. `NotAssessed` is never a
+ * pass: a control with a missing, stale or unknown check lands here, so
+ * a report that cannot prove a control never claims it.
+ */
+export type ComplianceStatus =
+  'compliant' | 'non_compliant' | 'not_assessed' | 'needs_attestation' | 'not_applicable' | 'excepted';
 export type PluginKind = 'check' | 'control' | 'monitor';
 export type PluginOrigin = 'official' | 'community' | 'local';
 /**
@@ -137,14 +148,22 @@ export interface AllContracts {
   AppCount?: AppCount;
   AppDestination?: AppDestination;
   AppEntry?: AppEntry;
+  Attestation?: Attestation;
   BlockedConnectionsSummary?: BlockedConnectionsSummary;
   BundleSignature?: BundleSignature;
   CheckOutcome?: CheckOutcome;
   CheckReport?: CheckReport;
   CheckResult?: CheckResult;
+  ComplianceProfile?: ComplianceProfile;
+  ComplianceReport?: ComplianceReport;
+  ComplianceStatus?: ComplianceStatus;
   Conflicts?: Conflicts;
+  Control?: Control;
+  ControlKind?: ControlKind;
+  ControlResult?: ControlResult;
   DnsStatus?: DnsStatus;
   Event?: Event;
+  Exception?: Exception;
   ExecAllow?: ExecAllow;
   Finding?: Finding;
   FindingStatus?: FindingStatus;
@@ -165,6 +184,7 @@ export interface AllContracts {
   PolicyBundle?: PolicyBundle;
   Posture?: Posture;
   Privileges?: Privileges;
+  ProfileReference?: ProfileReference;
   Prompt?: Prompt;
   Proposal?: Proposal;
   ProposalStatus?: ProposalStatus;
@@ -225,6 +245,18 @@ export interface AppEntry {
    */
   mode: string;
   package?: string | null;
+}
+/**
+ * A person's attestation that an organizational control holds.
+ */
+export interface Attestation {
+  control_id: string;
+  /**
+   * Unix seconds; `None` means it never expires.
+   */
+  expires_at?: number | null;
+  owner: string;
+  statement: string;
 }
 export interface BlockedConnectionsSummary {
   top_apps?: AppCount[];
@@ -295,6 +327,56 @@ export interface CheckResult {
   outcome: CheckOutcome;
   severity: Severity;
 }
+/**
+ * A framework's profile: a named set of controls.
+ */
+export interface ComplianceProfile {
+  controls: Control[];
+  framework: string;
+  version: string;
+}
+/**
+ * One control: what it requires, and for an automated one the check ids
+ * that prove it. `references` cite the framework clause or article.
+ */
+export interface Control {
+  checks?: string[];
+  control_id: string;
+  kind: ControlKind;
+  references?: ProfileReference[];
+  title: string;
+}
+/**
+ * A citation for a control: the clause or article id, its URL and the
+ * date it was consulted. The shared `Reference` type (framework, id) is
+ * for findings; profiles carry their own shape.
+ */
+export interface ProfileReference {
+  date: string;
+  id: string;
+  url: string;
+}
+/**
+ * The whole evaluation of one profile.
+ */
+export interface ComplianceReport {
+  controls: ControlResult[];
+  evaluated_at: string;
+  framework: string;
+  version: string;
+}
+/**
+ * One control's verdict and the checks that decided it.
+ */
+export interface ControlResult {
+  checks?: CheckResult[];
+  control_id: string;
+  status: ComplianceStatus;
+  /**
+   * The control's own wording, so the report stands alone.
+   */
+  title: string;
+}
 export interface Conflicts {
   units?: string[];
 }
@@ -331,6 +413,16 @@ export interface Event {
   untrusted?: {
     [k: string]: unknown;
   };
+}
+/**
+ * An accepted risk: overrides a control's state until it expires. Shown
+ * apart and never counted as compliant.
+ */
+export interface Exception {
+  control_id: string;
+  expires_at: number;
+  justification: string;
+  owner: string;
 }
 /**
  * Exact exec allowlist entry: binary plus fixed argv pattern.

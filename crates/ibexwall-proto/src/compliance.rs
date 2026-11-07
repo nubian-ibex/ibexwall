@@ -72,6 +72,8 @@ pub enum ComplianceStatus {
 #[serde(deny_unknown_fields)]
 pub struct ControlResult {
     pub control_id: String,
+    /// The control's own wording, so the report stands alone.
+    pub title: String,
     pub status: ComplianceStatus,
     #[serde(default)]
     pub checks: Vec<CheckResult>,

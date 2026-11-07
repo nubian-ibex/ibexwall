@@ -87,6 +87,7 @@ fn evaluate_control(
     {
         return ControlResult {
             control_id: control.control_id.clone(),
+            title: control.title.clone(),
             status: ComplianceStatus::Excepted,
             checks: Vec::new(),
         };
@@ -102,6 +103,7 @@ fn evaluate_control(
             };
             ControlResult {
                 control_id: control.control_id.clone(),
+                title: control.title.clone(),
                 status,
                 checks: Vec::new(),
             }
@@ -151,6 +153,7 @@ fn evaluate_control(
             };
             ControlResult {
                 control_id: control.control_id.clone(),
+                title: control.title.clone(),
                 status,
                 checks: resolved,
             }

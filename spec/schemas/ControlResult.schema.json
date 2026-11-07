@@ -71,10 +71,15 @@
     },
     "status": {
       "$ref": "#/$defs/ComplianceStatus"
+    },
+    "title": {
+      "description": "The control's own wording, so the report stands alone.",
+      "type": "string"
     }
   },
   "required": [
     "control_id",
+    "title",
     "status"
   ],
   "title": "ControlResult",

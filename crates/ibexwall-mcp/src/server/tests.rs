@@ -134,7 +134,7 @@ fn the_handshake_negotiates_a_supported_version_and_lists_exactly_the_tools() {
     );
     assert_eq!(other["result"]["protocolVersion"], SUPPORTED_VERSIONS[0]);
     let listed = request(&mut s, "tools/list", json!({}));
-    assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 9);
+    assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 11);
     assert!(
         s.handle(r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#)
             .is_none()

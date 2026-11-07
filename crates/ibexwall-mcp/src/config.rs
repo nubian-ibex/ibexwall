@@ -123,7 +123,7 @@ pub struct Config {
 }
 
 /// What every unnamed client may do.
-pub const BASELINE_SCOPES: &[&str] = &["read:posture", "read:findings"];
+pub const BASELINE_SCOPES: &[&str] = &["read:posture", "read:findings", "read:compliance"];
 pub const BASELINE_RATE: u32 = 30;
 
 impl Config {

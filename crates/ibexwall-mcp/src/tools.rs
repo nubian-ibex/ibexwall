@@ -7,7 +7,7 @@
 
 use serde_json::{Value, json};
 
-pub const TOOL_NAMES: [&str; 9] = [
+pub const TOOL_NAMES: [&str; 11] = [
     "get_posture",
     "list_findings",
     "explain_finding",
@@ -17,6 +17,8 @@ pub const TOOL_NAMES: [&str; 9] = [
     "dry_run",
     "propose_change",
     "list_proposals",
+    "list_compliance",
+    "get_compliance",
 ];
 
 const UNTRUSTED: &str =
@@ -104,6 +106,18 @@ pub fn list() -> Vec<Value> {
             "Your own proposals and their state (read only).",
             json!({ "status": { "type": "string", "enum": ["pending", "approved", "rejected", "expired"] } }),
             &[],
+        ),
+        tool(
+            "list_compliance",
+            "The compliance profiles the machine can be evaluated against (read only).",
+            json!({}),
+            &[],
+        ),
+        tool(
+            "get_compliance",
+            "One profile's controls and their states: compliant, non-compliant, not-assessed, needs-attestation, not-applicable or excepted (read only).",
+            json!({ "profile": s("The framework name, e.g. \"IbexWall Baseline\" or \"LGPD\"") }),
+            &["profile"],
         ),
     ]
 }

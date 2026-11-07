@@ -424,6 +424,15 @@ impl<B: Backend, W: Write> Server<B, W> {
                 check_keys(args, &[])?;
                 self.posture()
             }
+            "list_compliance" => {
+                check_keys(args, &[])?;
+                self.compliance_list()
+            }
+            "get_compliance" => {
+                check_keys(args, &["profile"])?;
+                let profile = string_arg(args, "profile", 64)?;
+                self.compliance_report(&profile)
+            }
             "list_findings" => {
                 check_keys(args, &["plugin", "min_severity"])?;
                 let plugin = opt_string(args, "plugin", 64)?;
@@ -562,6 +571,16 @@ impl<B: Backend, W: Write> Server<B, W> {
     fn posture(&mut self) -> Outcome {
         self.need("read:posture")?;
         self.core("GetPosture", json!({}))
+    }
+
+    fn compliance_list(&mut self) -> Outcome {
+        self.need("read:compliance")?;
+        self.core("ListComplianceProfiles", json!({}))
+    }
+
+    fn compliance_report(&mut self, profile: &str) -> Outcome {
+        self.need("read:compliance")?;
+        self.core("GetCompliance", json!({ "profile": profile }))
     }
 
     fn findings(&mut self, plugin: Option<String>, severity: Option<String>) -> Outcome {

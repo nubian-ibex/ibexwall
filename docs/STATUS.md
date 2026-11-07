@@ -18,15 +18,15 @@ GitHub CI is green on every job (fmt, lint, tests with cargo-deny,
 docs, coverage, the UI checks, commit hygiene) plus Scorecard, and the
 commit history is signed and verified.
 
-One plan is open:
+One plan is open, with three small items left:
 
 - `docs/plans/F10c-audit-fixes.md`, from the 2026-11-06 validation pass.
-  The automated battery is green (clippy, deny, no schema drift), and the
-  review found five P0, fourteen P1 and twelve P2 issues. M1 (the five P0),
-  M2 (the transaction engine) and part of M3 are done, all with unit or e2e
-  tests and a green Fedora VM run; the remaining M3 items and M4 (the
-  rest of the audit) are still open. No v1.0 tag before M1 and M2 are
-  done and verified.
+  The review found five P0, fourteen P1 and twelve P2 issues. M1 (the five
+  P0), M2 (the transaction engine), M3 (the P2 set) and M4 (the deep
+  plugin, DNS and MCP audit) are done. Three small items remain, planned
+  in the doc's "Remaining after M1-M4": the audit actor is still
+  hard-coded, orphaned snapshots are not pruned, and the DNS answers
+  socket is not hardened. Fuzz targets are deferred to after v1.0.
 
 F11a (Compliance) was approved and is delivered; see
 `docs/reports/F11a-report.md`.

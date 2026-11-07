@@ -5,8 +5,8 @@
 
 Requested by the maintainer on 2026-11-06: validate the project and its
 code so far, then fix what a review finds. Status: M1 through M4 are
-done. The maintainer approved the plan and the Compliance naming on
-2026-11-06.
+done; three small items remain, planned in "Remaining after M1-M4". The
+maintainer approved the plan and the Compliance naming on 2026-11-06.
 
 ## Method and scope
 
@@ -227,6 +227,34 @@ review belongs to M4.
    and net-common parsers are clean. The core now reports the DNS
    enforcement chain on GetDnsStatus, and FakeFs normalizes `..` and
    refuses a symlinked parent like the real filesystem.
+
+## Remaining after M1-M4
+
+Three small items are still open; the fuzz decision below is final. Each
+is isolated, so they can land in one commit each, in any order.
+
+1. The audit actor is hard-coded as `user` instead of the caller
+   identity. The polkit subject that authorized a change is available at
+   dispatch, but the audit append records a literal `user`. Fix: thread
+   the actor resolved from the pidfd subject into every audited call.
+   Verify: a change made by root and one made by the assistant's user
+   both name their real actor in `ibexctl audit`.
+2. Orphaned snapshots are not pruned. A snapshot blob and its manifest
+   stay under `/var/lib/ibexwall` after the transaction reaches a
+   terminal state, so the state directory grows without bound. Fix: prune
+   a snapshot once its transaction is committed, rolled back or failed,
+   except the most recent committed snapshot for rollback. Verify: apply
+   and roll back a change, then confirm the snapshot directory is empty.
+3. The DNS answers socket chmod and the status file read are still
+   unsandboxed. The chmod follows a swapped symlink, and the status file
+   read is unbounded (a FIFO can hang it). Both are currently unreachable
+   to a local user because the runtime directory is root-owned 0755, but
+   they stay open as defense-in-depth. Fix: resolve the socket path
+   without following symlinks before chmod, and cap the status file read.
+   Verify: a unit test for each, plus the battery stays green.
+4. Fuzz targets and the nightly job are deferred to after v1.0 (they need
+   a nightly toolchain); the README already says so. Revisit at the v1.1
+   or F11b planning.
 
 ## Clean areas, for the record
 

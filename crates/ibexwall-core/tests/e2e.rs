@@ -1721,3 +1721,48 @@ async fn rolling_back_over_a_newer_transaction_is_refused() {
         .await
         .unwrap();
 }
+
+#[tokio::test]
+async fn attestations_and_exceptions_are_recorded_and_audited() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let (core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+    client
+        .call(
+            "com.ibexwall.Core.SetAttestation",
+            json!({ "control_id": "baseline.backups", "owner": "alice",
+                    "statement": "backups run weekly", "expires_at": null }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(core.state.list_attestations().unwrap().len(), 1);
+
+    client
+        .call(
+            "com.ibexwall.Core.SetException",
+            json!({ "control_id": "baseline.usb", "owner": "alice",
+                    "justification": "lab machine", "expires_at": 4_102_444_800i64 }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(core.state.list_exceptions().unwrap().len(), 1);
+
+    // Both changes appear in the audit chain.
+    assert!(matches!(
+        core.audit_verify(),
+        ibexwall_core::audit::Verification::Valid { .. }
+    ));
+
+    // An empty owner is refused before it is stored.
+    let err = client
+        .call(
+            "com.ibexwall.Core.SetAttestation",
+            json!({ "control_id": "x", "owner": "", "statement": "s" }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.name, "com.ibexwall.Core.InvalidArgument");
+}

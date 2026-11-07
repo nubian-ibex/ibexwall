@@ -497,6 +497,39 @@ async fn dispatch(
             let events = core.state.list_events(limit).map_err(internal)?;
             Ok(Reply::result(json!({ "events": events })))
         }
+        "SetAttestation" => {
+            let control_id = str_field(&parameters, "control_id")?;
+            let owner = non_empty_field(&parameters, "owner")?;
+            let statement = non_empty_field(&parameters, "statement")?;
+            let expires_at = parameters.get("expires_at").and_then(Value::as_i64);
+            let attestation = ibexwall_proto::Attestation {
+                control_id,
+                owner,
+                statement,
+                expires_at,
+            };
+            core.state.set_attestation(&attestation).map_err(internal)?;
+            core.audit(&actor, "core", None, "", "attestation-set");
+            Ok(Reply::result(Value::Null))
+        }
+        "SetException" => {
+            let control_id = str_field(&parameters, "control_id")?;
+            let owner = non_empty_field(&parameters, "owner")?;
+            let justification = non_empty_field(&parameters, "justification")?;
+            let expires_at = parameters
+                .get("expires_at")
+                .and_then(Value::as_i64)
+                .ok_or_else(|| invalid_argument("expires_at", "integer required".into()))?;
+            let exception = ibexwall_proto::Exception {
+                control_id,
+                owner,
+                justification,
+                expires_at,
+            };
+            core.state.set_exception(&exception).map_err(internal)?;
+            core.audit(&actor, "core", None, "", "exception-set");
+            Ok(Reply::result(Value::Null))
+        }
         _ => Err(VarlinkError::new(
             ibexwall_varlink::service_errors::METHOD_NOT_FOUND,
             json!({ "method": method }),
@@ -518,6 +551,7 @@ fn polkit_action(method: &str) -> Option<&'static str> {
         "DecideProposal" => names::POLKIT_PROPOSALS_DECIDE,
         "Apply" | "Confirm" => names::POLKIT_APPLY,
         "Rollback" => names::POLKIT_ROLLBACK,
+        "SetAttestation" | "SetException" => names::POLKIT_POLICY_PROVIDER,
         _ => return None,
     })
 }
@@ -553,6 +587,18 @@ fn opt_str_field(parameters: &Value, field: &str) -> Result<Option<String>, Varl
         .get(field)
         .and_then(Value::as_str)
         .map(str::to_string))
+}
+
+/// A required non-empty string field.
+fn non_empty_field(parameters: &Value, field: &str) -> Result<String, VarlinkError> {
+    let value = str_field(parameters, field)?;
+    if value.trim().is_empty() {
+        return Err(invalid_argument(
+            field,
+            "a non-empty string is required".into(),
+        ));
+    }
+    Ok(value)
 }
 
 // method implementations -------------------------------------------------

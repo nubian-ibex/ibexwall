@@ -114,6 +114,11 @@ pub(crate) async fn rollback(
         &crate::audit::ops_digest(&ops),
         "rolled-back",
     );
+    // The rollback restored the machine, so this snapshot is no longer
+    // needed; prune now instead of waiting for the next daemon start.
+    if let Err(error) = core.state.prune(ibexwall_sys::RealClock.unix_now()) {
+        tracing::warn!(%error, "pruning after rollback failed");
+    }
     Ok(Reply::result(
         json!({ "transaction": { "id": target, "state": "rolled_back" } }),
     ))

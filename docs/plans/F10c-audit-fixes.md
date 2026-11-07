@@ -230,31 +230,30 @@ review belongs to M4.
 
 ## Remaining after M1-M4
 
-Three small items are still open; the fuzz decision below is final. Each
-is isolated, so they can land in one commit each, in any order.
+Closed on 2026-11-07. Items 1 and 2 turned out to be already done in
+code (the plan notes were stale): the audit actor has carried the
+caller's uid since the M1 identity work (`user:<uid>` from
+`Identity::actor`), and snapshot pruning runs at every `Core::open`.
+Item 3 is now fixed as defense in depth, and pruning also runs after a
+rollback:
 
-1. The audit actor is hard-coded as `user` instead of the caller
-   identity. The polkit subject that authorized a change is available at
-   dispatch, but the audit append records a literal `user`. Fix: thread
-   the actor resolved from the pidfd subject into every audited call.
-   Verify: a change made by root and one made by the assistant's user
-   both name their real actor in `ibexctl audit`.
-2. Orphaned snapshots are not pruned. A snapshot blob and its manifest
-   stay under `/var/lib/ibexwall` after the transaction reaches a
-   terminal state, so the state directory grows without bound. Fix: prune
-   a snapshot once its transaction is committed, rolled back or failed,
-   except the most recent committed snapshot for rollback. Verify: apply
-   and roll back a change, then confirm the snapshot directory is empty.
-3. The DNS answers socket chmod and the status file read are still
-   unsandboxed. The chmod follows a swapped symlink, and the status file
-   read is unbounded (a FIFO can hang it). Both are currently unreachable
-   to a local user because the runtime directory is root-owned 0755, but
-   they stay open as defense-in-depth. Fix: resolve the socket path
-   without following symlinks before chmod, and cap the status file read.
-   Verify: a unit test for each, plus the battery stays green.
-4. Fuzz targets and the nightly job are deferred to after v1.0 (they need
-   a nightly toolchain); the README already says so. Revisit at the v1.1
-   or F11b planning.
+1. The audit actor names the caller (`user:<uid>`), verified in code;
+   the stale note is retired.
+2. Snapshots of rolled-back transactions are pruned at daemon start, and
+   now also right after a successful rollback, so a long-running daemon
+   does not accumulate them.
+3. `RealFs::read` opens with `O_NONBLOCK`, refuses anything but a
+   regular file by the open handle, and caps the read at 16 MiB: a FIFO
+   swapped over the DNS status file fails instead of hanging the
+   `GetDnsStatus` call (tested with a real FIFO). The answers socket
+   chmod verifies via `symlink_metadata` that the path is still the
+   bound socket before and after the change, refusing a swapped
+   symlink (tested); the residual bind-to-chmod window needs an
+   fd-based fchmod, which the unsafe-free workspace does not have, and
+   the directory is root-owned.
+4. Fuzz targets and the nightly job are deferred to after v1.0 (they
+   need a nightly toolchain); the README already says so. Revisit at
+   the v1.1 or F11b planning.
 
 ## Clean areas, for the record
 

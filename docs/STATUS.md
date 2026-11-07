@@ -18,15 +18,16 @@ GitHub CI is green on every job (fmt, lint, tests with cargo-deny,
 docs, coverage, the UI checks, commit hygiene) plus Scorecard, and the
 commit history is signed and verified.
 
-One plan is open, with three small items left:
+The audit plan is fully closed:
 
 - `docs/plans/F10c-audit-fixes.md`, from the 2026-11-06 validation pass.
   The review found five P0, fourteen P1 and twelve P2 issues. M1 (the five
   P0), M2 (the transaction engine), M3 (the P2 set) and M4 (the deep
-  plugin, DNS and MCP audit) are done. Three small items remain, planned
-  in the doc's "Remaining after M1-M4": the audit actor is still
-  hard-coded, orphaned snapshots are not pruned, and the DNS answers
-  socket is not hardened. Fuzz targets are deferred to after v1.0.
+  plugin, DNS and MCP audit) are done, and the three remaining items
+  closed on 2026-11-07: two were already done in code (stale notes), and
+  the third (bounded, regular-file-only reads; symlink-checked socket
+  chmod; prune after rollback) landed with tests. Fuzz targets are
+  deferred to after v1.0.
 
 F11a (Compliance) was approved and is delivered; see
 `docs/reports/F11a-report.md`.
@@ -101,7 +102,7 @@ Phases, newest first (report, plan):
   plugin manifest and policy bundle validation, canonical names,
   deterministic schema export; `spec/` holds 49 generated files and
   `cargo xtask schemas --check` enforces zero drift.
-- 701 Rust tests, 119 UI tests; clippy and fmt clean;
+- 705 Rust tests, 119 UI tests; clippy and fmt clean;
   cargo-deny clean (pinned to 0.20.2 in CI; newer versions reject the
   config's version fields).
 - VM harness: `cargo xtask vm-test --distro fedora|ubuntu-24.04|

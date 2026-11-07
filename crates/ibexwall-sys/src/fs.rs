@@ -132,8 +132,36 @@ impl Fs for RealFs {
     }
 
     fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
+        // Only a regular file, decided by the open handle itself (no
+        // path re-resolution): opening with O_NONBLOCK first, because a
+        // FIFO with no writer would block the plain open forever; a FIFO
+        // or device in place of the file must fail instead of hanging
+        // the read, and the size cap keeps a corrupted file from
+        // consuming memory without bound.
+        const MAX: u64 = 16 * 1024 * 1024;
+        let fd = rfs::open(
+            self.translate(checked(path)?),
+            OFlags::RDONLY | OFlags::NONBLOCK | OFlags::CLOEXEC,
+            Mode::empty(),
+        )?;
+        let file = File::from(fd);
+        let meta = file.metadata()?;
+        if !meta.is_file() {
+            return Err(io::Error::other(format!(
+                "not a regular file: `{}`",
+                path.display()
+            )));
+        }
+        if meta.len() > MAX {
+            return Err(io::Error::other(format!(
+                "file larger than {} bytes: `{}`",
+                MAX,
+                path.display()
+            )));
+        }
+        // A regular file ignores O_NONBLOCK, so the bounded read is safe.
         let mut buf = Vec::new();
-        File::open(self.translate(checked(path)?))?.read_to_end(&mut buf)?;
+        file.take(MAX).read_to_end(&mut buf)?;
         Ok(buf)
     }
 
@@ -541,6 +569,34 @@ mod tests {
         let dir = tempdir();
         let target = dir.join("missing.conf");
         RealFs::new().remove(&target).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn read_refuses_a_fifo_instead_of_hanging() {
+        let dir = tempdir();
+        let fifo = dir.join("status.json");
+        // `mkfifo` is a shell-out: the workspace forbids unsafe code, and
+        // creating a FIFO is exactly what the check must survive.
+        let made = std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .expect("spawn mkfifo");
+        assert!(made.success(), "mkfifo must exist on this platform");
+        let error = RealFs::new().read(&fifo).unwrap_err();
+        assert!(error.to_string().contains("not a regular file"), "{error}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn read_refuses_a_file_beyond_the_cap() {
+        let dir = tempdir();
+        let huge = dir.join("huge.bin");
+        let file = std::fs::File::create(&huge).unwrap();
+        file.set_len(17 * 1024 * 1024).unwrap();
+        drop(file);
+        let error = RealFs::new().read(&huge).unwrap_err();
+        assert!(error.to_string().contains("larger than"), "{error}");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

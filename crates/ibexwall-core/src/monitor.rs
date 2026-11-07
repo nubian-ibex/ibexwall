@@ -403,13 +403,12 @@ impl Monitor {
 /// resolver's user (0750), so the world-writable socket inside is only
 /// reachable by it and root.
 pub async fn listen_answers(core: Arc<Core>, path: PathBuf) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
     let _ = std::fs::remove_file(&path);
     let socket = tokio::net::UnixDatagram::bind(&path)?;
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o666))?;
+    chmod_socket_no_symlink(&path, 0o666)?;
     // One DNS answer is far below this; a longer datagram is not ours.
     let mut buffer = [0u8; 1024];
     loop {
@@ -417,6 +416,31 @@ pub async fn listen_answers(core: Arc<Core>, path: PathBuf) -> Result<()> {
         let now = ibexwall_sys::RealClock.unix_now();
         core.monitor.ingest_answer(&buffer[..received], now);
     }
+}
+
+/// Chmods a freshly bound socket, refusing a path that stopped being our
+/// socket: `symlink_metadata` does not follow a symlink, so a swapped
+/// link is detected instead of chmod'ing whatever it points at. The check
+/// narrows the bind-to-chmod window to the microsecond between the two
+/// calls; fully closing it needs an fd-based fchmod, which the
+/// unsafe-free workspace does not have. The directory is root-owned, so
+/// this is defense in depth, not the primary gate.
+fn chmod_socket_no_symlink(path: &Path, mode: u32) -> std::io::Result<()> {
+    use std::os::unix::fs::{FileTypeExt, PermissionsExt};
+    let check = |stage: &str| {
+        let meta = std::fs::symlink_metadata(path)?;
+        if !meta.file_type().is_socket() {
+            return Err(std::io::Error::other(format!(
+                "{stage}: `{}` is no longer a socket",
+                path.display()
+            )));
+        }
+        Ok(())
+    };
+    check("before chmod")?;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))?;
+    check("after chmod")?;
+    Ok(())
 }
 
 /// Serves the socket the monitor unit connects to. Only root (or the
@@ -544,5 +568,40 @@ pub async fn serve_monitor(core: Arc<Core>, path: PathBuf) -> Result<()> {
                     .set_status(false, Some("ibexwall-monitor disconnected"));
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chmod_refuses_a_swapped_symlink() {
+        let dir = std::env::temp_dir().join(format!("ibx-chmod-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let victim = dir.join("victim.sock");
+        std::os::unix::net::UnixDatagram::bind(&victim).unwrap();
+        // An attacker unlinks the socket and puts a symlink in its place.
+        std::fs::remove_file(&victim).unwrap();
+        let link = dir.join("answers.sock");
+        std::os::unix::fs::symlink("elsewhere", &link).unwrap();
+        let error = chmod_socket_no_symlink(&link, 0o666).unwrap_err();
+        assert!(error.to_string().contains("no longer a socket"), "{error}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn chmod_applies_to_a_real_socket() {
+        let dir = std::env::temp_dir().join(format!("ibx-chmod-ok-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("answers.sock");
+        std::os::unix::net::UnixDatagram::bind(&path).unwrap();
+        chmod_socket_no_symlink(&path, 0o666).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o666);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

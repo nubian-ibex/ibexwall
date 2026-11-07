@@ -3,8 +3,10 @@
 
 # F11a: Compliance, the machine against a named framework
 
-Requested by the maintainer on 2026-11-06. Status: proposed, waiting for
-approval. Nothing here is built yet.
+Requested by the maintainer on 2026-11-06. Status: approved; M1 (types,
+evaluator, storage) and M2 (the `ibexwall-profiles` repository) are done,
+M3 onward remains. The maintainer approved the plan and the Compliance
+naming on 2026-11-06.
 
 A new Compliance section answers one question per framework: which of its
 technical controls does this machine meet right now, which does it not, and
@@ -151,12 +153,20 @@ M0 is a hard prerequisite: a false pass in a probe becomes a false compliance
 statement, so the probe fixes in `docs/plans/F10c-audit-fixes.md` land first.
 
 1. M1 Contract and evaluator: types, schemas, the pure function, state storage.
+   Done on 2026-11-06: the compliance types (with JSON schemas), the pure
+   `evaluate` over the stored checks, attestations and exceptions, the
+   attestation/exception tables, and table plus property tests.
    Verify: table tests for each state, including stale and unknown checks, and a
    property test that no combination with an unknown required check yields
    `compliant`.
 2. M2 `ibexwall-profiles`: schema, CI, IbexWall Baseline and the verified
-   mappings of the first release. Verify: CI refuses a reference with no URL or
-   date and a check id that does not exist.
+   mappings of the first release. Done on 2026-11-06: the repository is
+   public at github.com/nubian-ibex/ibexwall-profiles with a JSON Schema, a
+   registry of the check ids the product emits, six profiles (Baseline,
+   LGPD, CMN 4.893/5.274, NIST 800-53 r5, NIST 800-171 r3, ISO 27001:2022
+   theme 8) and a CI that refuses a reference without an https URL or a
+   recent date, or a check id that does not exist. Verify: CI refuses a
+   reference with no URL or date and a check id that does not exist.
 3. M3 The new checks. Verify: unit tests with sandbox fixtures, VM scenarios on
    five distros with the setting on and off.
 4. M4 Attestations and exceptions: owner, expiry, audit. Verify: an expired one

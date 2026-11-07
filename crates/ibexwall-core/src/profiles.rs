@@ -52,7 +52,7 @@ pub fn discover(root: &Path) -> Result<Vec<ComplianceProfile>> {
 fn parse(path: &Path) -> Result<ComplianceProfile> {
     let text =
         std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-    serde_yaml::from_str(&text).with_context(|| format!("parsing {}", path.display()))
+    serde_yaml_ng::from_str(&text).with_context(|| format!("parsing {}", path.display()))
 }
 
 #[cfg(test)]
@@ -62,7 +62,7 @@ mod tests {
     #[test]
     fn a_profile_file_parses() {
         let yaml = "framework: X\nversion: \"1\"\ncontrols:\n  - control_id: x.c\n    title: t\n    kind: automated\n    checks: [a.b]\n    references:\n      - id: \"art. 1\"\n        url: \"https://example.com/x\"\n        date: \"2026-11-06\"\n";
-        let profile: ComplianceProfile = serde_yaml::from_str(yaml).unwrap();
+        let profile: ComplianceProfile = serde_yaml_ng::from_str(yaml).unwrap();
         assert_eq!(profile.framework, "X");
         assert_eq!(profile.controls.len(), 1);
         assert_eq!(profile.controls[0].references[0].date, "2026-11-06");

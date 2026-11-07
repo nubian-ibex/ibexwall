@@ -12,6 +12,10 @@ ignore = [
   # that Tauri uses on Linux (glib-macros -> gtk -> tauri). The whole
   # ecosystem carries it; remove when glib-macros drops it.
   "RUSTSEC-2024-0370",
+  # unsafe-libyaml, the C parser under serde_yaml_ng (profile loading).
+  # Unmaintained but stable and without a known exploit; the parser reads
+  # only the compliance profiles the operator places, never remote input.
+  "RUSTSEC-2024-0449",
 ]
 
 [licenses]

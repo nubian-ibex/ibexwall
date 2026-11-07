@@ -75,7 +75,10 @@ pub fn verify_bundle(
     now_unix: i64,
 ) -> Result<(), PolicyVerifyError> {
     bundle.validate()?;
-    let signature = bundle.signature.as_ref().ok_or(PolicyVerifyError::Unsigned)?;
+    let signature = bundle
+        .signature
+        .as_ref()
+        .ok_or(PolicyVerifyError::Unsigned)?;
     if signature.alg != "ed25519" {
         return Err(PolicyVerifyError::BadAlg(signature.alg.clone()));
     }
@@ -252,7 +255,9 @@ mod tests {
         );
         // The same version is allowed: applying a re-issued bundle is
         // an operator's legitimate move.
-        fixture.verify(&fixture.bundle(7, "2026-12-01T12:00:00Z"), Some(7), NOW).unwrap();
+        fixture
+            .verify(&fixture.bundle(7, "2026-12-01T12:00:00Z"), Some(7), NOW)
+            .unwrap();
     }
 
     #[test]

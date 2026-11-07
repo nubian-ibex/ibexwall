@@ -154,6 +154,34 @@ impl Handler for Api {
                 }
                 return;
             }
+            // Policy methods are in a different interface; authorize and
+            // dispatch before the Core prefix strip.
+            if let Some(policy_method) = call.method.strip_prefix("com.ibexwall.Policy.") {
+                let identity = identity_of(call.peer);
+                match polkit
+                    .check(names::POLKIT_POLICY_PROVIDER.to_string(), identity)
+                    .await
+                {
+                    Ok(Decision::Authorized) => {}
+                    _ => {
+                        let _ = out
+                            .send(Reply::error(
+                                "com.ibexwall.Core.PermissionDenied",
+                                serde_json::json!({ "action": names::POLKIT_POLICY_PROVIDER }),
+                            ))
+                            .await;
+                        return;
+                    }
+                }
+                let actor = identity.actor();
+                let reply =
+                    match dispatch_policy(&core, policy_method, call.parameters, &actor).await {
+                        Ok(reply) => reply,
+                        Err(e) => Reply::error(e.name, e.parameters),
+                    };
+                let _ = out.send(reply).await;
+                return;
+            }
             let method = call
                 .method
                 .strip_prefix("com.ibexwall.Core.")
@@ -586,6 +614,125 @@ async fn dispatch(
                 _ => Err(invalid_argument("format", "json, csv or oscal".into())),
             }
         }
+        _ => Err(VarlinkError::new(
+            ibexwall_varlink::service_errors::METHOD_NOT_FOUND,
+            json!({ "method": method }),
+        )),
+    }
+}
+
+/// Policy-interface methods authorized by `POLKIT_POLICY_PROVIDER` (spec
+/// §4.14, Appendix C). `ApplyBundle` verifies the bundle and applies its
+/// settings and locks as the org layer; `GetEffective` reports the
+/// effective config.
+async fn dispatch_policy(
+    core: &Arc<Core>,
+    method: &str,
+    parameters: Value,
+    actor: &str,
+) -> Result<Reply, VarlinkError> {
+    match method {
+        "ApplyBundle" => {
+            let bundle_value = parameters
+                .get("bundle")
+                .ok_or_else(|| VarlinkError::invalid_parameter("bundle"))?;
+            let bundle: ibexwall_proto::PolicyBundle = serde_json::from_value(bundle_value.clone())
+                .map_err(|e| {
+                    VarlinkError::invalid_parameter("bundle");
+                    err(
+                        "InvalidArgument",
+                        json!({ "field": "bundle", "reason": e.to_string() }),
+                    )
+                })?;
+            let trust_dir = ibexwall_proto::names::path_under(&core.root, "/etc/ibexwall/trust");
+            let current_version = core
+                .state
+                .with_conn(|conn| {
+                    conn.query_row(
+                        "SELECT value FROM config WHERE key = 'policy_version'",
+                        [],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .ok()
+                })
+                .map(|v| v as u64);
+            crate::policy::verify_bundle(
+                &bundle,
+                &trust_dir,
+                current_version,
+                ibexwall_sys::RealClock.unix_now(),
+            )
+            .map_err(|e| match &e {
+                crate::policy::PolicyVerifyError::Expired(expires) => {
+                    err("Expired", json!({ "expires_at": expires }))
+                }
+                crate::policy::PolicyVerifyError::VersionRollback { current, offered } => err(
+                    "VersionRollback",
+                    json!({ "current": current, "offered": offered }),
+                ),
+                crate::policy::PolicyVerifyError::BadSignature => {
+                    let key_id = bundle
+                        .signature
+                        .as_ref()
+                        .map(|s| s.key_id.as_str())
+                        .unwrap_or("?");
+                    err("InvalidSignature", json!({ "key_id": key_id }))
+                }
+                _ => err(
+                    "InvalidArgument",
+                    json!({ "field": "bundle", "reason": e.to_string() }),
+                ),
+            })?;
+            // Apply settings as the org layer, then persist locks and version.
+            let config_dir =
+                ibexwall_proto::names::path_under(&core.root, ibexwall_proto::names::CONFIG_DIR);
+            let org_path = config_dir.join("org.toml");
+            let mut org = toml::Table::new();
+            org.insert(
+                "lock".into(),
+                toml::Value::try_from(Vec::clone(&bundle.locks)).map_err(internal)?,
+            );
+            if let Some(settings) = bundle.settings.as_object() {
+                let mut plugins = toml::Table::new();
+                for (plugin, value) in settings {
+                    plugins.insert(
+                        plugin.clone(),
+                        toml::Value::try_from(value.clone())
+                            .map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?,
+                    );
+                }
+                org.insert("plugins".into(), toml::Value::Table(plugins));
+            }
+            std::fs::create_dir_all(&config_dir).map_err(internal)?;
+            std::fs::write(&org_path, toml::to_string_pretty(&org).map_err(internal)?)
+                .map_err(internal)?;
+            core.state
+                .with_conn(|conn| {
+                    conn.execute(
+                        "INSERT OR REPLACE INTO config (key, value) VALUES ('policy_version', ?1)",
+                        rusqlite::params![bundle.version as i64],
+                    )
+                })
+                .map_err(internal)?;
+            core.reload_config();
+            core.audit(actor, "core", None, "", "policy-applied");
+            let locks: Vec<String> = bundle.locks.clone();
+            Ok(Reply::result(json!({
+                "version": bundle.version,
+                "locks": locks,
+            })))
+        }
+        "GetEffective" => {
+            let config = core.config.read().expect("config lock poisoned");
+            let locks: Vec<String> = config.locks.clone();
+            Ok(Reply::result(json!({
+                "config": json!({}),
+                "locks": locks,
+                "sources": json!({}),
+            })))
+        }
+        "BuildReport" => Err(err("Conflict", json!({ "reason": "not yet implemented" }))),
+        "UseBreakGlass" => Err(err("Conflict", json!({ "reason": "not yet implemented" }))),
         _ => Err(VarlinkError::new(
             ibexwall_varlink::service_errors::METHOD_NOT_FOUND,
             json!({ "method": method }),

@@ -446,3 +446,25 @@ pub(crate) async fn mcp_token(
     }
     Ok(Finish::Done)
 }
+pub(crate) async fn policy(
+    client: &mut ibexwall_varlink::Client,
+    action: &PolicyCmd,
+    _json: bool,
+) -> Result<Finish, CliError> {
+    match action {
+        PolicyCmd::ApplyBundle { file } => {
+            let text =
+                std::fs::read_to_string(file).map_err(|e| CliError::Other(anyhow::anyhow!(e)))?;
+            let bundle: serde_json::Value =
+                serde_json::from_str(&text).map_err(|e| CliError::Other(anyhow::anyhow!(e)))?;
+            let value = client
+                .call(
+                    "com.ibexwall.Policy.ApplyBundle",
+                    serde_json::json!({ "bundle": bundle }),
+                )
+                .await?;
+            super::emit(value, true);
+            Ok(Finish::Done)
+        }
+    }
+}

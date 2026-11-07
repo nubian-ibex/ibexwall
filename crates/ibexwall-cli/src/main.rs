@@ -123,6 +123,20 @@ enum Command {
     },
     /// Interactive terminal UI.
     Tui,
+    /// Managed-mode policy management (applies a signed bundle).
+    Policy {
+        #[command(subcommand)]
+        action: PolicyCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum PolicyCmd {
+    /// Apply a signed policy bundle (GitOps / Ansible path).
+    ApplyBundle {
+        /// Path to the signed policy bundle JSON.
+        file: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -413,6 +427,7 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
         Command::Proposals { action } => proposals(client, action, json).await,
         Command::Firewall { action } => firewall(client, action, json).await,
         Command::Compliance { action } => compliance(client, action, json).await,
+        Command::Policy { action } => policy(client, action, json).await,
         Command::Check { plugin } => {
             let params = serde_json::json!({ "plugin": plugin });
             let value = client.call("com.ibexwall.Core.RunChecks", params).await?;

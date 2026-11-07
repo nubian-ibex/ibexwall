@@ -40,7 +40,7 @@ pub enum PolicyVerifyError {
 
 /// Reads a minisign-format public key file (comment line, then base64
 /// of `Ed` + key id + the 32-byte ed25519 key) and returns the raw key.
-fn anchor_public_key(path: &Path) -> Result<[u8; 32], PolicyVerifyError> {
+pub fn anchor_public_key(path: &Path) -> Result<[u8; 32], PolicyVerifyError> {
     let name = path
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())

@@ -731,8 +731,123 @@ async fn dispatch_policy(
                 "sources": json!({}),
             })))
         }
-        "BuildReport" => Err(err("Conflict", json!({ "reason": "not yet implemented" }))),
-        "UseBreakGlass" => Err(err("Conflict", json!({ "reason": "not yet implemented" }))),
+        "BuildReport" => {
+            let now = ibexwall_sys::format_rfc3339(ibexwall_sys::RealClock.unix_now());
+            let posture_value = posture(core);
+            let score = posture_value["score"].as_u64().unwrap_or(0) as u8;
+            let protections: Vec<ibexwall_proto::ProtectionStatus> =
+                serde_json::from_value(posture_value["protections"].clone()).unwrap_or_default();
+            let findings: Vec<serde_json::Value> =
+                core.state.list_findings(None).map_err(internal)?;
+            let findings_open = findings.len() as u32;
+            let mut findings_by_severity: std::collections::BTreeMap<String, u32> =
+                std::collections::BTreeMap::new();
+            for f in &findings {
+                let sev = f
+                    .get("severity")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+                    .unwrap_or_default();
+                *findings_by_severity.entry(sev).or_default() += 1;
+            }
+            let policy_version = core
+                .state
+                .with_conn(|conn| {
+                    conn.query_row(
+                        "SELECT value FROM config WHERE key = 'policy_version'",
+                        [],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .ok()
+                })
+                .map(|v| v as u64);
+            let report = ibexwall_proto::Report {
+                schema: ibexwall_proto::report::REPORT_SCHEMA.into(),
+                generated_at: now,
+                policy_version,
+                score,
+                protections,
+                findings_open,
+                findings_by_severity,
+                blocked_connections: None,
+                change_audit: vec![],
+                package_versions: std::collections::BTreeMap::new(),
+            };
+            Ok(Reply::result(
+                serde_json::to_value(&report).map_err(internal)?,
+            ))
+        }
+        "UseBreakGlass" => {
+            let code = str_field(&parameters, "code")?;
+            let parts: Vec<&str> = code.splitn(3, ':').collect();
+            let (key_id, sig_b64, scope_b64) = if parts.len() == 3 {
+                (parts[0], parts[1], parts[2])
+            } else {
+                return Err(invalid_argument("code", "expected key_id:sig:scope".into()));
+            };
+            use base64::Engine as _;
+            let sig_bytes = base64::engine::general_purpose::STANDARD
+                .decode(sig_b64)
+                .map_err(|_| invalid_argument("code", "bad signature encoding".into()))?;
+            let sig_bytes: [u8; 64] = sig_bytes
+                .try_into()
+                .map_err(|_| invalid_argument("code", "bad signature length".into()))?;
+            let scope = base64::engine::general_purpose::STANDARD
+                .decode(scope_b64)
+                .map_err(|_| invalid_argument("code", "bad scope encoding".into()))?;
+            let trust_dir = ibexwall_proto::names::path_under(&core.root, "/etc/ibexwall/trust");
+            let anchor_path = trust_dir.join(format!("{key_id}.pub"));
+            let key_bytes = crate::policy::anchor_public_key(&anchor_path)
+                .map_err(|_| invalid_argument("code", "unknown key".into()))?;
+            use ed25519_dalek::Verifier as _;
+            let key = ed25519_dalek::VerifyingKey::from_bytes(&key_bytes)
+                .map_err(|_| invalid_argument("code", "bad key".into()))?;
+            key.verify(&scope, &ed25519_dalek::Signature::from_bytes(&sig_bytes))
+                .map_err(|_| invalid_argument("code", "bad signature".into()))?;
+            let scope_value: Value = serde_json::from_slice(&scope)
+                .map_err(|_| invalid_argument("code", "bad scope JSON".into()))?;
+            let expires_at = scope_value["expires_at"]
+                .as_str()
+                .ok_or_else(|| invalid_argument("code", "missing expires_at".into()))?;
+            if crate::compliance::parse_unix(expires_at) <= ibexwall_sys::RealClock.unix_now() {
+                return Err(invalid_argument("code", "expired".into()));
+            }
+            let unlocked: Vec<String> = scope_value["lock_patterns"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect();
+            if unlocked.is_empty() {
+                return Err(invalid_argument("code", "no lock patterns".into()));
+            }
+            let config_dir =
+                ibexwall_proto::names::path_under(&core.root, ibexwall_proto::names::CONFIG_DIR);
+            let org_path = config_dir.join("org.toml");
+            let doc_text = std::fs::read_to_string(&org_path).unwrap_or_default();
+            let mut doc: toml::Table = doc_text.parse().unwrap_or_default();
+            if let Some(toml::Value::Array(old_locks)) = doc.get("lock") {
+                let new_locks: Vec<toml::Value> = old_locks
+                    .iter()
+                    .filter(|v| {
+                        !unlocked
+                            .iter()
+                            .any(|u| v.as_str().is_some_and(|s| s == u.as_str()))
+                    })
+                    .cloned()
+                    .collect();
+                doc.insert("lock".into(), toml::Value::Array(new_locks));
+            }
+            std::fs::write(&org_path, toml::to_string_pretty(&doc).map_err(internal)?)
+                .map_err(internal)?;
+            core.reload_config();
+            core.audit(actor, "core", None, "", "break-glass");
+            Ok(Reply::result(json!({
+                "unlocked": unlocked,
+                "expires_at": expires_at,
+            })))
+        }
         _ => Err(VarlinkError::new(
             ibexwall_varlink::service_errors::METHOD_NOT_FOUND,
             json!({ "method": method }),

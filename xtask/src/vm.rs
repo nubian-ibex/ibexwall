@@ -115,10 +115,11 @@ pub fn run(distro: &str, phase: Option<&str>) -> Result<()> {
         Some("f8") => crate::f8::run(&vm, &workspace, entry.install),
         Some("f9") => crate::f9::run(&vm, &workspace, entry.install),
         Some("f10") => crate::f10::run(&vm, &workspace, entry.install),
+        Some("f11a") => crate::f11a::run(&vm, &workspace, entry.install),
         Some("selinux") => crate::f10::run_selinux_build(&vm, &workspace, entry.install),
         Some("fixtures") => crate::fixtures::run(&vm, &workspace, entry.id),
         Some(other) => {
-            bail!("unknown phase `{other}` (supported: f0 to f10, fixtures)")
+            bail!("unknown phase `{other}` (supported: f0 to f10, f11a, fixtures)")
         }
     }
 }

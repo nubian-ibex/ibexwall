@@ -180,8 +180,13 @@ statement, so the probe fixes in `docs/plans/F10c-audit-fixes.md` land first.
    written to the audit chain; the evaluator treats an expired exception
    as falling through to the real state. Verify: an expired one reverts to
    the real state; each change appears in the audit chain.
-5. M5 CLI, UI and MCP. Verify: the screen shows exactly what the export holds;
-   the MCP tools cannot write; five locales pass `check-locales`.
+5. M5 CLI, UI and MCP. Mostly done on 2026-11-06: the core loads profiles and
+   exposes ListComplianceProfiles, GetCompliance and ExportCompliance,
+   `ibexctl compliance list|show` covers the command line, and the MCP
+   server has two read-only tools under a read:compliance scope. The
+   Compliance screen in the UI remains. Verify: the screen shows exactly
+   what the export holds; the MCP tools cannot write; five locales pass
+   check-locales.
 6. M6 Signed export and OSCAL. Verify: a tampered report fails verification;
    the output validates against the official NIST schema.
 7. M7 `--phase f11a` on five distros: a hardened and a default VM give different,

@@ -5,3 +5,5 @@ detect-firewall-title = O firewall deste computador
 detect-firewall-active = O { $manager } está rodando e filtrando. O IbexWall trabalha por meio dele e deixa as regras dele como estão.
 detect-firewall-inactive = O { $manager } está instalado, mas não está rodando, então nada está sendo filtrado. Para iniciá-lo, execute: { $start }
 detect-firewall-none = Nenhum gerenciador de firewall foi encontrado. O IbexWall ainda pode manter as próprias regras, mas um gerenciador é o caminho usual. Para instalar o { $package }, execute: { $install }
+firewall-deny-title = O firewall não nega entrada por padrão
+firewall-deny-summary = O firewall está rodando, mas a política padrão de entrada permite tráfego.

@@ -97,6 +97,11 @@ fn chronyd_running(sandbox: &Sandbox) -> bool {
     sandbox.exists("/run/chrony/chronyd.pid") || sandbox.exists("/run/chronyd.pid")
 }
 
+/// Whether systemd-timesyncd has synchronized the clock (its marker file).
+fn timesyncd_synchronized(sandbox: &Sandbox) -> bool {
+    sandbox.exists("/run/systemd/timesync/synchronized")
+}
+
 fn main_config(sandbox: &Sandbox) -> Option<(&'static str, String)> {
     ["/etc/chrony.conf", "/etc/chrony/chrony.conf"]
         .into_iter()
@@ -203,11 +208,24 @@ pub fn evaluate(sandbox: &Sandbox, detected_at: &str) -> CheckReport {
     // After the problems, so they keep their place: what is found today.
     findings.push(detect::time(sandbox, detected_at));
     CheckReport {
-        results: vec![CheckResult {
-            id: "nts.authenticated_time".into(),
-            severity: Severity::Medium,
-            outcome,
-        }],
+        results: vec![
+            CheckResult {
+                id: "nts.authenticated_time".into(),
+                severity: Severity::Medium,
+                outcome,
+            },
+            // Synchronized at all (not necessarily authenticated): a pass
+            // only with positive evidence, otherwise not-assessed.
+            CheckResult {
+                id: "nts.synchronized".into(),
+                severity: Severity::Medium,
+                outcome: if chronyd_running(sandbox) || timesyncd_synchronized(sandbox) {
+                    CheckOutcome::Pass
+                } else {
+                    CheckOutcome::NotAssessed
+                },
+            },
+        ],
         findings,
     }
 }

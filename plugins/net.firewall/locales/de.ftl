@@ -5,3 +5,5 @@ detect-firewall-title = Die Firewall auf diesem Computer
 detect-firewall-active = { $manager } läuft und filtert. IbexWall arbeitet damit und lässt seine Regeln unverändert.
 detect-firewall-inactive = { $manager } ist installiert, läuft aber nicht, daher wird nichts gefiltert. Um es zu starten, führen Sie aus: { $start }
 detect-firewall-none = Es wurde keine Firewall-Verwaltung gefunden. IbexWall kann trotzdem eigene Regeln führen, aber üblich ist eine Verwaltung. Um { $package } zu installieren, führen Sie aus: { $install }
+firewall-deny-title = Die Firewall verweigert eingehende Verbindungen nicht standardmäßig
+firewall-deny-summary = Die Firewall läuft, aber ihre Standard-Eingangsregel erlaubt Datenverkehr.

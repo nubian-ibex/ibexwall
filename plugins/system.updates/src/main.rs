@@ -154,6 +154,49 @@ fn tool_name(family: Family) -> &'static str {
     }
 }
 
+/// Whether the package manager still verifies package signatures. Both
+/// managers do by default, so the check looks for the explicit escape
+/// hatches only; `None` means "cannot tell".
+fn signatures_enforced(sandbox: &Sandbox, family: Family) -> Option<bool> {
+    let mut text = String::new();
+    match family {
+        Family::Apt => {
+            for name in sandbox.list("/etc/apt/apt.conf.d") {
+                if let Some(t) = sandbox.read(&format!("/etc/apt/apt.conf.d/{name}")) {
+                    text.push_str(&t);
+                    text.push('\n');
+                }
+            }
+        }
+        Family::Dnf => {
+            if let Some(t) = sandbox.read("/etc/dnf/dnf.conf") {
+                text.push_str(&t);
+                text.push('\n');
+            }
+            for name in sandbox.list("/etc/yum.repos.d") {
+                if let Some(t) = sandbox.read(&format!("/etc/yum.repos.d/{name}")) {
+                    text.push_str(&t);
+                    text.push('\n');
+                }
+            }
+        }
+        Family::Other => return None,
+    }
+    let weakened = match family {
+        Family::Apt => text.lines().any(|line| {
+            let lower = line.to_ascii_lowercase();
+            (lower.contains("allowunauthenticated") || lower.contains("allowinsecurerepositories"))
+                && (lower.contains("true") || lower.contains("\"1\""))
+        }),
+        Family::Dnf => text.lines().map(str::trim).any(|line| {
+            line.split_once('=')
+                .is_some_and(|(k, v)| k.trim() == "gpgcheck" && v.trim() == "0")
+        }),
+        Family::Other => false,
+    };
+    Some(!weakened)
+}
+
 pub fn evaluate(sandbox: &Sandbox, detected_at: &str) -> CheckReport {
     let family = family(sandbox);
     let mut findings = Vec::new();
@@ -197,11 +240,39 @@ pub fn evaluate(sandbox: &Sandbox, detected_at: &str) -> CheckReport {
         }
     };
     CheckReport {
-        results: vec![CheckResult {
-            id: "updates.automatic".into(),
-            severity: Severity::Medium,
-            outcome,
-        }],
+        results: vec![
+            CheckResult {
+                id: "updates.automatic".into(),
+                severity: Severity::Medium,
+                outcome,
+            },
+            CheckResult {
+                id: "updates.signatures".into(),
+                severity: Severity::High,
+                outcome: match family {
+                    Family::Other => CheckOutcome::NotApplicable,
+                    _ => match signatures_enforced(sandbox, family) {
+                        Some(true) => CheckOutcome::Pass,
+                        Some(false) => {
+                            findings.push(Finding {
+                                id: "updates.signatures".into(),
+                                plugin: "system.updates".into(),
+                                severity: Severity::High,
+                                title_key: "updates-signatures-title".into(),
+                                summary_key: "updates-signatures-summary".into(),
+                                args: BTreeMap::new(),
+                                references: vec![],
+                                remediation: None,
+                                status: FindingStatus::Open,
+                                detected_at: detected_at.into(),
+                            });
+                            CheckOutcome::Fail
+                        }
+                        None => CheckOutcome::NotAssessed,
+                    },
+                },
+            },
+        ],
         findings,
     }
 }
@@ -277,6 +348,10 @@ mod tests {
             std::fs::write(full, content).unwrap();
         }
         (root.clone(), Sandbox::at(root))
+    }
+
+    fn outcome(report: &CheckReport, id: &str) -> CheckOutcome {
+        report.results.iter().find(|r| r.id == id).unwrap().outcome
     }
 
     const UBUNTU: (&str, &str) = ("/etc/os-release", "ID=ubuntu\nID_LIKE=debian\n");
@@ -412,6 +487,45 @@ mod tests {
             CheckOutcome::NotApplicable
         );
         assert!(plan(&sandbox).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn signatures_are_verified_unless_explicitly_weakened() {
+        // dnf with gpgcheck off is a failure.
+        let (root, sandbox) = tree(&[
+            ("/etc/os-release", "ID=fedora\n"),
+            ("/etc/dnf/dnf.conf", "gpgcheck=0\n"),
+        ]);
+        assert_eq!(
+            outcome(&evaluate(&sandbox, "now"), "updates.signatures"),
+            CheckOutcome::Fail
+        );
+        std::fs::remove_dir_all(root).unwrap();
+
+        // dnf without a weakening directive passes.
+        let (root, sandbox) = tree(&[
+            ("/etc/os-release", "ID=fedora\n"),
+            ("/etc/dnf/dnf.conf", "[main]\ngpgcheck=1\n"),
+        ]);
+        assert_eq!(
+            outcome(&evaluate(&sandbox, "now"), "updates.signatures"),
+            CheckOutcome::Pass
+        );
+        std::fs::remove_dir_all(root).unwrap();
+
+        // apt with AllowUnauthenticated true is a failure.
+        let (root, sandbox) = tree(&[
+            ("/etc/os-release", "ID=ubuntu\n"),
+            (
+                "/etc/apt/apt.conf.d/99unsafe",
+                "APT::Get::AllowUnauthenticated \"true\";\n",
+            ),
+        ]);
+        assert_eq!(
+            outcome(&evaluate(&sandbox, "now"), "updates.signatures"),
+            CheckOutcome::Fail
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 }

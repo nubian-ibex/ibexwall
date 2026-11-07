@@ -96,6 +96,85 @@ fn lockout_configured(sandbox: &Sandbox) -> bool {
     pam || conf && sandbox.exists("/usr/sbin/faillock")
 }
 
+/// `PASS_MAX_DAYS` from login.defs, parsed; `None` when unreadable or
+/// absent (so the caller can say "cannot tell").
+fn password_max_age(sandbox: &Sandbox) -> Option<i64> {
+    let text = sandbox.read("/etc/login.defs")?;
+    text.lines().find_map(|line| {
+        let line = line.trim();
+        (line.starts_with("PASS_MAX_DAYS")).then(|| {
+            line.split_whitespace()
+                .nth(1)
+                .and_then(|v| v.parse::<i64>().ok())
+        })?
+    })
+}
+
+/// Whether the inactive-account default is set to lock accounts (any
+/// value but `-1`, which means "never").
+fn inactive_set(sandbox: &Sandbox) -> Option<bool> {
+    let text = sandbox.read("/etc/default/useradd")?;
+    let value = text.lines().find_map(|line| {
+        let line = line.trim();
+        line.strip_prefix("INACTIVE=").map(str::to_string)
+    })?;
+    Some(value.trim() != "-1")
+}
+
+/// The mode and owner a sensitive file must have, and whether they hold.
+fn sensitive_perms(sandbox: &Sandbox, path: &str, want_mode: u32) -> Option<bool> {
+    let (mode, uid, gid) = sandbox.metadata(path)?;
+    Some(mode == want_mode && uid == 0 && gid == 0)
+}
+
+/// Whether sudo is configured to log what it runs (input, output or a
+/// dedicated log file).
+fn sudo_logging(sandbox: &Sandbox) -> Option<bool> {
+    let mut texts = vec![sandbox.read("/etc/sudoers")?];
+    for name in sandbox.list("/etc/sudoers.d") {
+        if name.contains('.') || name.ends_with('~') {
+            continue;
+        }
+        if let Some(text) = sandbox.read(&format!("/etc/sudoers.d/{name}")) {
+            texts.push(text);
+        }
+    }
+    Some(texts.iter().any(|text| {
+        text.lines()
+            .map(str::trim)
+            .filter(|l| !l.starts_with('#') && !l.starts_with("Defaults!"))
+            .any(|l| l.contains("log_input") || l.contains("log_output") || l.contains("logfile"))
+    }))
+}
+
+/// Whether any login banner (local console or sshd) is set.
+fn login_banner(sandbox: &Sandbox) -> Option<bool> {
+    if let Some(issue) = sandbox.read("/etc/issue")
+        && !issue.trim().is_empty()
+    {
+        return Some(true);
+    }
+    if let Some(config) = sandbox.read("/etc/ssh/sshd_config") {
+        let banner = config.lines().find_map(|line| {
+            let line = line.trim();
+            line.strip_prefix("Banner ")
+                .map(str::trim)
+                .map(str::to_string)
+        });
+        if let Some(path) = banner {
+            if sandbox
+                .read(&path)
+                .is_some_and(|text| !text.trim().is_empty())
+            {
+                return Some(true);
+            }
+            return Some(false);
+        }
+    }
+    // No /etc/issue and no sshd Banner: nothing we can confirm.
+    None
+}
+
 pub fn evaluate(sandbox: &Sandbox, detected_at: &str) -> CheckReport {
     let mut findings = Vec::new();
     let mut results = Vec::new();
@@ -187,6 +266,116 @@ pub fn evaluate(sandbox: &Sandbox, detected_at: &str) -> CheckReport {
         id: "accounts.lockout".into(),
         severity: Severity::Low,
         outcome: lockout,
+    });
+
+    let simple = |id: &str, severity, arg: Option<(&str, String)>| {
+        let mut args = BTreeMap::new();
+        if let Some((key, value)) = arg {
+            args.insert(key.to_string(), value);
+        }
+        Finding {
+            id: format!("accounts.{id}"),
+            plugin: "system.accounts".into(),
+            severity,
+            title_key: format!("accounts-{id}-title"),
+            summary_key: format!("accounts-{id}-summary"),
+            args,
+            references: vec![],
+            remediation: None,
+            status: FindingStatus::Open,
+            detected_at: detected_at.into(),
+        }
+    };
+
+    // A maximum password age is set (a real limit, not "never").
+    let max_age = match password_max_age(sandbox) {
+        Some(days) if (1..=365).contains(&days) => CheckOutcome::Pass,
+        Some(_) => {
+            findings.push(simple("password_max_age", Severity::Medium, None));
+            CheckOutcome::Fail
+        }
+        None => CheckOutcome::NotAssessed,
+    };
+    results.push(CheckResult {
+        id: "accounts.password_max_age".into(),
+        severity: Severity::Medium,
+        outcome: max_age,
+    });
+
+    // Accounts lock after inactivity (not "never").
+    let inactive = match inactive_set(sandbox) {
+        Some(true) => CheckOutcome::Pass,
+        Some(false) => {
+            findings.push(simple("inactive", Severity::Low, None));
+            CheckOutcome::Fail
+        }
+        None => CheckOutcome::NotAssessed,
+    };
+    results.push(CheckResult {
+        id: "accounts.inactive".into(),
+        severity: Severity::Low,
+        outcome: inactive,
+    });
+
+    // Sensitive files are root-owned with the expected mode.
+    let file_perms = match [
+        ("/etc/shadow", 0o600),
+        ("/etc/passwd", 0o644),
+        ("/etc/sudoers", 0o440),
+    ]
+    .into_iter()
+    .map(|(path, want)| (path, sensitive_perms(sandbox, path, want)))
+    .collect::<Vec<_>>()
+    {
+        values if values.iter().any(|(_, ok)| ok.is_none()) => CheckOutcome::NotAssessed,
+        values if values.iter().all(|(_, ok)| ok == &Some(true)) => CheckOutcome::Pass,
+        values => {
+            for (path, ok) in &values {
+                if ok == &Some(false) {
+                    findings.push(simple(
+                        "file_perms",
+                        Severity::High,
+                        Some(("file", path.to_string())),
+                    ));
+                }
+            }
+            CheckOutcome::Fail
+        }
+    };
+    results.push(CheckResult {
+        id: "accounts.file_perms".into(),
+        severity: Severity::High,
+        outcome: file_perms,
+    });
+
+    // sudo records what it runs.
+    let sudo_log = match sudo_logging(sandbox) {
+        Some(true) => CheckOutcome::Pass,
+        Some(false) => {
+            findings.push(simple("sudo_logging", Severity::Low, None));
+            CheckOutcome::Fail
+        }
+        None => CheckOutcome::NotAssessed,
+    };
+    results.push(CheckResult {
+        id: "accounts.sudo_logging".into(),
+        severity: Severity::Low,
+        outcome: sudo_log,
+    });
+
+    // A login banner is shown.
+    let banner = match login_banner(sandbox) {
+        Some(true) => CheckOutcome::Pass,
+        Some(false) => {
+            findings.push(simple("login_banner", Severity::Low, None));
+            CheckOutcome::Fail
+        }
+        None => CheckOutcome::NotAssessed,
+    };
+    results.push(CheckResult {
+        id: "accounts.login_banner".into(),
+        severity: Severity::Low,
+        outcome: banner,
     });
 
     CheckReport { results, findings }
@@ -328,6 +517,113 @@ mod tests {
             .unwrap();
         assert_eq!(f.args["user"], "<b>x</b>");
         assert!(!f.summary_key.contains('<'));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn password_age_and_inactivity_are_read_from_the_distro_files() {
+        let (root, sandbox) = tree(&[
+            ("/etc/login.defs", "PASS_MAX_DAYS\t90\n"),
+            ("/etc/default/useradd", "INACTIVE=30\n"),
+        ]);
+        let report = evaluate(&sandbox, "t");
+        assert_eq!(
+            outcome(&report, "accounts.password_max_age"),
+            CheckOutcome::Pass
+        );
+        assert_eq!(outcome(&report, "accounts.inactive"), CheckOutcome::Pass);
+        std::fs::remove_dir_all(root).unwrap();
+
+        // "never" for both means a password that never expires and
+        // accounts that are never locked.
+        let (root, sandbox) = tree(&[
+            ("/etc/login.defs", "PASS_MAX_DAYS\t99999\n"),
+            ("/etc/default/useradd", "INACTIVE=-1\n"),
+        ]);
+        let report = evaluate(&sandbox, "t");
+        assert_eq!(
+            outcome(&report, "accounts.password_max_age"),
+            CheckOutcome::Fail
+        );
+        assert_eq!(outcome(&report, "accounts.inactive"), CheckOutcome::Fail);
+        std::fs::remove_dir_all(root).unwrap();
+
+        // Unreadable files mean "cannot tell", never a pass.
+        let (root, sandbox) = tree(&[]);
+        let report = evaluate(&sandbox, "t");
+        assert_eq!(
+            outcome(&report, "accounts.password_max_age"),
+            CheckOutcome::NotAssessed
+        );
+        assert_eq!(
+            outcome(&report, "accounts.inactive"),
+            CheckOutcome::NotAssessed
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn sensitive_files_and_sudo_logging_are_checked() {
+        // Without the files, permissions cannot be judged.
+        let (root, sandbox) = tree(&[]);
+        let report = evaluate(&sandbox, "t");
+        assert_eq!(
+            outcome(&report, "accounts.file_perms"),
+            CheckOutcome::NotAssessed
+        );
+        assert_eq!(
+            outcome(&report, "accounts.sudo_logging"),
+            CheckOutcome::NotAssessed
+        );
+        std::fs::remove_dir_all(root).unwrap();
+
+        // Files present but owned by the test user are a failure (the
+        // real system expects root ownership).
+        let (root, sandbox) = tree(&[
+            ("/etc/shadow", "root:x:\n"),
+            ("/etc/passwd", "root:x:0:0::/root:/bin/bash\n"),
+            ("/etc/sudoers", "root ALL=(ALL:ALL) ALL\n"),
+        ]);
+        let report = evaluate(&sandbox, "t");
+        assert_eq!(outcome(&report, "accounts.file_perms"), CheckOutcome::Fail);
+        std::fs::remove_dir_all(root).unwrap();
+
+        // sudo logging configured in a drop-in passes.
+        let (root, sandbox) = tree(&[
+            ("/etc/sudoers", "root ALL=(ALL:ALL) ALL\n"),
+            ("/etc/sudoers.d/logging", "Defaults log_output\n"),
+        ]);
+        let report = evaluate(&sandbox, "t");
+        assert_eq!(
+            outcome(&report, "accounts.sudo_logging"),
+            CheckOutcome::Pass
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_login_banner_is_detected_from_issue_or_sshd() {
+        let (root, sandbox) = tree(&[("/etc/issue", "Authorized use only\n")]);
+        assert_eq!(
+            outcome(&evaluate(&sandbox, "t"), "accounts.login_banner"),
+            CheckOutcome::Pass
+        );
+        std::fs::remove_dir_all(root).unwrap();
+
+        let (root, sandbox) = tree(&[
+            ("/etc/ssh/sshd_config", "Banner /etc/ssh/banner\n"),
+            ("/etc/ssh/banner", "Authorized use only\n"),
+        ]);
+        assert_eq!(
+            outcome(&evaluate(&sandbox, "t"), "accounts.login_banner"),
+            CheckOutcome::Pass
+        );
+        std::fs::remove_dir_all(root).unwrap();
+
+        let (root, sandbox) = tree(&[]);
+        assert_eq!(
+            outcome(&evaluate(&sandbox, "t"), "accounts.login_banner"),
+            CheckOutcome::NotAssessed
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 }

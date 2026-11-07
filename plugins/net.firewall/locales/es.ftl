@@ -5,3 +5,5 @@ detect-firewall-title = El cortafuegos de este equipo
 detect-firewall-active = { $manager } está en marcha y filtrando. IbexWall trabaja a través de él y deja sus reglas como están.
 detect-firewall-inactive = { $manager } está instalado pero no está en marcha, así que no se filtra nada. Para iniciarlo, ejecuta: { $start }
 detect-firewall-none = No se encontró ningún gestor de cortafuegos. IbexWall puede mantener sus propias reglas, pero lo habitual es usar un gestor. Para instalar { $package }, ejecuta: { $install }
+firewall-deny-title = El firewall no deniega la entrada por defecto
+firewall-deny-summary = El firewall se ejecuta, pero su política de entrada por defecto permite tráfico.

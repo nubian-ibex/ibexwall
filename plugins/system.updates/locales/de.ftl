@@ -3,3 +3,5 @@ updates-auto-off-summary = Nichts auf diesem Computer installiert Sicherheitsupd
 updates-auto-missing-title = Das Werkzeug für automatische Updates ist nicht installiert
 updates-auto-missing-summary = { $tool } ist nicht installiert, daher warten Updates auf Sie. IbexWall installiert nicht von selbst Software: Installieren Sie es und schalten Sie dies dann ein.
 updates-may-affect-reboots = Dienste können bei Updates neu starten, und manche Updates verlangen einen Neustart.
+updates-signatures-title = Paketsignaturen werden nicht geprüft
+updates-signatures-summary = Der Paketmanager akzeptiert unsignierte oder nicht authentifizierte Pakete.

@@ -9,10 +9,64 @@ use std::collections::BTreeMap;
 
 use ibexwall_firewall::Backend;
 use ibexwall_firewall::detect;
-use ibexwall_proto::Finding;
+use ibexwall_proto::{CheckOutcome, Finding};
 use ibexwall_sdk::{Sandbox, detect::detected, detect::install_command};
 
 use super::Files;
+
+/// Whether the running firewall denies inbound by default. `NotAssessed`
+/// when nothing is filtering or the policy cannot be read cheaply (never
+/// guessed at).
+pub fn default_deny(sandbox: &Sandbox) -> CheckOutcome {
+    let (backend, active) = detect::detect(&Files(sandbox));
+    if active != Some(true) {
+        return CheckOutcome::NotAssessed;
+    }
+    match backend {
+        Backend::Ufw => {
+            let denied = sandbox.read("/etc/default/ufw").is_some_and(|text| {
+                text.lines().any(|line| {
+                    let line = line.trim();
+                    line.starts_with("DEFAULT_INPUT_POLICY")
+                        && (line.contains("DROP") || line.contains("REJECT"))
+                })
+            });
+            if denied {
+                CheckOutcome::Pass
+            } else {
+                CheckOutcome::Fail
+            }
+        }
+        Backend::Firewalld => {
+            let zone = sandbox
+                .read("/etc/firewalld/firewalld.conf")
+                .and_then(|text| {
+                    text.lines().find_map(|line| {
+                        line.trim().strip_prefix("DefaultZone=").map(str::to_string)
+                    })
+                })
+                .unwrap_or_else(|| "public".into());
+            let drop = ["/etc/firewalld/zones", "/usr/lib/firewalld/zones"]
+                .iter()
+                .any(|dir| {
+                    sandbox
+                        .read(&format!("{dir}/{zone}.xml"))
+                        .is_some_and(|xml| {
+                            xml.contains("target=\"DROP\"") || xml.contains("target=\"REJECT\"")
+                        })
+                });
+            // firewalld's "default" target also rejects unsolicited
+            // traffic, but it is not spelled out in a cheap read, so it
+            // is reported as not-assessed rather than guessed.
+            if drop {
+                CheckOutcome::Pass
+            } else {
+                CheckOutcome::NotAssessed
+            }
+        }
+        Backend::Nftables => CheckOutcome::NotAssessed,
+    }
+}
 
 pub fn firewall(sandbox: &Sandbox, at: &str) -> Finding {
     let (backend, active) = detect::detect(&Files(sandbox));
@@ -111,5 +165,34 @@ mod tests {
         for r in [r1, r2, r3, r4] {
             std::fs::remove_dir_all(r).unwrap();
         }
+    }
+
+    #[test]
+    fn default_deny_reads_the_ufw_policy() {
+        let (r1, on) = machine(
+            "dd-pass",
+            &[
+                ("/usr/sbin/ufw", ""),
+                ("/etc/ufw/ufw.conf", "ENABLED=yes\n"),
+                ("/etc/default/ufw", "DEFAULT_INPUT_POLICY=\"DROP\"\n"),
+            ],
+        );
+        assert_eq!(default_deny(&on), CheckOutcome::Pass);
+        std::fs::remove_dir_all(r1).unwrap();
+
+        let (r2, on) = machine(
+            "dd-fail",
+            &[
+                ("/usr/sbin/ufw", ""),
+                ("/etc/ufw/ufw.conf", "ENABLED=yes\n"),
+                ("/etc/default/ufw", "DEFAULT_INPUT_POLICY=\"ACCEPT\"\n"),
+            ],
+        );
+        assert_eq!(default_deny(&on), CheckOutcome::Fail);
+        std::fs::remove_dir_all(r2).unwrap();
+
+        let (r3, off) = machine("dd-none", &[]);
+        assert_eq!(default_deny(&off), CheckOutcome::NotAssessed);
+        std::fs::remove_dir_all(r3).unwrap();
     }
 }

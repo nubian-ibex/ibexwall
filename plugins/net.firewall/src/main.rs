@@ -22,7 +22,9 @@ use std::collections::BTreeSet;
 use ibexwall_firewall::detect::{self, Reader};
 use ibexwall_firewall::profile::Profile;
 use ibexwall_firewall::{Backend, FirewallAction, PortRule, Proto};
-use ibexwall_proto::{CheckReport, Op, names};
+use ibexwall_proto::{
+    CheckOutcome, CheckReport, CheckResult, Finding, FindingStatus, Op, Severity, names,
+};
 use ibexwall_sdk::{Plugin, PluginError, Sandbox};
 use ibexwall_sys::nft::{Chain, Fragment, Hook, Rule, Verdict};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -127,9 +129,30 @@ impl Plugin for Firewall {
     /// The posture plugin already scores "is a firewall running"; this one
     /// reports nothing of its own, so the score is not counted twice.
     async fn check(&self, _config: Value) -> Result<CheckReport, PluginError> {
+        let sandbox = Sandbox::system();
+        let outcome = survey::default_deny(&sandbox);
+        let mut findings = vec![survey::firewall(&sandbox, "1970-01-01T00:00:00Z")];
+        if outcome == CheckOutcome::Fail {
+            findings.push(Finding {
+                id: "firewall.default_deny".into(),
+                plugin: "net.firewall".into(),
+                severity: Severity::High,
+                title_key: "firewall-deny-title".into(),
+                summary_key: "firewall-deny-summary".into(),
+                args: std::collections::BTreeMap::new(),
+                references: vec![],
+                remediation: None,
+                status: FindingStatus::Open,
+                detected_at: "1970-01-01T00:00:00Z".into(),
+            });
+        }
         Ok(CheckReport {
-            results: vec![],
-            findings: vec![survey::firewall(&Sandbox::system(), "1970-01-01T00:00:00Z")],
+            results: vec![CheckResult {
+                id: "firewall.default_deny".into(),
+                severity: Severity::High,
+                outcome,
+            }],
+            findings,
         })
     }
 

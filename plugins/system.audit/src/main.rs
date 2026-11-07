@@ -63,29 +63,126 @@ fn clean(text: &str, max: usize) -> String {
         .collect()
 }
 
+fn auditd_state(sandbox: &Sandbox) -> CheckOutcome {
+    let installed = sandbox.exists("/usr/sbin/auditd") || sandbox.exists("/sbin/auditd");
+    if !installed {
+        return CheckOutcome::NotApplicable;
+    }
+    let running = sandbox.exists("/run/auditd.pid") || sandbox.exists("/var/run/auditd.pid");
+    let rules = sandbox
+        .read("/etc/audit/audit.rules")
+        .is_some_and(|t| !t.trim().is_empty())
+        || !sandbox.list("/etc/audit/rules.d").is_empty();
+    if running && rules {
+        CheckOutcome::Pass
+    } else {
+        CheckOutcome::Fail
+    }
+}
+
+/// journald must persist logs (Storage) and cap their size or age, so
+/// records survive a reboot and stay bounded.
+fn journald_state(sandbox: &Sandbox) -> CheckOutcome {
+    let mut text = String::new();
+    if let Some(conf) = sandbox.read("/etc/systemd/journald.conf") {
+        text.push_str(&conf);
+        text.push('\n');
+    }
+    for name in sandbox.list("/etc/systemd/journald.conf.d") {
+        if let Some(t) = sandbox.read(&format!("/etc/systemd/journald.conf.d/{name}")) {
+            text.push_str(&t);
+            text.push('\n');
+        }
+    }
+    if text.trim().is_empty() {
+        return CheckOutcome::NotAssessed;
+    }
+    let value = |key: &str| {
+        text.lines()
+            .map(str::trim)
+            .filter(|l| !l.starts_with('#') && !l.starts_with(';'))
+            .filter_map(|l| l.split_once('='))
+            .filter(|(k, _)| k.trim() == key)
+            .map(|(_, v)| v.trim().to_string())
+            .next_back()
+    };
+    let storage = value("Storage").unwrap_or_else(|| "auto".into());
+    let persistent =
+        storage == "persistent" || (storage == "auto" && sandbox.exists("/var/log/journal"));
+    let capped = ["SystemMaxUse", "MaxUse", "MaxRetentionSec"]
+        .iter()
+        .any(|key| value(key).is_some_and(|v| !v.is_empty()));
+    if persistent && capped {
+        CheckOutcome::Pass
+    } else {
+        CheckOutcome::Fail
+    }
+}
+
 pub fn evaluate(sandbox: &Sandbox, detected_at: &str) -> CheckReport {
+    let mut results = Vec::new();
+    let mut findings = Vec::new();
+    let simple = |id: &str, title: &str, summary: &str, severity| Finding {
+        id: format!("audit.{id}"),
+        plugin: "system.audit".into(),
+        severity,
+        title_key: title.into(),
+        summary_key: summary.into(),
+        args: BTreeMap::new(),
+        references: vec![],
+        remediation: None,
+        status: FindingStatus::Open,
+        detected_at: detected_at.into(),
+    };
+
+    // The audit daemon is running with rules configured.
+    let auditd = auditd_state(sandbox);
+    if auditd == CheckOutcome::Fail {
+        findings.push(simple(
+            "auditd",
+            "audit-auditd-title",
+            "audit-auditd-summary",
+            Severity::Medium,
+        ));
+    }
+    results.push(CheckResult {
+        id: "audit.auditd".into(),
+        severity: Severity::Medium,
+        outcome: auditd,
+    });
+
+    // Logs persist and are bounded.
+    let journald = journald_state(sandbox);
+    if journald == CheckOutcome::Fail {
+        findings.push(simple(
+            "journald",
+            "audit-journald-title",
+            "audit-journald-summary",
+            Severity::Medium,
+        ));
+    }
+    results.push(CheckResult {
+        id: "audit.journald".into(),
+        severity: Severity::Medium,
+        outcome: journald,
+    });
+
+    // Lynis, when it is installed and has a report.
     let installed = sandbox.exists("/usr/bin/lynis")
         || sandbox.exists("/usr/sbin/lynis")
         || sandbox.exists("/usr/share/lynis");
-    let result = |outcome| {
-        vec![CheckResult {
-            id: "audit.lynis".into(),
-            severity: Severity::Medium,
-            outcome,
-        }]
-    };
     let Some(text) = sandbox.read(REPORT) else {
-        // Lynis there but no report (or unreadable): never a pass. Not
-        // installed: nothing to integrate with.
         let outcome = if installed || sandbox.exists(REPORT) {
             CheckOutcome::NotAssessed
         } else {
             CheckOutcome::NotApplicable
         };
-        return CheckReport {
-            results: result(outcome),
-            findings: vec![],
-        };
+        results.push(CheckResult {
+            id: "audit.lynis".into(),
+            severity: Severity::Medium,
+            outcome,
+        });
+        return CheckReport { results, findings };
     };
 
     let mut index = None;
@@ -105,7 +202,6 @@ pub fn evaluate(sandbox: &Sandbox, detected_at: &str) -> CheckReport {
         }
     }
 
-    let mut findings = Vec::new();
     // Lynis repeats a test id for several entries (one per sysctl, per
     // package...), and finding ids must be unique: later repeats get a
     // counter.
@@ -164,17 +260,18 @@ pub fn evaluate(sandbox: &Sandbox, detected_at: &str) -> CheckReport {
         });
     }
     let outcome = if index.is_none() && warnings.is_empty() && suggestions.is_empty() {
-        // A file that is not a Lynis report.
         CheckOutcome::NotAssessed
     } else if warnings.is_empty() {
         CheckOutcome::Pass
     } else {
         CheckOutcome::Fail
     };
-    CheckReport {
-        results: result(outcome),
-        findings,
-    }
+    results.push(CheckResult {
+        id: "audit.lynis".into(),
+        severity: Severity::Medium,
+        outcome,
+    });
+    CheckReport { results, findings }
 }
 
 #[cfg(test)]
@@ -198,13 +295,17 @@ mod tests {
         (root.clone(), Sandbox::at(root))
     }
 
+    fn outcome(report: &CheckReport, id: &str) -> CheckOutcome {
+        report.results.iter().find(|r| r.id == id).unwrap().outcome
+    }
+
     const REPORT_TEXT: &str = "# Lynis report\nhardening_index=63\ntests_executed=238|\nwarning[]=AUTH-9286|Password file has weak entries|-|-\nwarning[]=SSH-7440|Weak SSH setting|PermitRootLogin|-\nsuggestion[]=KRNL-5820|Disable core dumps|-|-\nsuggestion[]=BOOT-5122|Set a GRUB password|-|-\nirrelevant=value\n";
 
     #[test]
     fn warnings_fail_and_suggestions_inform() {
         let (root, sandbox) = tree(&[(REPORT, REPORT_TEXT)]);
         let report = evaluate(&sandbox, "now");
-        assert_eq!(report.results[0].outcome, CheckOutcome::Fail);
+        assert_eq!(outcome(&report, "audit.lynis"), CheckOutcome::Fail);
         let ids: Vec<&str> = report.findings.iter().map(|f| f.id.as_str()).collect();
         assert_eq!(
             ids,
@@ -248,7 +349,7 @@ mod tests {
     fn a_report_with_no_warnings_passes() {
         let (root, sandbox) = tree(&[(REPORT, "hardening_index=90\n")]);
         assert_eq!(
-            evaluate(&sandbox, "now").results[0].outcome,
+            outcome(&evaluate(&sandbox, "now"), "audit.lynis"),
             CheckOutcome::Pass
         );
         std::fs::remove_dir_all(root).unwrap();
@@ -258,19 +359,19 @@ mod tests {
     fn not_installed_is_not_applicable_and_no_report_is_not_a_pass() {
         let (root, sandbox) = tree(&[]);
         assert_eq!(
-            evaluate(&sandbox, "now").results[0].outcome,
+            outcome(&evaluate(&sandbox, "now"), "audit.lynis"),
             CheckOutcome::NotApplicable
         );
         std::fs::remove_dir_all(root).unwrap();
         let (root, sandbox) = tree(&[("/usr/bin/lynis", "")]);
         assert_eq!(
-            evaluate(&sandbox, "now").results[0].outcome,
+            outcome(&evaluate(&sandbox, "now"), "audit.lynis"),
             CheckOutcome::NotAssessed
         );
         std::fs::remove_dir_all(root).unwrap();
         let (root, sandbox) = tree(&[(REPORT, "garbage without structure\n")]);
         assert_eq!(
-            evaluate(&sandbox, "now").results[0].outcome,
+            outcome(&evaluate(&sandbox, "now"), "audit.lynis"),
             CheckOutcome::NotAssessed
         );
         std::fs::remove_dir_all(root).unwrap();
@@ -300,6 +401,68 @@ mod tests {
         assert!(!evil.args["detail"].contains('\u{7}'));
         // Markup stays in an argument; the keys are fixed.
         assert_eq!(evil.title_key, "audit-warning-title");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn auditd_running_with_rules_and_not_installed() {
+        let (root, sandbox) = tree(&[]);
+        assert_eq!(
+            outcome(&evaluate(&sandbox, "now"), "audit.auditd"),
+            CheckOutcome::NotApplicable
+        );
+        std::fs::remove_dir_all(root).unwrap();
+
+        let (root, sandbox) = tree(&[
+            ("/usr/sbin/auditd", ""),
+            ("/run/auditd.pid", "123"),
+            ("/etc/audit/rules.d/10.rules", "-w /etc/shadow -p wa\n"),
+        ]);
+        assert_eq!(
+            outcome(&evaluate(&sandbox, "now"), "audit.auditd"),
+            CheckOutcome::Pass
+        );
+        std::fs::remove_dir_all(root).unwrap();
+
+        let (root, sandbox) = tree(&[
+            ("/usr/sbin/auditd", ""),
+            ("/etc/audit/rules.d/10.rules", "-w /etc/shadow\n"),
+        ]);
+        assert_eq!(
+            outcome(&evaluate(&sandbox, "now"), "audit.auditd"),
+            CheckOutcome::Fail
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn journald_must_persist_and_bound_the_log() {
+        let (root, sandbox) = tree(&[(
+            "/etc/systemd/journald.conf",
+            "Storage=persistent\nSystemMaxUse=500M\n",
+        )]);
+        assert_eq!(
+            outcome(&evaluate(&sandbox, "now"), "audit.journald"),
+            CheckOutcome::Pass
+        );
+        std::fs::remove_dir_all(root).unwrap();
+
+        // auto without a journal directory means logs vanish on reboot.
+        let (root, sandbox) = tree(&[(
+            "/etc/systemd/journald.conf",
+            "Storage=auto\nSystemMaxUse=500M\n",
+        )]);
+        assert_eq!(
+            outcome(&evaluate(&sandbox, "now"), "audit.journald"),
+            CheckOutcome::Fail
+        );
+        std::fs::remove_dir_all(root).unwrap();
+
+        let (root, sandbox) = tree(&[]);
+        assert_eq!(
+            outcome(&evaluate(&sandbox, "now"), "audit.journald"),
+            CheckOutcome::NotAssessed
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 }

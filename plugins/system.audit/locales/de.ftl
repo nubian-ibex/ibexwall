@@ -4,3 +4,7 @@ audit-suggestion-title = Lynis-Vorschlag: { $text }
 audit-suggestion-summary = Der Lynis-Test { $test } schlägt eine Änderung vor. { $detail }
 audit-index-title = Lynis-Härtungsindex { $index } von 100
 audit-index-summary = Lynis hat { $tests } Tests ausgeführt; der Index ist ein grober Anhaltspunkt, kein Urteil.
+audit-auditd-title = Der Audit-Daemon läuft nicht mit Regeln
+audit-auditd-summary = auditd ist installiert, läuft aber nicht, oder es sind keine Audit-Regeln konfiguriert.
+audit-journald-title = Protokolle werden weder gespeichert noch begrenzt
+audit-journald-summary = journald speichert Protokolle nicht mit einer Größen- oder Altersbegrenzung auf der Festplatte.

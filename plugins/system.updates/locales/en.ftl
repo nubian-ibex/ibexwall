@@ -3,3 +3,5 @@ updates-auto-off-summary = Nothing on this computer installs security updates by
 updates-auto-missing-title = The automatic update tool is not installed
 updates-auto-missing-summary = { $tool } is not installed, so updates wait for you. IbexWall does not install software by itself: install it, then turn this on.
 updates-may-affect-reboots = Services may restart when they are updated, and some updates ask for a reboot.
+updates-signatures-title = Package signatures are not verified
+updates-signatures-summary = The package manager has been set to accept unsigned or unauthenticated packages.

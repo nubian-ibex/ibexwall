@@ -251,6 +251,14 @@ impl Sandbox {
         let path = self.path(dir);
         path.is_dir() && std::fs::read_dir(path).is_err()
     }
+
+    /// Mode (low 12 bits), uid and gid of a file; `None` when it cannot
+    /// be read ("cannot tell", never a pass).
+    pub fn metadata(&self, path: &str) -> Option<(u32, u32, u32)> {
+        use std::os::unix::fs::MetadataExt as _;
+        let meta = std::fs::metadata(self.path(path)).ok()?;
+        Some((meta.mode() & 0o7777, meta.uid(), meta.gid()))
+    }
 }
 
 #[cfg(test)]

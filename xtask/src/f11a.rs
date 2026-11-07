@@ -27,9 +27,9 @@ else echo "UNKNOWN PACKAGE FAMILY"; exit 1; fi
 first_json() { python3 -c 'import json,sys;t=sys.stdin.read();print(json.JSONDecoder().raw_decode(t[t.find("{"):])[0])'; }
 change() {
   PLUGIN=$1; shift
-  P=$(sudo ibexctl plan "$PLUGIN" "$@" --json 2>/dev/null | python3 -c 'import json,sys;t=sys.stdin.read();d=json.JSONDecoder().raw_decode(t[t.find("{"):])[0];print(d["plan"]["id"] if "plan" in d else d["id"])') || return 1
+  P=$(sudo ibexctl plan "$PLUGIN" "$@" --json 2>/tmp/plan.err | python3 -c 'import json,sys;t=sys.stdin.read();d=json.JSONDecoder().raw_decode(t[t.find("{"):])[0];print(d["plan"]["id"] if "plan" in d else d["id"])') || { echo "PLAN FAILED: $(cat /tmp/plan.err)"; return 1; }
   OUT=$(sudo ibexctl apply "$P" --confirm-timeout 300 --json 2>&1 || true)
-  TX=$(echo "$OUT" | python3 -c 'import json,sys;t=sys.stdin.read();d=json.JSONDecoder().raw_decode(t[t.find("{"):])[0];print(d["transaction"]["id"])' 2>/dev/null) || return 1
+  TX=$(echo "$OUT" | python3 -c 'import json,sys;t=sys.stdin.read();d=json.JSONDecoder().raw_decode(t[t.find("{"):])[0];print(d["transaction"]["id"])' 2>/dev/null) || { echo "APPLY FAILED: $(echo "$OUT" | head -c 400)"; return 1; }
   echo "$OUT" | grep -q pending_confirm && sudo ibexctl confirm "$TX" >/dev/null 2>&1
   return 0
 }
@@ -78,10 +78,11 @@ sudo ibexctl status >/dev/null || { echo "THE DAEMON DID NOT ANSWER"; sudo journ
 for f in ibexwall-baseline lgpd cmn-4893 nist-800-53 nist-800-171 iso-27001; do
   [ -f "/usr/lib/ibexwall/profiles/$f.yaml" ] || { echo "MISSING PROFILE $f"; exit 1; }
 done
-sudo ibexctl compliance list --json 2>/dev/null | python3 - <<'PY'
-import json, sys
-t = sys.stdin.read()
-d = json.JSONDecoder().raw_decode(t[t.find("{"):])[0]
+sudo ibexctl compliance list --json 2>/dev/null > /tmp/profiles.json
+python3 - <<'PY'
+import json
+raw = open('/tmp/profiles.json').read()
+d = json.JSONDecoder().raw_decode(raw[raw.find("{"):])[0]
 names = {p["framework"] for p in (d["profiles"] if isinstance(d, dict) else d)}
 assert "IbexWall Baseline" in names, names
 assert len(names) >= 6, names

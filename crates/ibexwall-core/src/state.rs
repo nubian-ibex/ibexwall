@@ -706,6 +706,22 @@ impl State {
             Ok(enabled.unwrap_or(0) != 0)
         })
     }
+
+    /// Enables the default-enabled plugins on first run. A plugin that
+    /// already has a row keeps it, so an explicit disable is never
+    /// overridden.
+    pub fn seed_plugin_defaults(&self, ids: &[&str]) -> Result<()> {
+        self.with_conn(|conn| {
+            for id in ids {
+                conn.execute(
+                    "INSERT INTO plugins (id, enabled) VALUES (?1, 1)
+                     ON CONFLICT(id) DO NOTHING",
+                    rusqlite::params![id],
+                )?;
+            }
+            Ok(())
+        })
+    }
 }
 
 /// Serializes a unit enum to its lowercase/snake_case name.
@@ -1014,6 +1030,22 @@ mod tests {
             .unwrap();
         assert!(state.claim_proposal("pr1", "approved").unwrap());
         assert!(!state.claim_proposal("pr1", "approved").unwrap());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn seed_plugin_defaults_enables_once_and_respects_an_explicit_choice() {
+        let (dir, state) = temp_state();
+        state.seed_plugin_defaults(&["a", "b"]).unwrap();
+        assert!(state.plugin_enabled("a").unwrap());
+        assert!(state.plugin_enabled("b").unwrap());
+        // An explicit disable is not overridden by a later seed.
+        state.set_plugin_enabled("a", false).unwrap();
+        state.seed_plugin_defaults(&["a"]).unwrap();
+        assert!(
+            !state.plugin_enabled("a").unwrap(),
+            "the disable must stick"
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

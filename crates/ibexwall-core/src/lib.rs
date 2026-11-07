@@ -227,6 +227,17 @@ impl Core {
         if restored_ok {
             core.persist_nft();
         }
+        // A fresh install starts with the manifest's default-enabled
+        // plugins on, so the first run already measures something. A
+        // plugin the operator disabled keeps its explicit state.
+        let defaults: Vec<String> = core
+            .plugins
+            .plugins()
+            .filter(|entry| entry.manifest.default_enabled)
+            .map(|entry| entry.manifest.id.clone())
+            .collect();
+        let ids: Vec<&str> = defaults.iter().map(String::as_str).collect();
+        core.state.seed_plugin_defaults(&ids)?;
         // Bound the tables that would otherwise grow forever.
         core.state.prune(ibexwall_sys::RealClock.unix_now())?;
         Ok(core)

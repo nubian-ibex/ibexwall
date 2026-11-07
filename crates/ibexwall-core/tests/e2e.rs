@@ -571,7 +571,7 @@ async fn read_methods_and_error_paths() {
         .await
         .unwrap();
     assert_eq!(plugins["plugins"][0]["id"], "dev.echo");
-    assert_eq!(plugins["plugins"][0]["enabled"], false);
+    assert_eq!(plugins["plugins"][0]["enabled"], true);
 
     client
         .call(

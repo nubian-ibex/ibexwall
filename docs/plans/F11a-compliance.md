@@ -3,10 +3,9 @@
 
 # F11a: Compliance, the machine against a named framework
 
-Requested by the maintainer on 2026-11-06. Status: approved; M1 (types,
-evaluator, storage) and M2 (the `ibexwall-profiles` repository) are done,
-M3 onward remains. The maintainer approved the plan and the Compliance
-naming on 2026-11-06.
+Requested by the maintainer on 2026-11-06. Status: approved; M1 through
+M4 are done, M5 onward remains. The maintainer approved the plan and the
+Compliance naming on 2026-11-06.
 
 A new Compliance section answers one question per framework: which of its
 technical controls does this machine meet right now, which does it not, and
@@ -167,10 +166,20 @@ statement, so the probe fixes in `docs/plans/F10c-audit-fixes.md` land first.
    theme 8) and a CI that refuses a reference without an https URL or a
    recent date, or a check id that does not exist. Verify: CI refuses a
    reference with no URL or date and a check id that does not exist.
-3. M3 The new checks. Verify: unit tests with sandbox fixtures, VM scenarios on
-   five distros with the setting on and off.
-4. M4 Attestations and exceptions: owner, expiry, audit. Verify: an expired one
-   reverts to the real state; each change appears in the audit chain.
+3. M3 The new checks. Done on 2026-11-06: system.accounts (password age,
+   inactive accounts, sensitive-file permissions, sudo logging, login
+   banner), system.audit (the audit daemon and journald retention),
+   net.nts (time synchronized at all), system.updates (package
+   signatures) and net.firewall (default-deny inbound), each read-only,
+   honest about "not assessed", in five languages, and registered in the
+   profiles repository. Verify: unit tests with sandbox fixtures, VM
+   scenarios on five distros with the setting on and off.
+4. M4 Attestations and exceptions: owner, expiry, audit. Done on
+   2026-11-06: SetAttestation and SetException record a statement or an
+   accepted risk with an owner and an expiry, authorized by polkit and
+   written to the audit chain; the evaluator treats an expired exception
+   as falling through to the real state. Verify: an expired one reverts to
+   the real state; each change appears in the audit chain.
 5. M5 CLI, UI and MCP. Verify: the screen shows exactly what the export holds;
    the MCP tools cannot write; five locales pass `check-locales`.
 6. M6 Signed export and OSCAL. Verify: a tampered report fails verification;

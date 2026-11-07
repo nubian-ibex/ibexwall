@@ -3,8 +3,9 @@
 
 # STATUS
 
-Last updated: 2026-11-06 (F10 and F10b delivered; the audit fixes are done,
-F11a M1 to M5 are mostly done, and Omarchy is validated in a manual run)
+Last updated: 2026-11-06 (F11a delivered end to end: Compliance with the
+six first-release profiles, the signed JSON/CSV/OSCAL export, the
+`--phase f11a` five-distro run, and the docs and site)
 
 ## Current phase
 
@@ -17,27 +18,35 @@ GitHub CI is green on every job (fmt, lint, tests with cargo-deny,
 docs, coverage, the UI checks, commit hygiene) plus Scorecard, and the
 commit history is signed and verified.
 
-Two plans are approved and in flight:
+Two plans are approved:
 
 - `docs/plans/F10c-audit-fixes.md`, from the 2026-11-06 validation pass.
-  The automated battery is green (668 Rust tests, 119 UI tests, clippy,
-  deny, no schema drift, 81% coverage), and the review found five P0,
-  fourteen P1 and twelve P2 issues. M1 (the five P0), M2 (the
-  transaction engine) and part of M3 are done, all with unit or e2e
+  The automated battery is green (clippy, deny, no schema drift), and the
+  review found five P0, fourteen P1 and twelve P2 issues. M1 (the five P0),
+  M2 (the transaction engine) and part of M3 are done, all with unit or e2e
   tests and a green Fedora VM run; the remaining M3 items and M4 (the
   rest of the audit) are still open. No v1.0 tag before M1 and M2 are
   done and verified.
 - `docs/plans/F11a-compliance.md`, the Compliance section the maintainer
   asked for: the machine against a named framework, with compliant,
   non-compliant, not-assessed, attestation and exception states, and a
-  signed export (JSON, CSV, OSCAL). Its name is decided (Compliance); its
-  milestones start after the audit fixes (its M0 prerequisite).
+  signed export (JSON, CSV, OSCAL). Delivered end to end: six shipped
+  profiles, the CLI, UI and MCP surfaces, the signed export, the
+  `--phase f11a` run green on all five distros, and the docs and site.
 
 Architecture decisions are recorded internally, outside this repository;
 the public plans and reports are self-contained without them.
 
 Phases, newest first (report, plan):
 
+- **F11a, compliance** (2026-11-06, `docs/plans/F11a-compliance.md`). The
+  Compliance section: six shipped profiles (Baseline, LGPD, CMN 4.893/5.274,
+  NIST 800-53 r5, NIST 800-171 r3, ISO 27001:2022 theme 8), the evaluator
+  with six control states and attestations/exceptions, the CLI, the UI
+  screen and two read-only MCP tools, the device-signed JSON/CSV/OSCAL
+  export, and the `--phase f11a` run green on all five distros. The run
+  also fixed a sysctl-plan bug that would have made the recommended preset
+  fail on any kernel with `bpf_jit_harden` locked down.
 - **F10b, assistant connection, detection, hardening** (2026-11-05,
   `docs/plans/F10b-assistant-detection-hardening.md`). The Assistant
   connect flow, the `system.assistant` plugin owning `mcp.toml`, token
@@ -93,13 +102,13 @@ Phases, newest first (report, plan):
   nfqueue crates, edition 2024, MSRV 1.96, toolchain pinned to 1.98.1.
 - `ibexwall-proto` with the full contract surface, typed `Op` set,
   plugin manifest and policy bundle validation, canonical names,
-  deterministic schema export; `spec/` holds 40 generated files and
+  deterministic schema export; `spec/` holds 49 generated files and
   `cargo xtask schemas --check` enforces zero drift.
-- 646 Rust tests, 119 UI tests, 81% line coverage; clippy and fmt clean;
+- 701 Rust tests, 119 UI tests; clippy and fmt clean;
   cargo-deny clean (pinned to 0.20.2 in CI; newer versions reject the
   config's version fields).
 - VM harness: `cargo xtask vm-test --distro fedora|ubuntu-24.04|
-  ubuntu-26.04|debian|arch --phase f0..f10`, cloud-init NoCloud seed,
+  ubuntu-26.04|debian|arch --phase f0..f11a`, cloud-init NoCloud seed,
   checksum-verified image cache.
 - GitHub CI: fmt, clippy, nextest with cargo-deny, rustdoc, coverage,
   the UI checks, DCO plus Conventional Commits, Scorecard, the release
@@ -113,9 +122,10 @@ Phases, newest first (report, plan):
   `releasekey`.
 - The app, agent, tray, catalog and manifests in en, pt-BR, es, fr and
   de (`docs/translating.md`, `scripts/check-locales.mjs`).
-- The site (ibexwall.com), the docs (docs.ibexwall.com) and the plugin
-  index, public, deployed on Cloudflare Pages; `security@ibexwall.com`
-  through Email Routing.
+- The site (ibexwall.com), the docs (docs.ibexwall.com), the plugin
+  index and the compliance profiles (github.com/nubian-ibex/
+  ibexwall-profiles), public, deployed on Cloudflare Pages;
+  `security@ibexwall.com` through Email Routing.
 
 ## Deviations and notes
 
@@ -137,10 +147,7 @@ Phases, newest first (report, plan):
 1. The maintainer's call on `docs/plans/F10c-audit-fixes.md`, then its
    M1 (P0) and M2 (transaction engine) before any v1.0 tag; M3 and M4
    (the rest of the audit, fuzz decision) after.
-2. The maintainer's four decisions on `docs/plans/F11a-compliance.md`
-   (name, order, first-release frameworks, CIS), then its milestones;
-   the audit fixes are its M0 prerequisite.
-3. External, with the maintainer: the official release key
+2. External, with the maintainer: the official release key
    (`packaging/release.pub` plus the `RELEASE_SIGNING_KEY` secret),
    COPR/PPA/OBS/AUR accounts to publish the packages, the from-source
    package builds on a builder with `bpf-linker`, and the manual runs on
@@ -150,14 +157,14 @@ Phases, newest first (report, plan):
    and fixed a real bug: the manifest `default_enabled` flag was never
    honored, so a fresh install enabled no plugins and the first run
    measured nothing.
-4. Translations: the docs guides are English so far (the generated
+3. Translations: the docs guides are English so far (the generated
    reference, including plugins, is in all five); on the site, articles
    are complete in en and es and partial in pt-BR, fr and de with an
    English fallback that says so.
-5. Cloudflare Pages git integration for preview deploys (production
+4. Cloudflare Pages git integration for preview deploys (production
    deploys are manual `wrangler pages deploy`).
-6. CI VM jobs on a KVM-capable runner.
-7. `ibexwall-proto` and `ibexwall-sdk` on crates.io when the contracts
+5. CI VM jobs on a KVM-capable runner.
+6. `ibexwall-proto` and `ibexwall-sdk` on crates.io when the contracts
    stabilize.
 
 History of F0 to F3: `docs/archive/STATUS-history-F0-F3.md`.

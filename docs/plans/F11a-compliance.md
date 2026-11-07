@@ -4,8 +4,8 @@
 # F11a: Compliance, the machine against a named framework
 
 Requested by the maintainer on 2026-11-06. Status: approved; M1 through
-M6 are done, M7 onward remains. The maintainer approved the plan and the
-Compliance naming on 2026-11-06.
+M8 are done. The maintainer approved the plan and the Compliance naming on
+2026-11-06.
 
 A new Compliance section answers one question per framework: which of its
 technical controls does this machine meet right now, which does it not, and
@@ -195,11 +195,19 @@ statement, so the probe fixes in `docs/plans/F10c-audit-fixes.md` land first.
    `ibexctl compliance export` exposes all three. Verify: a tampered report
    fails verification; the OSCAL output validates against the official NIST
    schema (the NIST schema check remains a follow-up).
-7. M7 `--phase f11a` on five distros: a hardened and a default VM give
-   different, correct verdicts, and fixing one failed control through its
-   plan flips it.
-8. M8 Docs and site: the honest limits, one page per framework, five languages.
-   The second-release frameworks follow as profile releases.
+7. M7 `--phase f11a` on five distros. Done on 2026-11-06: a new phase
+   stages, packages and installs the tree, proves the six shipped profiles
+   are listed, evaluates the baseline with honest states, and flips
+   `sysctl.hardening` from fail to pass through the recommended preset. It
+   passes on Fedora 45, Ubuntu 24.04, Ubuntu 26.04, Debian 13 and Arch. The
+   run surfaced a real bug, now fixed: the sysctl plan proposed a write for
+   keys the kernel cannot read (`bpf_jit_harden`), so the engine refused to
+   snapshot them; the plan now skips those keys, as the check already did.
+8. M8 Docs and site. Done on 2026-11-06: the website has a Compliance
+   section with one page per framework in five languages, each with the
+   honest limits and the "not a certification" note, and the documentation
+   has a Compliance guide. Verify: the site builds and every framework page
+   states its limits; the docs build.
 
 ## Risks
 

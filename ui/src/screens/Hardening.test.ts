@@ -82,7 +82,7 @@ describe('Hardening screen', () => {
   it('speaks Portuguese', async () => {
     i18n.set('pt-BR');
     await open();
-    expect(screen.getByRole('heading', { level: 1, name: 'Endurecimento' })).toBeVisible();
+    expect(screen.getByRole('heading', { level: 1, name: 'Hardening' })).toBeVisible();
     expect(screen.getByText('Esconder endereços do kernel')).toBeVisible();
   });
 });

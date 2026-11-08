@@ -133,6 +133,14 @@ export class TauriTransport implements Transport {
     return unwrapped<ComplianceReport>('get_compliance', 'report', { profile });
   }
 
+  getEffective() {
+    return invoke<{
+      config: Record<string, unknown>;
+      locks: string[];
+      sources: Record<string, string>;
+    }>('get_effective');
+  }
+
   planChange(plugin: string, patch: Record<string, unknown>) {
     return unwrapped<Plan>('plan_change', 'plan', { plugin, patch });
   }

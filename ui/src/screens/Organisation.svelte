@@ -10,7 +10,9 @@
     | { status: 'ready'; data: T }
     | { status: 'error'; error: TransportError };
 
-  let effective = $state<Load<{ config: Record<string, unknown>; locks: string[]; sources: Record<string, string> }>>({
+  let effective = $state<
+    Load<{ config: Record<string, unknown>; locks: string[]; sources: Record<string, string> }>
+  >({
     status: 'loading',
   });
 

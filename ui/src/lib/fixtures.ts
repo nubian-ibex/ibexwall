@@ -458,6 +458,14 @@ export class FixtureTransport implements Transport {
     );
   }
 
+  getEffective() {
+    return this.gate(() => ({
+      config: {},
+      locks: [] as string[],
+      sources: {} as Record<string, string>,
+    }));
+  }
+
   getCompliance(profile: string) {
     return this.gate((): ComplianceReport => {
       const report: ComplianceReport = {

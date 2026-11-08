@@ -3,7 +3,7 @@
 
 # STATUS
 
-Last updated: 2026-11-07 (F11b M1-M4 landed; F10c fully closed)
+Last updated: 2026-11-07 (F11b fully delivered; all five distros green)
 
 ## Current phase
 
@@ -30,7 +30,7 @@ The audit plan is fully closed:
 F11a (Compliance) was approved and is delivered; see
 `docs/reports/F11a-report.md`.
 
-F11b (Managed-mode) is complete, M1 through M6: `docs/plans/F11b-managed-mode.md`.
+F11b (Managed-mode) is complete: `docs/plans/F11b-managed-mode.md`.
 
 Architecture decisions are recorded internally, outside this repository;
 the public plans and reports are self-contained without them.
@@ -53,7 +53,8 @@ Phases, newest first (report, plan):
   also fixed a sysctl-plan bug that would have made the recommended preset
   fail on any kernel with `bpf_jit_harden` locked down.
 - **F11b, managed-mode contracts** (2026-11-07, in flight,
-  `docs/plans/F11b-managed-mode.md`). M1-M6 done (VM phase green on Fedora; full matrix running):
+  `docs/plans/F11b-managed-mode.md`). M1-M6 done; `--phase f11b`
+  green on fedora, ubuntu-24.04, ubuntu-26.04, debian and arch.
   policy bundle verification (JCS + ed25519 against trust anchors,
   expiry and anti-rollback), the `com.ibexwall.Policy` varlink
   interface (ApplyBundle writes the org layer; GetEffective;

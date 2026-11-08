@@ -160,6 +160,12 @@ Phases, newest first (report, plan):
 
 ## Pending / next
 
+0. Release `v0.1.0`: the tag workflow builds the tarball, eBPF object,
+   SBOM, provenance, the deb, rpm and Arch packages and creates a draft
+   release. It stays a draft until the packages are installed on a real
+   Fedora and Ubuntu machine; then `gh release edit v0.1.0 --draft=false`.
+   The rpm carries the builder's dist tag (`fc45`); the packages are
+   not yet in the release's `SHA256SUMS` (they are attested instead).
 1. The maintainer's call on `docs/plans/F10c-audit-fixes.md`, then its
    M1 (P0) and M2 (transaction engine) before any v1.0 tag; M3 and M4
    (the rest of the audit, fuzz decision) after.

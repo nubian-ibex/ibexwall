@@ -467,8 +467,8 @@ remote-cert-never-shown = A chave privada é criada quando você aplica a mudan�
 detected-use = Usar esta sugestão
 detected-review = Revisar a mudança sugerida
 
-nav-hardening = Endurecimento
-hardening-title = Endurecimento
+nav-hardening = Hardening
+hardening-title = Hardening
 hardening-subtitle = Configurações recomendadas por guias de segurança publicados. Veja de onde vem cada uma e o que ela pode quebrar, escolha, revise e aplique; toda mudança pode ser desfeita.
 hardening-count = { $applied } de { $total } configurações recomendadas já estão aplicadas.
 hardening-area-kernel = Kernel

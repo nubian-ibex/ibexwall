@@ -19,12 +19,14 @@
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import CircleQuestionMark from '@lucide/svelte/icons/circle-question-mark';
   import BadgeCheck from '@lucide/svelte/icons/badge-check';
+  import Building2 from '@lucide/svelte/icons/building-2';
 
   const icons = {
     bot: Bot,
     box: Box,
     'brick-wall': BrickWall,
     'badge-check': BadgeCheck,
+    'building-2': Building2,
     'clipboard-list': ClipboardList,
     clock: Clock,
     globe: Globe,

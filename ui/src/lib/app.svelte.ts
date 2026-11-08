@@ -14,6 +14,7 @@ export type Route =
   | 'assistant'
   | 'hardening'
   | 'compliance'
+  | 'organisation'
   | 'settings';
 
 type Load<T> =

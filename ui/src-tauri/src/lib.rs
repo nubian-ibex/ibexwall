@@ -29,6 +29,18 @@ fn err_text(error: &str) -> Value {
     // string for transport failures.
     serde_json::from_str(error).unwrap_or(json!({ "code": "unreachable", "parameters": {} }))
 }
+/// Calls one Policy method.
+async fn policy(method: &str) -> Result<Value, String> {
+    let socket = names::core_socket();
+    let mut client = ibexwall_varlink::Client::connect(&socket)
+        .await
+        .map_err(|e| format!("unreachable: {e}"))?;
+    client
+        .call(&format!("com.ibexwall.Policy.{method}"), json!({}))
+        .await
+        .map_err(|e| json!({ "code": e.name, "parameters": e.parameters }).to_string())
+        .and_then(|value| serde_json::from_value(value).map_err(|e| format!("bad reply: {e}")))
+}
 
 macro_rules! command {
     ($name:ident, $method:expr) => {
@@ -56,6 +68,11 @@ async fn get_compliance(profile: String) -> Result<Value, Value> {
     core("GetCompliance", json!({ "profile": profile }))
         .await
         .map_err(|e| err_text(&e))
+}
+
+#[tauri::command]
+async fn get_effective() -> Result<Value, Value> {
+    policy("GetEffective").await.map_err(|e| err_text(&e))
 }
 
 #[tauri::command]
@@ -308,6 +325,7 @@ pub fn run() {
             list_plugins,
             list_compliance_profiles,
             get_compliance,
+            get_effective,
             list_findings,
             run_checks,
             history,

@@ -15,6 +15,7 @@
     { route: 'posture', icon: 'shield-check', key: 'nav-posture' },
     { route: 'hardening', icon: 'lock-keyhole', key: 'nav-hardening' },
     { route: 'compliance', icon: 'badge-check', key: 'nav-compliance' },
+    { route: 'organisation', icon: 'building-2', key: 'nav-organisation' },
     { route: 'plugins', icon: 'clipboard-list', key: 'nav-plugins' },
     { route: 'history', icon: 'clock', key: 'nav-history' },
     { route: 'assistant', icon: 'bot', key: 'nav-assistant' },

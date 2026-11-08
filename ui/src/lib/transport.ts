@@ -98,4 +98,6 @@ export interface Transport {
   listCompliance(): Promise<ComplianceProfileSummary[]>;
   /** One profile's controls and their states. */
   getCompliance(profile: string): Promise<ComplianceReport>;
+  /** Managed-mode: the effective config, locks and their sources. */
+  getEffective(): Promise<{ config: Record<string, unknown>; locks: string[]; sources: Record<string, string> }>;
 }

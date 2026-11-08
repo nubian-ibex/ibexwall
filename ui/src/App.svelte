@@ -13,6 +13,7 @@
   import Firewall from './screens/Firewall.svelte';
   import History from './screens/History.svelte';
   import Overview from './screens/Overview.svelte';
+  import Organisation from './screens/Organisation.svelte';
   import Plugins from './screens/Plugins.svelte';
   import Posture from './screens/Posture.svelte';
   import Settings from './screens/Settings.svelte';
@@ -43,6 +44,8 @@
     <Hardening />
   {:else if app.route === 'compliance'}
     <Compliance />
+  {:else if app.route === 'organisation'}
+    <Organisation />
   {:else if app.route === 'plugins'}
     <Plugins />
   {:else if app.route === 'history'}

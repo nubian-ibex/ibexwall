@@ -66,6 +66,10 @@ jobs:
         run: |
           cargo xtask release --version "${GITHUB_REF_NAME#v}" \
             --key-dir "$RUNNER_TEMP/keys" --out dist
+          # The release removes its staging tree; the packages need it, with
+          # the same binaries and the same key, so lay it out again.
+          cargo xtask stage --skip-build --destdir target/stage/root \
+            --key-dir "$RUNNER_TEMP/keys"
           rm -f "$RUNNER_TEMP/keys/dev.key"
       - name: build deb packages from the staged tree
         run: |

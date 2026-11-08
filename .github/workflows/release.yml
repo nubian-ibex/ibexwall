@@ -95,9 +95,105 @@ jobs:
           name: release
           path: dist/
           if-no-files-found: error
+      # The staged tree the rpm and arch packages are built from, in jobs on
+      # their own distributions.
+      - name: pack the staged tree
+        run: tar -C target -czf "$RUNNER_TEMP/stage.tgz" stage
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: stage
+          path: ${{ runner.temp }}/stage.tgz
+          if-no-files-found: error
+
+  rpm:
+    needs: build
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    permissions:
+      contents: read
+    steps:
+      - run: dnf install -y -q git tar gzip rpm-build systemd-rpm-macros selinux-policy-devel make
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: stage
+          path: /tmp/in
+      - name: build the rpm packages
+        run: |
+          set -eu
+          mkdir -p /tmp/s && tar -C /tmp/s -xzf /tmp/in/stage.tgz
+          rpmbuild -bb --quiet --define "_topdir /tmp/rpmbuild" \
+            --define 'prebuilt_stage /tmp/s/stage' \
+            --define "selinux_src $GITHUB_WORKSPACE/packaging/selinux" \
+            packaging/rpm/ibexwall.spec
+          mkdir -p out && cp /tmp/rpmbuild/RPMS/*/*.rpm out/
+          ls -la out
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pkg-rpm
+          path: out/
+          if-no-files-found: error
+
+  arch:
+    needs: build
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    permissions:
+      contents: read
+    steps:
+      - run: pacman -Syu --noconfirm --needed git tar gzip base-devel
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: stage
+          path: /tmp/in
+      - name: build the arch packages
+        run: |
+          set -eu
+          mkdir -p /tmp/s && tar -C /tmp/s -xzf /tmp/in/stage.tgz
+          # makepkg refuses to run as root.
+          useradd -m builder
+          mkdir -p /tmp/pkg /tmp/out
+          cp packaging/arch/PKGBUILD packaging/arch/ibexwall.install /tmp/pkg/
+          chown -R builder /tmp/pkg /tmp/out /tmp/s
+          su builder -c 'cd /tmp/pkg && IBEXWALL_STAGE=/tmp/s/stage PKGDEST=/tmp/out makepkg -f --nodeps --skipinteg --nocheck'
+          mkdir -p out && cp /tmp/out/*.pkg.tar.zst out/
+          ls -la out
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pkg-arch
+          path: out/
+          if-no-files-found: error
+
+  publish:
+    needs: [build, rpm, arch]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: pkg-rpm
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: pkg-arch
+          path: dist
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.rpm
+            dist/*.pkg.tar.zst
       - name: publish
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           gh release create "$GITHUB_REF_NAME" dist/* --draft --verify-tag \
             --title "IbexWall ${GITHUB_REF_NAME#v}" \

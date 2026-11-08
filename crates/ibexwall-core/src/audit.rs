@@ -24,9 +24,30 @@ pub struct AuditEntry {
     pub hash: String,
 }
 
+/// The table is made on first use, so a fresh install has none: reading it
+/// then is an empty chain, not an error.
+fn ensure_table(conn: &Connection) -> Result<()> {
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS audit_log (
+             seq INTEGER PRIMARY KEY AUTOINCREMENT,
+             ts TEXT NOT NULL,
+             actor TEXT NOT NULL,
+             plugin TEXT NOT NULL,
+             tx_id TEXT,
+             ops_digest TEXT NOT NULL,
+             result TEXT NOT NULL,
+             prev_hash TEXT NOT NULL,
+             hash TEXT NOT NULL
+         )",
+        [],
+    )?;
+    Ok(())
+}
+
 /// The newest `limit` entries, newest first (the chain's own columns, no
 /// hashes).
 pub fn tail(conn: &Connection, limit: usize) -> Result<Vec<AuditEntry>> {
+    ensure_table(conn)?;
     let mut stmt = conn.prepare(
         "SELECT seq, ts, actor, plugin, tx_id, ops_digest, result FROM audit_log
          ORDER BY seq DESC LIMIT ?1",
@@ -57,20 +78,7 @@ pub fn append(
     result: &str,
 ) -> Result<String> {
     let tx = conn.unchecked_transaction()?;
-    tx.execute(
-        "CREATE TABLE IF NOT EXISTS audit_log (
-             seq INTEGER PRIMARY KEY AUTOINCREMENT,
-             ts TEXT NOT NULL,
-             actor TEXT NOT NULL,
-             plugin TEXT NOT NULL,
-             tx_id TEXT,
-             ops_digest TEXT NOT NULL,
-             result TEXT NOT NULL,
-             prev_hash TEXT NOT NULL,
-             hash TEXT NOT NULL
-         )",
-        [],
-    )?;
+    ensure_table(&tx)?;
     let prev_hash: String = tx
         .query_row(
             "SELECT hash FROM audit_log ORDER BY seq DESC LIMIT 1",
@@ -150,6 +158,7 @@ pub enum Verification {
 
 /// Walks the whole chain: re-computes every hash and checks linkage.
 pub fn verify(conn: &Connection) -> Result<Verification> {
+    ensure_table(conn)?;
     let mut stmt = conn.prepare(
         "SELECT seq, ts, actor, plugin, tx_id, ops_digest, result, prev_hash, hash
          FROM audit_log ORDER BY seq",
@@ -253,6 +262,16 @@ mod tests {
         )
         .unwrap();
         conn
+    }
+
+    #[test]
+    fn a_fresh_database_has_a_valid_empty_chain() {
+        let conn = Connection::open_in_memory().unwrap();
+        assert!(matches!(
+            verify(&conn).unwrap(),
+            Verification::Valid { entries: 0 }
+        ));
+        assert!(tail(&conn, 10).unwrap().is_empty());
     }
 
     #[test]

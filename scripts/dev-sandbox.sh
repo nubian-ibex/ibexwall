@@ -41,6 +41,12 @@ for id in system.posture system.ports net.dns net.nts net.firewall system.assist
 done
 mkdir -p "$root/run/ibexwall" "$root/var/lib/ibexwall" "$root/etc/ibexwall"
 
+# Shipped compliance profiles so the screen has data.
+mkdir -p "$root/usr/lib/ibexwall/profiles"
+if [ -d "$repo/profiles/compliance" ]; then
+    cp "$repo/profiles/compliance"/*.yaml "$root/usr/lib/ibexwall/profiles/"
+fi
+
 if ! [ -S "$root/run/ibexwall/core.sock" ] ||
     ! pgrep -x ibexwalld >/dev/null 2>&1; then
     setsid "$repo/target/debug/ibexwalld" \

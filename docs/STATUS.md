@@ -30,8 +30,8 @@ The audit plan is fully closed:
 F11a (Compliance) was approved and is delivered; see
 `docs/reports/F11a-report.md`.
 
-F11b (Managed-mode) is in flight, with M1-M4 done:
-`docs/plans/F11b-managed-mode.md`.
+F11b (Managed-mode) is in flight, with M1-M5 done and M6
+ready to run: `docs/plans/F11b-managed-mode.md`.
 
 Architecture decisions are recorded internally, outside this repository;
 the public plans and reports are self-contained without them.
@@ -54,13 +54,15 @@ Phases, newest first (report, plan):
   also fixed a sysctl-plan bug that would have made the recommended preset
   fail on any kernel with `bpf_jit_harden` locked down.
 - **F11b, managed-mode contracts** (2026-11-07, in flight,
-  `docs/plans/F11b-managed-mode.md`). M1-M4 done: policy bundle
-  verification (JCS + ed25519 against trust anchors, expiry and
-  anti-rollback), the `com.ibexwall.Policy` varlink interface (ApplyBundle
-  writes the org layer; GetEffective; BuildReport assembles the spec
-  report; UseBreakGlass verifies a signed break-glass code), and `ibexctl
-  policy apply-bundle`. M5 (the Organisation screen) and M6 (the
-  `--phase f11b` VM run) are open.
+  `docs/plans/F11b-managed-mode.md`). M1-M5 done, M6 ready to run:
+  policy bundle verification (JCS + ed25519 against trust anchors,
+  expiry and anti-rollback), the `com.ibexwall.Policy` varlink
+  interface (ApplyBundle writes the org layer; GetEffective;
+  BuildReport assembles the spec report; UseBreakGlass verifies a
+  signed break-glass code), `ibexctl policy apply-bundle`, the
+  Organisation screen (five languages, shows locks and transparency),
+  and the `--phase f11b` xtask harness. A test VM run on all five
+  distros is pending.
 - **F10b, assistant connection, detection, hardening** (2026-11-05,
   `docs/plans/F10b-assistant-detection-hardening.md`). The Assistant
   connect flow, the `system.assistant` plugin owning `mcp.toml`, token

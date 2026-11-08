@@ -35,7 +35,7 @@ jobs:
       - name: system libraries of the desktop app
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev debhelper dpkg-dev fakeroot
       - name: the eBPF programs (nightly, rust-src, bpf-linker)
         run: |
           rustup toolchain install nightly --profile minimal --component rust-src
@@ -60,12 +60,25 @@ jobs:
           cargo xtask release --version "${GITHUB_REF_NAME#v}" \
             --key-dir "$RUNNER_TEMP/keys" --out dist
           rm -f "$RUNNER_TEMP/keys/dev.key"
+      - name: build deb packages from the staged tree
+        run: |
+          set -eu
+          rm -rf /tmp/pkg-deb && mkdir -p /tmp/pkg-deb/src
+          cp -r packaging/deb/debian /tmp/pkg-deb/src/debian
+          (cd /tmp/pkg-deb/src && \
+            IBEXWALL_STAGE="$GITHUB_WORKSPACE/target/stage" \
+            dpkg-buildpackage -b -us -uc -d >/tmp/pkg-deb/build.log 2>&1) || {
+              tail -30 /tmp/pkg-deb/build.log; exit 1;
+            }
+          mv /tmp/pkg-deb/*.deb dist/
+          ls -la dist/*.deb
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
             dist/*.tar.gz
             dist/*.o
             dist/*.cdx.json
+            dist/*.deb
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release

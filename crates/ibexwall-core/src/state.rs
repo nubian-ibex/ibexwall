@@ -154,13 +154,13 @@ const MIGRATIONS: &[(&str, &str)] = &[
              expires_at INTEGER NOT NULL
          );",
     ),
-     (
-         "0009_policy",
-         "CREATE TABLE config (
+    (
+        "0009_policy",
+        "CREATE TABLE config (
              key TEXT PRIMARY KEY,
              value INTEGER NOT NULL
          );",
-     ),
+    ),
 ];
 
 impl State {

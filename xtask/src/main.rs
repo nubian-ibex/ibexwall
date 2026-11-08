@@ -12,6 +12,7 @@ mod egress;
 mod f1;
 mod f10;
 mod f11a;
+mod f11b;
 mod f2;
 mod f3;
 mod f4;
@@ -37,7 +38,7 @@ Usage: cargo xtask <COMMAND>
 Commands:
   schemas [--check]  Export JSON Schemas and varlink IDL to spec/
                      (--check fails if committed files differ)
-  vm-test [--distro <distro>] [--phase f0|f1|f2|f3|f4|f5|f6|f7|f8|f9|f10|f11a|fixtures]
+  vm-test [--distro <distro>] [--phase f0|f1|f2|f3|f4|f5|f6|f7|f8|f9|f10|f11a|f11b|fixtures]
                      Boot a QEMU/KVM VM; phase f0 runs the smoke test,
                      f1 provisions the daemon and runs acceptance tests
   ebpf               Build the eBPF programs into target/bpf/ (nightly,
@@ -95,7 +96,7 @@ fn main() {
             let result = match phase.as_deref() {
                 None | Some("f0") | Some("f1") | Some("f2") | Some("f3") | Some("f4")
                 | Some("f5") | Some("f6") | Some("f7") | Some("f8") | Some("f9") | Some("f10")
-                | Some("f11a") | Some("selinux") | Some("fixtures") => {
+                | Some("f11a") | Some("f11b") | Some("selinux") | Some("fixtures") => {
                     vm::run(&distro, phase.as_deref())
                 }
                 Some(other) => {

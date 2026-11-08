@@ -39,7 +39,14 @@ jobs:
       - name: the eBPF programs (nightly, rust-src, bpf-linker)
         run: |
           rustup toolchain install nightly --profile minimal --component rust-src
-          cargo install bpf-linker --locked
+          # The prebuilt linker: a source build needs a matching system LLVM.
+          curl -sSLo "$RUNNER_TEMP/bl.tar.zst" https://github.com/aya-rs/bpf-linker/releases/download/v0.13.0/bpf-linker-x86_64-unknown-linux-musl.tar.zst
+          echo "0e9b2b30f68898177f1cb6f0ecbfa909a82479473a49a0ef66529fd088e3e410  $RUNNER_TEMP/bl.tar.zst" | sha256sum -c -
+          mkdir -p "$HOME/.local/bin"
+          tar -xpf "$RUNNER_TEMP/bl.tar.zst" -C "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          bpf-linker --version
           cargo xtask ebpf
       - name: the interface
         run: |

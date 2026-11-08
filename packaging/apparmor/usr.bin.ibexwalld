@@ -45,8 +45,17 @@ profile ibexwalld flags=(attach_disconnected) {
   /run/systemd/private rw,
 
   # The daemon reads the root directory to check what it is running on
-  # (distro detection reads /etc/os-release after listing /).
+  # (distro detection reads /etc/os-release after listing /), and
+  # traverses parent directories to reach its own paths; AppArmor on
+  # Ubuntu 24.04 denies each directory open unless allowed.
   / r,
+  /etc/ r,
+  /run/ r,
+  /usr/ r,
+  /usr/lib/ r,
+  /usr/lib/ibexwall/ r,
+  /var/ r,
+  /var/lib/ r,
 
   # systemd, polkit and the other system services it asks, over the bus.
   dbus bus=system,

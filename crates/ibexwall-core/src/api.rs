@@ -690,7 +690,7 @@ async fn dispatch_policy(
             let mut org = toml::Table::new();
             org.insert(
                 "lock".into(),
-                toml::Value::try_from(Vec::clone(&bundle.locks)).map_err(internal)?,
+                toml::Value::try_from(Vec::clone(&bundle.locks)).map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?,
             );
             if let Some(settings) = bundle.settings.as_object() {
                 let mut plugins = toml::Table::new();
@@ -703,9 +703,9 @@ async fn dispatch_policy(
                 }
                 org.insert("plugins".into(), toml::Value::Table(plugins));
             }
-            std::fs::create_dir_all(&config_dir).map_err(internal)?;
-            std::fs::write(&org_path, toml::to_string_pretty(&org).map_err(internal)?)
-                .map_err(internal)?;
+            std::fs::create_dir_all(&config_dir).map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?;
+            std::fs::write(&org_path, toml::to_string_pretty(&org).map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?)
+                .map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?;
             core.state
                 .with_conn(|conn| {
                     conn.execute(
@@ -713,7 +713,7 @@ async fn dispatch_policy(
                         rusqlite::params![bundle.version as i64],
                     )
                 })
-                .map_err(internal)?;
+                .map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?;
             core.reload_config();
             core.audit(actor, "core", None, "", "policy-applied");
             let locks: Vec<String> = bundle.locks.clone();

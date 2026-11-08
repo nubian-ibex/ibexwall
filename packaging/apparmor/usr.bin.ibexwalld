@@ -44,6 +44,10 @@ profile ibexwalld flags=(attach_disconnected) {
   /run/dbus/system_bus_socket rw,
   /run/systemd/private rw,
 
+  # The daemon reads the root directory to check what it is running on
+  # (distro detection reads /etc/os-release after listing /).
+  / r,
+
   # systemd, polkit and the other system services it asks, over the bus.
   dbus bus=system,
 

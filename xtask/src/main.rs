@@ -22,6 +22,7 @@ mod f6;
 mod f7;
 mod f8;
 mod f9;
+mod firewall_on;
 mod fixtures;
 mod idl;
 mod mac;
@@ -97,8 +98,8 @@ fn main() {
             let result = match phase.as_deref() {
                 None | Some("f0") | Some("f1") | Some("f2") | Some("f3") | Some("f4")
                 | Some("f5") | Some("f6") | Some("f7") | Some("f8") | Some("f9") | Some("f10")
-                | Some("f11a") | Some("f11b") | Some("desktop") | Some("selinux")
-                | Some("fixtures") => vm::run(&distro, phase.as_deref()),
+                | Some("f11a") | Some("f11b") | Some("desktop") | Some("firewall-on")
+                | Some("selinux") | Some("fixtures") => vm::run(&distro, phase.as_deref()),
                 Some(other) => {
                     eprintln!("error: unknown phase `{other}`");
                     std::process::exit(2);

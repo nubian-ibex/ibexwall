@@ -310,6 +310,11 @@ pub fn run_stage(options: &Options) -> Result<()> {
             "polkit/49-ibexwall-assistants.rules",
             Package::Core,
         ),
+        (
+            "/usr/share/polkit-1/rules.d/49-ibexwall-admins.rules",
+            "polkit/49-ibexwall-admins.rules",
+            Package::Core,
+        ),
     ] {
         put(dest, &mut files, rel, &pk.join(source), 0o644, package)?;
     }

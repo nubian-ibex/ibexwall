@@ -1,0 +1,17 @@
+// SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// Members of ibexwall-admins may change IbexWall without typing a password:
+// apply, undo, manage plugins, answer prompts and decide proposals. The
+// group ships empty, so this rule does nothing until an administrator adds
+// someone (sudo gpasswd -a NAME ibexwall-admins). Policy provider access is
+// not given: it stays with root and the managed-mode plugin.
+polkit.addRule(function(action, subject) {
+  if (action.id.indexOf("com.ibexwall.") !== 0 || action.id === "com.ibexwall.policy.provider") {
+    return polkit.Result.NOT_HANDLED;
+  }
+  if (subject.isInGroup("ibexwall-admins")) {
+    return polkit.Result.YES;
+  }
+  return polkit.Result.NOT_HANDLED;
+});

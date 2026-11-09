@@ -60,11 +60,13 @@ rpm)
   ;;
 deb)
   sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install -y -qq debhelper dpkg-dev fakeroot make >/dev/null
-  for v in 0.1.0 0.1.1; do
+  # The packaged version, and a higher one for the upgrade.
+  V=$(dpkg-parsechangelog -l packaging/deb/debian/changelog -S Version)
+  for v in "$V" "$V+upg1"; do
     rm -rf src && mkdir src && cp -r packaging/deb/debian src/debian
-    sed -i "1s/(0.1.0)/($v)/" src/debian/changelog
+    sed -i "1s/($V)/($v)/" src/debian/changelog
     (cd src && IBEXWALL_STAGE=/tmp/ibx/stage dpkg-buildpackage -b -us -uc -d >/tmp/ibx/dpkg-$v.log 2>&1) || { tail -30 /tmp/ibx/dpkg-$v.log; exit 1; }
-    if [ $v = 0.1.0 ]; then mv ibexwall*_$v_*.deb out1/ 2>/dev/null || mv *_0.1.0_*.deb out1/; else mv *_0.1.1_*.deb out2/; fi
+    if [ "$v" = "$V" ]; then mv ./*.deb out1/; else mv ./*.deb out2/; fi
   done
   ;;
 arch)
@@ -383,7 +385,7 @@ arch) sudo pacman -U --noconfirm out2/*.pkg.tar.zst >/tmp/upgrade.log 2>&1 || { 
 esac
 case $FAM in
 rpm) rpm -q ibexwall | grep -q upg || { echo "THE UPGRADE IS NOT INSTALLED: $(rpm -q ibexwall)"; exit 1; } ;;
-deb) dpkg-query -W -f='${Version}' ibexwall | grep -q '^0.1.1' || { echo "THE UPGRADE IS NOT INSTALLED"; exit 1; } ;;
+deb) dpkg-query -W -f='${Version}' ibexwall | grep -q '+upg1$' || { echo "THE UPGRADE IS NOT INSTALLED"; exit 1; } ;;
 arch) pacman -Q ibexwall | grep -q -- '-2$' || { echo "THE UPGRADE IS NOT INSTALLED: $(pacman -Q ibexwall)"; exit 1; } ;;
 esac
 sudo ibexctl status >/dev/null || { echo "THE DAEMON DOES NOT ANSWER AFTER THE UPGRADE"; exit 1; }

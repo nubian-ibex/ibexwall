@@ -54,7 +54,7 @@ deb)
   sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install -y -qq debhelper dpkg-dev fakeroot make >/dev/null
   rm -rf src && mkdir src && cp -r packaging/deb/debian src/debian
   (cd src && IBEXWALL_STAGE=/tmp/ibx/stage dpkg-buildpackage -b -us -uc -d >/tmp/ibx/dpkg.log 2>&1) || { tail -30 /tmp/ibx/dpkg.log; exit 1; }
-  mv ibexwall*_0.1.0_*.deb out1/ 2>/dev/null || mv *_0.1.0_*.deb out1/
+  mv ./*.deb out1/
   ;;
 arch)
   sudo pacman -Sy --noconfirm --needed fakeroot binutils >/dev/null

@@ -93,6 +93,10 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm build
+      # The flows and the accessibility checks run on the built app; the
+      # browser comes from Playwright's own pinned build.
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm e2e
 
   commits:
     runs-on: ubuntu-latest

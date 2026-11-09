@@ -13,8 +13,9 @@ of `docs/plans/v0.1.1-desktop-fixes.md` are done and verified (report:
 Left (M7): in the desktop app, type the password and make real changes
 on the Fedora and Ubuntu KDE VMs, then publish the release and deploy the
 docs. In progress meanwhile: v0.2 (`docs/plans/v0.2-first-run.md`,
-ADR-0046): M1 "turn on the installed firewall" is done and tested; M2 to
-M5 (what is missing, first-run assistant, admins group) follow.
+ADR-0046): M1 to M4 done and tested (turn on the installed firewall,
+what is missing, the first-run welcome, the ibexwall-admins group); M5
+(full matrix, draft release) waits for the v0.1.1 check.
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

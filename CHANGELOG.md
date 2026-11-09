@@ -6,6 +6,29 @@
 Versions follow [Semantic Versioning](https://semver.org). The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## Unreleased (0.2)
+
+### Added
+
+- Turn on the firewall the distribution installed when it is off (ufw on
+  Ubuntu, a disabled firewalld): "Turn on the firewall" on the Firewall
+  screen, or `ibexctl plan net.firewall --set enable_manager=true`. The
+  services listening now stay reachable, so an SSH session survives, and
+  the change can be kept or undone like any other (ADR-0046).
+- The Overview lists what the protections that are on need and do not
+  find, with the command that installs it on this distribution.
+- A first-run welcome: how the password prompt works, a first check, the
+  recommended protections to turn on with one password, what is missing,
+  and the entry for a computer an organisation manages. Settings can
+  open it again.
+- An `ibexwall-admins` group, empty by default: its members change
+  IbexWall without a password.
+
+### Fixed
+
+- Rolling back a change that started firewalld failed on the reload.
+- A rollback that had turned ufw on left it on.
+
 ## 0.1.1 (2026-11-09)
 
 Makes the desktop app usable by a person who is not root. Found by

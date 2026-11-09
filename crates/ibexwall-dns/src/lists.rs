@@ -139,7 +139,7 @@ impl ListRef {
     }
 }
 
-/// Where lists are kept (`/var/lib/ibexwall/blocklists`).
+/// Where lists are kept (`/var/lib/ibexwall-dns/blocklists`).
 pub struct Store {
     dir: PathBuf,
 }

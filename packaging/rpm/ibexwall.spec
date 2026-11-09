@@ -117,7 +117,7 @@ fi
 if [ "$1" -eq 0 ]; then
     %selinux_modules_uninstall ibexwall
     # Labels of a module that is gone mean nothing; the files get the usual ones.
-    restorecon -R /var/lib/ibexwall /var/lib/ibexwall-mcp /etc/ibexwall >/dev/null 2>&1 || :
+    restorecon -R /var/lib/ibexwall /var/lib/ibexwall-mcp /var/lib/ibexwall-dns /etc/ibexwall >/dev/null 2>&1 || :
 fi
 
 %preun

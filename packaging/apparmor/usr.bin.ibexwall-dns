@@ -23,7 +23,8 @@ profile ibexwall-dns flags=(attach_disconnected) {
 
   /usr/bin/ibexwall-dns mr,
   /etc/ibexwall/dns/** r,
-  /var/lib/ibexwall/blocklists/** rwk,
+  /var/lib/ibexwall-dns/ r,
+  /var/lib/ibexwall-dns/** rwk,
   /run/ibexwall/dns/** rwk,
   /run/ibexwall/dns/ rw,
   # The answers socket the daemon binds for its monitor.

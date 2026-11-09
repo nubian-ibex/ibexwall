@@ -324,7 +324,7 @@ for i in $(seq 1 40); do
   sleep 3
 done
 echo "$OUT"
-echo "$OUT" | grep -Eqi 'not found|nxdomain|no such name' || { sudo journalctl -u ibexwall-dns -n 25 --no-pager >&2; sudo ls -la /var/lib/ibexwall/blocklists >&2; sudo cat /etc/ibexwall/dns/resolver.json >&2; exit 1; }
+echo "$OUT" | grep -Eqi 'not found|nxdomain|no such name' || { sudo journalctl -u ibexwall-dns -n 25 --no-pager >&2; sudo ls -la /var/lib/ibexwall-dns/blocklists >&2; sudo cat /etc/ibexwall/dns/resolver.json >&2; exit 1; }
 ! getent hosts dns.google
 getent hosts example.com >/dev/null
 sudo cat /run/ibexwall/dns/status.json

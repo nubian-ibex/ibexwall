@@ -8,5 +8,6 @@
 /etc/ibexwall(/.*)?				gen_context(system_u:object_r:ibexwall_conf_t,s0)
 /var/lib/ibexwall(/.*)?				gen_context(system_u:object_r:ibexwall_var_lib_t,s0)
 /var/lib/ibexwall-mcp(/.*)?			gen_context(system_u:object_r:ibexwall_var_lib_t,s0)
+/var/lib/ibexwall-dns(/.*)?			gen_context(system_u:object_r:ibexwall_var_lib_t,s0)
 /run/ibexwall(/.*)?				gen_context(system_u:object_r:ibexwall_var_run_t,s0)
 /run/ibexwall/plugins(/.*)?			gen_context(system_u:object_r:ibexwall_plugin_var_run_t,s0)

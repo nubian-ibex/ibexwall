@@ -24,6 +24,9 @@ pub const BIN_DNS: &str = "ibexwall-dns";
 pub const BIN_EBPF_LOADER: &str = "ibexwall-ebpf-loader";
 /// systemd unit that runs the loader with only the capabilities it needs.
 pub const UNIT_MONITOR: &str = "ibexwall-monitor.service";
+/// Records that the person chose whether the monitor runs, so the package
+/// scripts turn it on at the first install only, never against a choice.
+pub const MONITOR_CHOICE: &str = "/var/lib/ibexwall/monitor.choice";
 pub const BIN_MCP: &str = "ibexwall-mcp";
 pub const BIN_WEB: &str = "ibexwall-web";
 pub const PLUGIN_BIN_PREFIX: &str = "ibexwall-plugin-";
@@ -45,6 +48,9 @@ pub const DNS_USER: &str = "ibexwall-dns";
 // Directory suffixes; combine with [`root`] to get absolute paths.
 pub const CONFIG_DIR: &str = "/etc/ibexwall";
 pub const STATE_DIR: &str = "/var/lib/ibexwall";
+/// The resolver's own state (its block lists), apart from the daemon's:
+/// the daemon's directory is root's and closed to the resolver's user.
+pub const DNS_STATE_DIR: &str = "/var/lib/ibexwall-dns";
 pub const RUNTIME_DIR: &str = "/run/ibexwall";
 pub const PLUGIN_INSTALL_DIR: &str = "/usr/lib/ibexwall/plugins";
 pub const LOCAL_PLUGIN_DIR: &str = "/etc/ibexwall/plugins.local";
@@ -125,7 +131,7 @@ pub fn snapshots_dir() -> PathBuf {
     state_dir().join("snapshots")
 }
 pub fn blocklists_dir() -> PathBuf {
-    state_dir().join("blocklists")
+    path_under(&root(), DNS_STATE_DIR).join("blocklists")
 }
 pub fn trust_dir() -> PathBuf {
     config_dir().join("trust")

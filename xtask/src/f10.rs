@@ -435,7 +435,7 @@ echo "METRIC: removed: the three changes undone, no unit, process or file left; 
 const PURGE: &str = r#"
 [ "$FAM" = deb ] || { echo "METRIC: no purge on this family: the kept data is /var/lib/ibexwall and /etc/ibexwall"; exit 0; }
 sudo DEBIAN_FRONTEND=noninteractive apt-get purge -y -qq ibexwall >/tmp/purge.log 2>&1 || { cat /tmp/purge.log; exit 1; }
-for d in /var/lib/ibexwall /var/lib/ibexwall-mcp /etc/ibexwall; do
+for d in /var/lib/ibexwall /var/lib/ibexwall-mcp /var/lib/ibexwall-dns /etc/ibexwall; do
   sudo test ! -e $d || { echo "$d SURVIVED THE PURGE"; exit 1; }
 done
 echo "METRIC: purged: the user's data is gone too"

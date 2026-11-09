@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-policy_module(ibexwall, 1.0.1)
+policy_module(ibexwall, 1.0.2)
 
 require {
 	type init_t;

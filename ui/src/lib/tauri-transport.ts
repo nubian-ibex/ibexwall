@@ -138,6 +138,7 @@ export class TauriTransport implements Transport {
       config: Record<string, unknown>;
       locks: string[];
       sources: Record<string, string>;
+      managed: boolean;
     }>('get_effective');
   }
 

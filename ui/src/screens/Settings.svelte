@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { app } from '../lib/app.svelte';
+  import Button from '../components/Button.svelte';
   import { i18n, languageName, LOCALES, t } from '../lib/i18n.svelte';
   import { applyTheme, savedTheme, THEMES, type Theme } from '../lib/theme';
 
@@ -42,7 +44,29 @@
   </label>
 </section>
 
+<section class="card" aria-labelledby="managed-title">
+  <h2 id="managed-title">{t('settings-managed-title')}</h2>
+  {#if app.managed}
+    <p>{t('settings-managed-yes')}</p>
+    <div>
+      <Button onclick={() => (app.route = 'organisation')}>{t('settings-managed-open')}</Button>
+    </div>
+  {:else}
+    <p class="muted">{t('settings-managed-no')}</p>
+  {/if}
+</section>
+
 <style>
+  .card + .card {
+    margin-top: var(--space-6);
+  }
+  h2 {
+    margin: 0;
+    font-size: 18px;
+  }
+  p {
+    margin: 0;
+  }
   .card {
     display: grid;
     gap: var(--space-4);

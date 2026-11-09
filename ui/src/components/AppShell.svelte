@@ -36,7 +36,7 @@
     </div>
     <nav aria-label={t('nav-label')}>
       <ul>
-        {#each items as item (item.route)}
+        {#each items.filter((item) => item.route !== 'organisation' || app.managed) as item (item.route)}
           <li>
             <button
               type="button"
@@ -51,9 +51,13 @@
         {/each}
       </ul>
     </nav>
-    <footer><span class="dot" aria-hidden="true"></span>{t('sidebar-status-active')}</footer>
+    <footer class={app.serviceStatus} role="status">
+      <span class="dot" aria-hidden="true"></span>{t(`sidebar-status-${app.serviceStatus}`)}
+    </footer>
   </aside>
-  <main id="content" tabindex="-1"><ChangeStatus />{@render children()}</main>
+  <main id="content" tabindex="-1">
+    <div class="content"><ChangeStatus />{@render children()}</div>
+  </main>
 </div>
 
 <style>
@@ -68,15 +72,20 @@
     background: var(--surface);
     padding: var(--space-2) var(--space-4);
   }
+  /* The window does not scroll: the sidebar stays, with its status at the
+     bottom, and only the screen's content scrolls. */
   .shell {
     display: grid;
     grid-template-columns: 280px 1fr;
-    min-height: 100%;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
   }
   aside {
     display: flex;
     flex-direction: column;
     gap: var(--space-6);
+    min-height: 0;
     padding: var(--space-5);
     background: var(--surface);
     border-right: 1px solid var(--border);
@@ -94,6 +103,11 @@
   .tagline {
     color: var(--muted);
     font-size: 13px;
+  }
+  nav {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
   }
   nav ul {
     list-style: none;
@@ -126,7 +140,7 @@
     font-weight: 600;
   }
   footer {
-    margin-top: auto;
+    flex: none;
     display: flex;
     align-items: center;
     gap: var(--space-2);
@@ -138,22 +152,43 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--primary);
+    background: currentColor;
+  }
+  footer.checking,
+  footer.running {
+    color: var(--muted);
+  }
+  footer.degraded {
+    color: var(--warning-text);
+  }
+  footer.offline,
+  footer.no-access {
+    color: var(--danger);
   }
   main {
+    min-height: 0;
+    overflow-y: auto;
+    outline: none;
+  }
+  .content {
     padding: var(--space-10);
     max-width: 1200px;
-    outline: none;
   }
   @media (max-width: 800px) {
     .shell {
       grid-template-columns: 1fr;
+      height: auto;
+      overflow: visible;
+    }
+    nav,
+    main {
+      overflow: visible;
     }
     aside {
       border-right: 0;
       border-bottom: 1px solid var(--border);
     }
-    main {
+    .content {
       padding: var(--space-5);
     }
   }

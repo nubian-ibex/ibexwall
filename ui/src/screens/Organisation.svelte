@@ -10,9 +10,7 @@
     | { status: 'ready'; data: T }
     | { status: 'error'; error: TransportError };
 
-  let effective = $state<
-    Load<{ config: Record<string, unknown>; locks: string[]; sources: Record<string, string> }>
-  >({
+  let effective = $state<Load<Awaited<ReturnType<typeof app.transport.getEffective>>>>({
     status: 'loading',
   });
 
@@ -41,7 +39,7 @@
   <StateMessage kind="loading" />
 {:else if effective.status === 'error'}
   <StateMessage kind="error" onretry={() => load()} />
-{:else if effective.data.locks.length === 0}
+{:else if effective.data.locks.length === 0 && !effective.data.managed}
   <p class="muted">{t('org-empty')}</p>
 {:else}
   <section class="banner">

@@ -463,6 +463,7 @@ export class FixtureTransport implements Transport {
       config: {},
       locks: [] as string[],
       sources: {} as Record<string, string>,
+      managed: false,
     }));
   }
 

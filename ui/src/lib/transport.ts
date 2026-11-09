@@ -127,5 +127,7 @@ export interface Transport {
     config: Record<string, unknown>;
     locks: string[];
     sources: Record<string, string>;
+    /** An organisation's signed policy is applied (F11b). */
+    managed: boolean;
   }>;
 }

@@ -1,6 +1,7 @@
-import type { Finding, PluginInfo, Posture, Prompt } from '../gen/contracts';
+import type { Finding, Info, PluginInfo, Posture, Prompt } from '../gen/contracts';
 import { FixtureTransport, type Scenario } from './fixtures';
 import { insideTauri, TauriTransport } from './tauri-transport';
+import { overallStatus } from './status';
 import { changeErrorKey, TransportError, type Transport } from './transport';
 
 export type Route =
@@ -20,6 +21,9 @@ export type Route =
 type Load<T> =
   { status: 'loading' } | { status: 'ready'; data: T } | { status: 'error'; error: TransportError };
 
+export type ServiceStatus =
+  'checking' | 'active' | 'running' | 'degraded' | 'offline' | 'no-access';
+
 class AppState {
   // The real shell uses the Tauri commands; a plain browser (tests, e2e,
   // design work) uses the fixture core.
@@ -30,6 +34,10 @@ class AppState {
   posture = $state<Load<Posture>>({ status: 'loading' });
   findings = $state<Load<Finding[]>>({ status: 'loading' });
   plugins = $state<Load<PluginInfo[]>>({ status: 'loading' });
+  /** An organisation manages this machine: its screen is shown. */
+  managed = $state(false);
+  /** The daemon's own report: version and what runs degraded. */
+  info = $state<Load<Info>>({ status: 'loading' });
   checking = $state(false);
   /** Connections held in Ask mode, waiting for an answer. */
   prompts = $state<Prompt[]>([]);
@@ -65,6 +73,17 @@ class AppState {
     this.notice = null;
   }
 
+  /** What the sidebar says about the service, from what was loaded. */
+  get serviceStatus(): ServiceStatus {
+    const info = this.info;
+    if (info.status === 'loading') return 'checking';
+    if (info.status === 'error') return info.error.kind === 'denied' ? 'no-access' : 'offline';
+    if (info.data.degraded.length > 0) return 'degraded';
+    const posture = this.posture;
+    if (posture.status === 'ready' && overallStatus(posture.data) === 'protected') return 'active';
+    return 'running';
+  }
+
   useTransport(transport: Transport) {
     this.transport = transport;
   }
@@ -74,6 +93,14 @@ class AppState {
     this.findings = { status: 'loading' };
     this.plugins = { status: 'loading' };
     await Promise.all([
+      this.transport
+        .getEffective()
+        .then((effective) => (this.managed = effective.managed || effective.locks.length > 0))
+        .catch(() => (this.managed = false)),
+      this.load(
+        () => this.transport.getInfo(),
+        (v) => (this.info = v),
+      ),
       this.load(
         () => this.transport.getPosture(),
         (v) => (this.posture = v),

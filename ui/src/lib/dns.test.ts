@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { DNS_DEFAULTS, dnsPatch, isLocalAddress, ownProblems, OWN_DEFAULTS } from './dns';
+import {
+  choiceFromConfig,
+  DNS_DEFAULTS,
+  dnsPatch,
+  isLocalAddress,
+  ownProblems,
+  OWN_DEFAULTS,
+} from './dns';
 
 const own = (extra: Partial<typeof OWN_DEFAULTS>) => ({ ...OWN_DEFAULTS, enabled: true, ...extra });
 
@@ -64,5 +71,41 @@ describe('own DNS servers', () => {
   it('sends no custom servers when they are off or wrong', () => {
     expect(dnsPatch(DNS_DEFAULTS).servers).toBeUndefined();
     expect(dnsPatch({ ...DNS_DEFAULTS, own: own({ primary: '8.8.8.8' }) }).servers).toBeUndefined();
+  });
+});
+
+describe('choiceFromConfig', () => {
+  it('shows what is applied, not the defaults', () => {
+    const choice = choiceFromConfig({
+      provider: 'adguard',
+      transport: 'https',
+      lists: [{ id: 'hagezi-pro' }],
+      enforcement: false,
+      block_doh: false,
+    });
+    expect(choice.provider).toBe('adguard');
+    expect(choice.transport).toBe('https');
+    expect(choice.list).toBe('hagezi-pro');
+    expect(choice.enforcement).toBe(false);
+    expect(choice.blockDoh).toBe(false);
+    expect(choice.own.enabled).toBe(false);
+  });
+
+  it('reads own servers and keeps the defaults for what is unknown', () => {
+    const choice = choiceFromConfig({
+      provider: 'not-a-provider',
+      servers: [
+        { ip: '192.168.1.1', transport: 'plain' },
+        { ip: '9.9.9.9', transport: 'tls', server_name: 'dns.quad9.net' },
+      ],
+    });
+    expect(choice.provider).toBe(DNS_DEFAULTS.provider);
+    expect(choice.own).toMatchObject({
+      enabled: true,
+      primary: '192.168.1.1',
+      primaryTransport: 'plain',
+      secondary: '9.9.9.9',
+      secondaryTransport: 'tls',
+    });
   });
 });

@@ -2,6 +2,7 @@
   import { app } from '../lib/app.svelte';
   import { i18n, t } from '../lib/i18n.svelte';
   import {
+    choiceFromConfig,
     DNS_DEFAULTS,
     DNS_LISTS,
     DNS_PROVIDERS,
@@ -53,6 +54,16 @@
   $effect(() => {
     if (plugin?.enabled) void app.transport.getDnsStatus().then((value) => (counters = value));
     else counters = null;
+  });
+
+  // Start from what is applied, not from the defaults; again after a
+  // change (the plugins list reloads when one is applied).
+  $effect(() => {
+    if (app.plugins.status !== 'ready') return;
+    void app.transport
+      .getConfig('net.dns')
+      .then((config) => (choice = choiceFromConfig(config.effective)))
+      .catch(() => {});
   });
 
   const plugin = $derived(

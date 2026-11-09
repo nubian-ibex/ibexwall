@@ -612,6 +612,10 @@ export class FixtureTransport implements Transport {
     return this.gate(() => undefined);
   }
 
+  getConfig() {
+    return this.gate(() => ({ effective: {} as Record<string, unknown>, locks: [] as string[] }));
+  }
+
   setMonitorEnabled() {
     return this.gate(() => undefined);
   }

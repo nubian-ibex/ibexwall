@@ -106,6 +106,8 @@ export interface Transport {
   listFindings(plugin?: string): Promise<Finding[]>;
   runChecks(plugin?: string): Promise<Finding[]>;
   setPluginEnabled(id: string, enabled: boolean): Promise<void>;
+  /** A plugin's configuration as applied now (all layers merged). */
+  getConfig(plugin: string): Promise<{ effective: Record<string, unknown>; locks: string[] }>;
   /** Turns the connection monitor unit on or off (needs a password). */
   setMonitorEnabled(enabled: boolean): Promise<void>;
   getManifest(id: string): Promise<Record<string, unknown>>;

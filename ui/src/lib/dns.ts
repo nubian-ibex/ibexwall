@@ -139,6 +139,45 @@ export const DNS_DEFAULTS: DnsChoice = {
   own: { ...OWN_DEFAULTS },
 };
 
+/** The form as the applied configuration says, so the screen shows what
+ * is in use instead of the defaults. Unknown values keep the default. */
+export function choiceFromConfig(effective: Record<string, unknown>): DnsChoice {
+  const choice: DnsChoice = { ...DNS_DEFAULTS, own: { ...OWN_DEFAULTS } };
+  const provider = effective.provider;
+  if (typeof provider === 'string' && DNS_PROVIDERS.some((p) => p.id === provider)) {
+    choice.provider = provider as DnsProviderId;
+  }
+  const transport = effective.transport;
+  if (transport === 'tls' || transport === 'https' || transport === 'h3' || transport === 'quic') {
+    choice.transport = transport as DnsTransport;
+  }
+  const lists = Array.isArray(effective.lists) ? effective.lists : [];
+  const listId = (lists[0] as { id?: unknown } | undefined)?.id ?? effective.list;
+  if (typeof listId === 'string' && (DNS_LISTS as readonly string[]).includes(listId)) {
+    choice.list = listId as DnsChoice['list'];
+  }
+  if (typeof effective.enforcement === 'boolean') choice.enforcement = effective.enforcement;
+  if (typeof effective.block_doh === 'boolean') choice.blockDoh = effective.block_doh;
+  if (typeof effective.browser_policies === 'boolean') {
+    choice.browserPolicies = effective.browser_policies;
+  }
+  type Server = { ip?: unknown; transport?: unknown; server_name?: unknown };
+  const servers = (Array.isArray(effective.servers) ? effective.servers : []) as Server[];
+  const [first, second] = servers;
+  if (first && typeof first.ip === 'string') {
+    const kind = (s: Server) => (s.transport === 'plain' ? 'plain' : 'tls') as 'plain' | 'tls';
+    choice.own.enabled = true;
+    choice.own.primary = first.ip;
+    choice.own.primaryTransport = kind(first);
+    if (typeof first.server_name === 'string') choice.own.serverName = first.server_name;
+    if (second && typeof second.ip === 'string') {
+      choice.own.secondary = second.ip;
+      choice.own.secondaryTransport = kind(second);
+    }
+  }
+  return choice;
+}
+
 /** The patch the net.dns plugin plans from. */
 export function dnsPatch(choice: DnsChoice): Record<string, unknown> {
   const own = ownPatch(choice.own);

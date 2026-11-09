@@ -137,6 +137,13 @@ async fn decide_proposal(id: String, decision: String) -> Result<Value, Value> {
 }
 
 #[tauri::command]
+async fn get_config(plugin: String) -> Result<Value, Value> {
+    core("GetConfig", json!({ "plugin": plugin }))
+        .await
+        .map_err(|e| err_text(&e))
+}
+
+#[tauri::command]
 async fn set_monitor_enabled(enabled: bool) -> Result<Value, Value> {
     core("SetMonitorEnabled", json!({ "enabled": enabled }))
         .await
@@ -356,6 +363,7 @@ pub fn run() {
             decide_proposal,
             set_plugin_enabled,
             set_monitor_enabled,
+            get_config,
             get_manifest,
             plan_change,
             apply,

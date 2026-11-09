@@ -7,6 +7,14 @@ Last updated: 2026-11-07 (F11b fully delivered; all five distros green)
 
 ## Current phase
 
+**Now: v0.1.1, desktop fixes.** v0.1.0 is published; installing it on
+Fedora 45 and Ubuntu 26.10 (KDE) showed the app cannot change anything
+as a desktop user. Plan: `docs/plans/v0.1.1-desktop-fixes.md` (M1 to
+M7). Decision: ADR-0045 (interactive polkit authorization, option 1:
+an `allowInteractiveAuthentication` field per call). Both are proposed
+and wait for the maintainer's approval. Next after it: the first-run
+assistant (B-04/B-06).
+
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five
 distros, the smoke of the earlier phases against the installed packages,
@@ -172,7 +180,7 @@ Phases, newest first (report, plan):
    nothing can be changed from the app. The daemon asks polkit with no
    interactive flag, so actions that need `auth_admin_keep` (apply,
    rollback, plugins.manage) are denied and no password prompt appears.
-   Needs an ADR (the spec said no interactive flag). Also: the sidebar
+   ADR-0045 and `docs/plans/v0.1.1-desktop-fixes.md` cover it. Also: the sidebar
    scrolls with the page and its "protection active" footer is a fixed
    string; Organisation shows in the main menu without managed mode; no
    first-run onboarding for dependencies and permissions; the VM matrix

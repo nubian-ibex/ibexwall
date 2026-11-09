@@ -555,3 +555,35 @@ missing-title = Was einige Schutzfunktionen brauchen
 missing-body = Diese Schutzfunktionen sind eingeschaltet, brauchen aber ein Programm, das nicht installiert ist. IbexWall installiert selbst nichts: Kopieren Sie einen Befehl, führen Sie ihn in einem Terminal aus und prüfen Sie dann erneut.
 missing-copy = Befehl kopieren
 missing-copied = Kopiert
+
+## First run
+welcome-step = Schritt { $step } von { $total }
+welcome-intro-title = Willkommen bei IbexWall
+welcome-intro-body = IbexWall prüft, wie dieser Computer geschützt ist, und hilft Ihnen, das zu ändern: die Firewall, sicheres DNS, Updates, Konten und mehr. Jede Änderung wird gezeigt, bevor sie geschieht, und lässt sich im Verlauf rückgängig machen.
+welcome-intro-password = Änderungen am System brauchen einen Administrator: Ihr Desktop fragt nach Ihrem Passwort und merkt es sich einige Minuten.
+welcome-intro-local = Alles bleibt auf diesem Computer. IbexWall sendet nichts irgendwohin.
+welcome-check-title = Eine erste Prüfung
+welcome-check-body = IbexWall sieht sich die eingeschalteten Schutzfunktionen an und vergibt einen Wert. Es liest nur; nichts wird geändert.
+welcome-check-run = Jetzt prüfen
+welcome-check-again = Erneut prüfen
+welcome-check-score = Ihr Wert ist { $score } von 100. Die Übersicht zeigt, was ihn erhöhen würde.
+welcome-protect-title = Schutzfunktionen einschalten
+welcome-protect-body = Diese Schutzfunktionen lesen und warnen; sie ändern nichts, bis Sie es verlangen. Wählen Sie aus, welche eingeschaltet werden; Ihr Passwort wird einmal abgefragt.
+welcome-protect-none = Die empfohlenen Schutzfunktionen sind schon eingeschaltet.
+welcome-protect-turn-on = Ausgewählte einschalten
+welcome-protect-done = { $count ->
+    [one] Eine Schutzfunktion wurde eingeschaltet.
+   *[other] { $count } Schutzfunktionen wurden eingeschaltet.
+}
+welcome-missing-title = Was fehlt
+welcome-missing-body = Einige Schutzfunktionen brauchen ein Programm, das nicht installiert ist. IbexWall installiert selbst nichts; hier sind die Befehle, falls Sie sie möchten. Sie können das auch später in der Übersicht tun.
+welcome-organisation-title = Wenn dieser Computer zentral verwaltet wird
+welcome-organisation-body = Bei der Arbeit kann ein Administrator IbexWall mit einer signierten Richtlinie verwalten. Dann sind einige Einstellungen gesperrt, und die Einstellungen und der Bildschirm Verwaltung zeigen, was festgelegt wurde und was gesendet wird. Zu Hause ändert sich nichts.
+welcome-nav = Willkommensschritte
+welcome-back = Zurück
+welcome-skip = Überspringen
+welcome-next = Weiter
+welcome-finish = Fertig
+settings-welcome-title = Willkommen
+settings-welcome-body = Die ersten Schritte noch einmal ansehen: die Prüfung, die einzuschaltenden Schutzfunktionen und was fehlt.
+settings-welcome-open = Willkommen anzeigen

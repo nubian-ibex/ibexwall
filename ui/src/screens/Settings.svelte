@@ -44,6 +44,14 @@
   </label>
 </section>
 
+<section class="card" aria-labelledby="welcome-again-title">
+  <h2 id="welcome-again-title">{t('settings-welcome-title')}</h2>
+  <p class="muted">{t('settings-welcome-body')}</p>
+  <div>
+    <Button onclick={() => (app.route = 'welcome')}>{t('settings-welcome-open')}</Button>
+  </div>
+</section>
+
 <section class="card" aria-labelledby="managed-title">
   <h2 id="managed-title">{t('settings-managed-title')}</h2>
   {#if app.managed}

@@ -17,10 +17,13 @@
   import Plugins from './screens/Plugins.svelte';
   import Posture from './screens/Posture.svelte';
   import Settings from './screens/Settings.svelte';
+  import Welcome from './screens/Welcome.svelte';
+  import { needsWelcome } from './lib/welcome';
 
   onMount(() => {
     document.documentElement.lang = i18n.locale;
     applyTheme(savedTheme());
+    if (needsWelcome()) app.route = 'welcome';
     app.refresh();
     // Held connections are time-limited, so ask often.
     void app.refreshPrompts();
@@ -54,6 +57,8 @@
     <Assistant />
   {:else if app.route === 'settings'}
     <Settings />
+  {:else if app.route === 'welcome'}
+    <Welcome />
   {/if}
 </AppShell>
 <PromptDialog />

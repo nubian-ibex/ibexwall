@@ -16,7 +16,8 @@ export type Route =
   | 'hardening'
   | 'compliance'
   | 'organisation'
-  | 'settings';
+  | 'settings'
+  | 'welcome';
 
 type Load<T> =
   { status: 'loading' } | { status: 'ready'; data: T } | { status: 'error'; error: TransportError };

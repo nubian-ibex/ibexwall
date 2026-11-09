@@ -555,3 +555,35 @@ missing-title = Ce dont certaines protections ont besoin
 missing-body = Ces protections sont activées mais ont besoin d'un programme qui n'est pas installé. IbexWall n'installe rien lui-même : copiez une commande, exécutez-la dans un terminal, puis vérifiez à nouveau.
 missing-copy = Copier la commande
 missing-copied = Copié
+
+## First run
+welcome-step = Étape { $step } sur { $total }
+welcome-intro-title = Bienvenue dans IbexWall
+welcome-intro-body = IbexWall vérifie comment cet ordinateur est protégé et vous aide à le changer : le pare-feu, le DNS sécurisé, les mises à jour, les comptes et plus. Chaque modification est montrée avant d'avoir lieu et peut être annulée depuis l'Historique.
+welcome-intro-password = Les modifications du système demandent un administrateur : votre bureau demande votre mot de passe et le retient quelques minutes.
+welcome-intro-local = Tout reste sur cet ordinateur. IbexWall n'envoie rien nulle part.
+welcome-check-title = Une première vérification
+welcome-check-body = IbexWall regarde les protections activées et donne un score. Il ne fait que lire ; rien n'est modifié.
+welcome-check-run = Vérifier maintenant
+welcome-check-again = Vérifier à nouveau
+welcome-check-score = Votre score est de { $score } sur 100. La Vue d'ensemble montre ce qui l'améliorerait.
+welcome-protect-title = Activer des protections
+welcome-protect-body = Ces protections lisent et avertissent ; elles ne changent rien tant que vous ne le demandez pas. Choisissez celles à activer ; votre mot de passe est demandé une fois.
+welcome-protect-none = Les protections recommandées sont déjà activées.
+welcome-protect-turn-on = Activer la sélection
+welcome-protect-done = { $count ->
+    [one] Une protection a été activée.
+   *[other] { $count } protections ont été activées.
+}
+welcome-missing-title = Ce qui manque
+welcome-missing-body = Certaines protections ont besoin d'un programme qui n'est pas installé. IbexWall n'installe rien lui-même ; voici les commandes, si vous les voulez. Vous pouvez le faire plus tard depuis la Vue d'ensemble.
+welcome-organisation-title = Si une organisation gère cet ordinateur
+welcome-organisation-body = Au travail, un administrateur peut gérer IbexWall avec une politique signée. Certains réglages sont alors verrouillés, et les Paramètres et l'écran Organisation montrent ce que l'organisation a défini et ce qu'elle reçoit. À la maison, rien ne change.
+welcome-nav = Étapes de bienvenue
+welcome-back = Retour
+welcome-skip = Passer
+welcome-next = Suivant
+welcome-finish = Terminé
+settings-welcome-title = Bienvenue
+settings-welcome-body = Revoir les premières étapes : la vérification, les protections à activer et ce qui manque.
+settings-welcome-open = Afficher l'accueil

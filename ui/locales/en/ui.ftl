@@ -555,3 +555,35 @@ missing-title = What some protections need
 missing-body = These protections are on but need a program that is not installed. IbexWall installs nothing itself: copy a command and run it in a terminal, then check again.
 missing-copy = Copy the command
 missing-copied = Copied
+
+## First run
+welcome-step = Step { $step } of { $total }
+welcome-intro-title = Welcome to IbexWall
+welcome-intro-body = IbexWall checks how this computer is protected and helps you change it: the firewall, secure DNS, updates, accounts and more. Every change is shown before it happens, and can be undone from History.
+welcome-intro-password = Changes to the system need an administrator: your desktop asks for your password, and remembers it for a few minutes.
+welcome-intro-local = Everything stays on this computer. IbexWall sends nothing anywhere.
+welcome-check-title = A first check
+welcome-check-body = IbexWall looks at the protections that are on and gives a score. It only reads; nothing is changed.
+welcome-check-run = Check now
+welcome-check-again = Check again
+welcome-check-score = Your score is { $score } of 100. The Overview shows what would raise it.
+welcome-protect-title = Turn on protections
+welcome-protect-body = These protections read and warn; they change nothing until you ask. Choose the ones to turn on; your password is asked once.
+welcome-protect-none = The recommended protections are already on.
+welcome-protect-turn-on = Turn on the selected ones
+welcome-protect-done = { $count ->
+    [one] One protection was turned on.
+   *[other] { $count } protections were turned on.
+}
+welcome-missing-title = What is missing
+welcome-missing-body = Some protections need a program that is not installed. IbexWall installs nothing itself; here are the commands, if you want them. You can do this later from the Overview.
+welcome-organisation-title = If an organisation manages this computer
+welcome-organisation-body = At work, an administrator may manage IbexWall with a signed policy. Then some settings are locked, and Settings and the Organisation screen show what the organisation set and what it receives. At home, nothing changes.
+welcome-nav = Welcome steps
+welcome-back = Back
+welcome-skip = Skip
+welcome-next = Next
+welcome-finish = Done
+settings-welcome-title = Welcome
+settings-welcome-body = See the first steps again: the check, the protections to turn on and what is missing.
+settings-welcome-open = Show the welcome

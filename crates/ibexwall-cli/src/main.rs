@@ -38,6 +38,12 @@ struct Cli {
     #[arg(long, global = true)]
     json: bool,
 
+    /// Never ask for a password; a change that needs one fails instead.
+    /// Without it, ibexctl lets the daemon ask through the desktop
+    /// session's authentication agent when stdin is a terminal.
+    #[arg(long, global = true)]
+    no_ask_password: bool,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -286,8 +292,29 @@ enum PluginsAction {
     Disable { id: String },
 }
 
+/// Whether changes may ask the person for their password (ADR-0045).
+static ASK_PASSWORD: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+/// Adds `allowInteractiveAuthentication` to the parameters of a call that
+/// changes the machine, when this run may ask for a password.
+pub(crate) fn ask(parameters: serde_json::Value) -> serde_json::Value {
+    ask_if(parameters, *ASK_PASSWORD.get().unwrap_or(&false))
+}
+
+fn ask_if(mut parameters: serde_json::Value, allowed: bool) -> serde_json::Value {
+    if allowed && let Some(map) = parameters.as_object_mut() {
+        map.insert(
+            "allowInteractiveAuthentication".into(),
+            serde_json::Value::Bool(true),
+        );
+    }
+    parameters
+}
+
 fn main() {
     let cli = Cli::parse();
+    use std::io::IsTerminal;
+    let _ = ASK_PASSWORD.set(!cli.no_ask_password && std::io::stdin().is_terminal());
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -503,7 +530,7 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
                 "plan_id": plan_id,
                 "confirm_timeout_s": confirm_timeout,
             });
-            let value = client.call("com.ibexwall.Core.Apply", params).await?;
+            let value = client.call("com.ibexwall.Core.Apply", ask(params)).await?;
             let state = value["transaction"]["state"]
                 .as_str()
                 .unwrap_or_default()
@@ -521,7 +548,9 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
         }
         Command::Confirm { transaction_id } => {
             let params = serde_json::json!({ "transaction_id": transaction_id });
-            client.call("com.ibexwall.Core.Confirm", params).await?;
+            client
+                .call("com.ibexwall.Core.Confirm", ask(params))
+                .await?;
             if !json {
                 println!("confirmed {transaction_id}");
             }
@@ -529,7 +558,9 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
         }
         Command::Rollback { target } => {
             let params = serde_json::json!({ "target": target });
-            let value = client.call("com.ibexwall.Core.Rollback", params).await?;
+            let value = client
+                .call("com.ibexwall.Core.Rollback", ask(params))
+                .await?;
             emit(value, json);
             if !json {
                 println!("rolled back {target}");
@@ -604,3 +635,17 @@ fn default_socket() -> PathBuf {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod ask_tests {
+    use super::ask_if;
+
+    #[test]
+    fn a_change_asks_for_a_password_only_when_allowed() {
+        let asked = ask_if(serde_json::json!({ "target": "t1" }), true);
+        assert_eq!(asked["allowInteractiveAuthentication"], true);
+        assert_eq!(asked["target"], "t1");
+        let quiet = ask_if(serde_json::json!({ "target": "t1" }), false);
+        assert!(quiet.get("allowInteractiveAuthentication").is_none());
+    }
+}

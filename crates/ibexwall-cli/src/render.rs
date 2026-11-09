@@ -406,6 +406,19 @@ pub(crate) fn report_varlink(err: &VarlinkError, json: bool) {
                     err.parameters["action"]
                 )
             }
+            "com.ibexwall.Core.AuthenticationRequired" => {
+                if err.parameters["interactive_possible"] == true {
+                    format!(
+                        ": a password is needed (action {}); run it from a terminal without --no-ask-password, or with sudo",
+                        err.parameters["action"]
+                    )
+                } else {
+                    format!(
+                        ": a password is needed and no authentication agent answered (action {}); run it from the desktop session, or with sudo",
+                        err.parameters["action"]
+                    )
+                }
+            }
             _ => String::new(),
         };
         eprintln!("ibexctl: {}{hint}", err.name);

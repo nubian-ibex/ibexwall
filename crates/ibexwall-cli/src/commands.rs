@@ -76,7 +76,7 @@ pub(crate) async fn plugins(
             let enable = matches!(action, PluginsAction::Enable { .. });
             let params = serde_json::json!({ "id": id, "enabled": enable });
             client
-                .call("com.ibexwall.Core.SetPluginEnabled", params)
+                .call("com.ibexwall.Core.SetPluginEnabled", ask(params))
                 .await?;
             if !json {
                 println!("{} {id}", if enable { "enabled" } else { "disabled" });
@@ -174,7 +174,7 @@ pub(crate) async fn plan_firewall(
     let applied = client
         .call(
             "com.ibexwall.Core.Apply",
-            serde_json::json!({ "plan_id": plan_id, "confirm_timeout_s": null }),
+            ask(serde_json::json!({ "plan_id": plan_id, "confirm_timeout_s": null })),
         )
         .await?;
     let state = applied["transaction"]["state"]
@@ -339,7 +339,7 @@ pub(crate) async fn proposals(
             let value = client
                 .call(
                     "com.ibexwall.Core.DecideProposal",
-                    serde_json::json!({ "id": id, "decision": "approve" }),
+                    ask(serde_json::json!({ "id": id, "decision": "approve" })),
                 )
                 .await?;
             if json {
@@ -352,7 +352,7 @@ pub(crate) async fn proposals(
             client
                 .call(
                     "com.ibexwall.Core.DecideProposal",
-                    serde_json::json!({ "id": id, "decision": "reject" }),
+                    ask(serde_json::json!({ "id": id, "decision": "reject" })),
                 )
                 .await?;
             if !json {

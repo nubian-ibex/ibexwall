@@ -63,7 +63,7 @@ fn generate_test_bundle(workspace: &Path) -> Result<(PathBuf, String)> {
     Ok((anchor_path, bundle_text))
 }
 
-const LIB: &str = r#"
+pub(crate) const LIB: &str = r#"
 set -eE
 if command -v dnf >/dev/null; then FAM=rpm
 elif command -v apt-get >/dev/null; then FAM=deb
@@ -71,7 +71,7 @@ elif command -v pacman >/dev/null; then FAM=arch
 else echo "UNKNOWN PACKAGE FAMILY"; exit 1; fi
 "#;
 
-const BUILD: &str = r#"
+pub(crate) const BUILD: &str = r#"
 rm -rf /tmp/ibx && mkdir -p /tmp/ibx/out1 && tar xzf /tmp/ibx-input.tar.gz -C /tmp/ibx
 cd /tmp/ibx
 case $FAM in
@@ -95,7 +95,7 @@ esac
 echo "METRIC: built $(ls out1 | wc -l) packages ($FAM)"
 "#;
 
-const INSTALL: &str = r#"
+pub(crate) const INSTALL: &str = r#"
 cd /tmp/ibx
 case $FAM in
 rpm) sudo dnf install -y -q out1/*.rpm >/tmp/install.log 2>&1 || { tail -20 /tmp/install.log; exit 1; } ;;
@@ -136,8 +136,9 @@ fi
 echo "METRIC: tampered bundle refused"
 "#;
 
-pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
-    println!("== f11b: stage ==");
+/// Stages the tree and packs it with the packaging sources, as the
+/// package builds in the VM expect it.
+pub(crate) fn stage_and_pack(workspace: &Path) -> Result<PathBuf> {
     crate::stage::run_stage(&crate::stage::Options {
         destdir: workspace.join("target/stage/root"),
         key_dir: workspace.join("target/devkey"),
@@ -167,6 +168,12 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     if !status.success() {
         bail!("packing the staged tree failed");
     }
+    Ok(input)
+}
+
+pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
+    println!("== f11b: stage ==");
+    let input = stage_and_pack(workspace)?;
 
     let (anchor_path, bundle_text) = generate_test_bundle(workspace)?;
     println!("== f11b: provision ==");

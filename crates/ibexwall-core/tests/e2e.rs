@@ -740,8 +740,9 @@ async fn read_methods_and_error_paths() {
         ),
         (
             "PlanChange",
+            // The plugin's own refusal reaches the client as such.
             json!({ "plugin": "dev.echo", "patch": { "template": "bogus" } }),
-            "com.ibexwall.Core.Conflict",
+            "com.ibexwall.Core.InvalidArgument",
         ),
         (
             "Apply",

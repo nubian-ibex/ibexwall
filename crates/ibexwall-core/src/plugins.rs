@@ -276,7 +276,12 @@ async fn call_with_timeout(
     )
     .await
     .map_err(|_| anyhow::anyhow!("plugin {method} call timed out"))?
-    .map_err(|e| anyhow::anyhow!("plugin {method} call failed: {e}"))
+    // Keep the plugin's own error, so a refusal it explains (an invalid
+    // argument) can reach the person as such.
+    .map_err(|e| {
+        let text = format!("plugin {method} call failed: {e}");
+        anyhow::Error::new(e).context(text)
+    })
 }
 
 fn resolve_binary(_marker: &Path, manifest: &Manifest) -> Result<PathBuf> {

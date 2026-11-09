@@ -1092,11 +1092,19 @@ async fn build_plan(
     }
 
     // Ask the plugin for its proposed operations.
-    let ops = core
-        .plugins
-        .plan(&plugin, patch)
-        .await
-        .map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?;
+    let ops = core.plugins.plan(&plugin, patch).await.map_err(|e| {
+        // The plugin refused the request and said why: pass that on, so
+        // the app shows the reason instead of a transport error.
+        match e
+            .chain()
+            .find_map(|cause| cause.downcast_ref::<VarlinkError>())
+        {
+            Some(refusal) if refusal.name.ends_with(".InvalidArgument") => {
+                err("InvalidArgument", refusal.parameters.clone())
+            }
+            _ => err("Conflict", json!({ "reason": e.to_string() })),
+        }
+    })?;
 
     // The gate: validate every op against the manifest.
     let manifest = core

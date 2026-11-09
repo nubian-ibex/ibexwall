@@ -81,3 +81,90 @@ pub struct State {
     /// shown as the manager wrote them.
     pub other: Vec<String>,
 }
+
+impl State {
+    /// Whether `rule` is let in: listed on its own, or inside a range the
+    /// manager allows (Fedora Workstation's zone allows 1025-65535, for
+    /// one, and firewalld then refuses to add a port inside it).
+    pub fn allows(&self, rule: PortRule) -> bool {
+        self.ports.contains(&rule) || self.covering_range(rule).is_some()
+    }
+
+    /// The range rule, as shown, that lets `rule` in.
+    pub fn covering_range(&self, rule: PortRule) -> Option<&str> {
+        self.other
+            .iter()
+            .find(|text| range_covers(text, rule))
+            .map(String::as_str)
+    }
+}
+
+fn in_range(range: &str, separator: char, port: u16) -> bool {
+    let Some((low, high)) = range.split_once(separator) else {
+        return false;
+    };
+    match (low.parse::<u16>(), high.parse::<u16>()) {
+        (Ok(low), Ok(high)) => (low..=high).contains(&port),
+        _ => false,
+    }
+}
+
+fn proto_covers(text: &str, proto: Proto) -> bool {
+    text == proto.name() || text == "any"
+}
+
+/// A firewalld `port a-b/proto` or a plain ufw `allow` tuple whose port is
+/// a range `a:b`, open to every address, inbound.
+fn range_covers(text: &str, rule: PortRule) -> bool {
+    if let Some(rest) = text.strip_prefix("port ") {
+        return rest.split_once('/').is_some_and(|(range, proto)| {
+            proto_covers(proto, rule.proto) && in_range(range, '-', rule.port)
+        });
+    }
+    let fields: Vec<&str> = text.split_whitespace().collect();
+    let [action, proto, dport, dst, sport, src, direction, ..] = fields.as_slice() else {
+        return false;
+    };
+    let open = |net: &&str| matches!(*net, "0.0.0.0/0" | "::/0");
+    *action == "allow"
+        && *direction == "in"
+        && *sport == "any"
+        && open(dst)
+        && open(src)
+        && proto_covers(proto, rule.proto)
+        && in_range(dport, ':', rule.port)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rule(port: u16, proto: Proto) -> PortRule {
+        PortRule { port, proto }
+    }
+
+    #[test]
+    fn a_port_inside_an_allowed_range_is_allowed() {
+        let state = State {
+            ports: vec![rule(22, Proto::Tcp)],
+            other: vec![
+                "port 1025-65535/tcp".into(),
+                "allow udp 5000:6000 0.0.0.0/0 any 0.0.0.0/0 in".into(),
+                "allow tcp 700:800 0.0.0.0/0 any 192.168.1.0/24 in".into(),
+                "rule family=ipv4 accept".into(),
+            ],
+            ..State::default()
+        };
+        assert!(state.allows(rule(22, Proto::Tcp)));
+        assert!(state.allows(rule(9099, Proto::Tcp)));
+        assert_eq!(
+            state.covering_range(rule(9099, Proto::Tcp)),
+            Some("port 1025-65535/tcp")
+        );
+        assert!(!state.allows(rule(9099, Proto::Udp)));
+        assert!(!state.allows(rule(80, Proto::Tcp)));
+        assert!(state.allows(rule(5500, Proto::Udp)));
+        // A range open to one network only does not let everyone in.
+        assert!(!state.allows(rule(750, Proto::Tcp)));
+    }
+}

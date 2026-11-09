@@ -643,10 +643,40 @@ pub fn apply_snapshot_inverses(
                 );
             }
             SnapshotEntry::Firewall { backend, .. } => {
-                if let Some(backend) = ibexwall_firewall::Backend::from_name(backend)
-                    && let Some(argv) = ibexwall_firewall::reload_argv(backend)
-                {
-                    attempt!(format!("reload {backend:?}"), sys.runner.run(&argv));
+                let Some(backend) = ibexwall_firewall::Backend::from_name(backend) else {
+                    continue;
+                };
+                // A reload leaves a just-enabled ufw on: when the restored
+                // configuration says it was off, turn it off (ADR-0046).
+                let was_off = backend == ibexwall_firewall::Backend::Ufw
+                    && sys
+                        .fs
+                        .read(Path::new("/etc/ufw/ufw.conf"))
+                        .ok()
+                        .and_then(|bytes| {
+                            ibexwall_firewall::parse::ufw_enabled(&String::from_utf8_lossy(&bytes))
+                        })
+                        == Some(false);
+                // A firewalld this rollback stops (the transaction started
+                // it) reads the restored files when it starts again;
+                // asking it to reload fails.
+                let stopped = backend == ibexwall_firewall::Backend::Firewalld
+                    && manifest.entries.iter().any(|entry| {
+                        matches!(entry, SnapshotEntry::Unit { unit, active: false, .. }
+                            if unit == "firewalld.service")
+                    });
+                let argv = if was_off {
+                    Some(vec![
+                        ibexwall_firewall::action::UFW.to_string(),
+                        "disable".into(),
+                    ])
+                } else if stopped {
+                    None
+                } else {
+                    ibexwall_firewall::reload_argv(backend)
+                };
+                if let Some(argv) = argv {
+                    attempt!(format!("restore {backend:?}"), sys.runner.run(&argv));
                 }
             }
             _ => {}
@@ -747,6 +777,93 @@ mod tests {
             b"later"
         );
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_ufw_rollback_follows_the_restored_configuration() {
+        use std::sync::Arc;
+        let fs = Arc::new(crate::FakeFs::new());
+        let runner = Arc::new(crate::firewall::FakeRunner::new());
+        let sys = crate::SysBundle {
+            fs: fs.clone(),
+            runner: runner.clone(),
+            systemd: Arc::new(crate::FakeSystemd::new()),
+            sysctl: Arc::new(crate::FakeSysctl::new()),
+            clock: Arc::new(crate::FakeClock::new(1_793_534_400)),
+            nft: Arc::new(crate::FakeNft::new()),
+            allow_system_executors: false,
+            use_transient_executor: false,
+            executor_work_dir: None,
+        };
+        let manifest = SnapshotManifest {
+            tx: "tx1".into(),
+            entries: vec![SnapshotEntry::Firewall {
+                op_index: 0,
+                backend: "ufw".into(),
+            }],
+        };
+        // It was off before the transaction turned it on: turn it off.
+        fs.seed(Path::new("/etc/ufw/ufw.conf"), b"ENABLED=no\n");
+        apply_snapshot_inverses(&sys, Path::new("/nonexistent"), &manifest).unwrap();
+        // It was on: re-read the restored rules.
+        fs.seed(Path::new("/etc/ufw/ufw.conf"), b"ENABLED=yes\n");
+        apply_snapshot_inverses(&sys, Path::new("/nonexistent"), &manifest).unwrap();
+        assert_eq!(
+            runner.calls(),
+            vec![
+                vec!["/usr/sbin/ufw".to_string(), "disable".into()],
+                vec!["/usr/sbin/ufw".to_string(), "reload".into()],
+            ]
+        );
+    }
+
+    #[test]
+    fn a_stopped_firewalld_is_not_asked_to_reload() {
+        use std::sync::Arc;
+        let runner = Arc::new(crate::firewall::FakeRunner::new());
+        let sys = crate::SysBundle {
+            fs: Arc::new(crate::FakeFs::new()),
+            runner: runner.clone(),
+            systemd: Arc::new(crate::FakeSystemd::new()),
+            sysctl: Arc::new(crate::FakeSysctl::new()),
+            clock: Arc::new(crate::FakeClock::new(1_793_534_400)),
+            nft: Arc::new(crate::FakeNft::new()),
+            allow_system_executors: false,
+            use_transient_executor: false,
+            executor_work_dir: None,
+        };
+        let manifest = SnapshotManifest {
+            tx: "tx1".into(),
+            entries: vec![SnapshotEntry::Firewall {
+                op_index: 1,
+                backend: "firewalld".into(),
+            }],
+        };
+        // A firewalld that was already running is told to reload.
+        apply_snapshot_inverses(&sys, Path::new("/nonexistent"), &manifest).unwrap();
+        assert_eq!(
+            runner.calls(),
+            vec![vec!["/usr/bin/firewall-cmd".to_string(), "--reload".into()]]
+        );
+        // One the transaction started is stopped by the rollback instead.
+        let started = SnapshotManifest {
+            tx: "tx2".into(),
+            entries: vec![
+                SnapshotEntry::Unit {
+                    op_index: 0,
+                    unit: "firewalld.service".into(),
+                    enabled: serde_json::to_string(&crate::Enabled::Disabled).unwrap(),
+                    active: false,
+                    restarted: false,
+                },
+                SnapshotEntry::Firewall {
+                    op_index: 1,
+                    backend: "firewalld".into(),
+                },
+            ],
+        };
+        apply_snapshot_inverses(&sys, Path::new("/nonexistent"), &started).unwrap();
+        assert_eq!(runner.calls().len(), 1, "{:?}", runner.calls());
     }
 
     #[test]

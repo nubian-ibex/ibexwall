@@ -168,6 +168,15 @@ Phases, newest first (report, plan):
    rpm carries the builder's dist tag (`fc45`); the packages are not in
    `SHA256SUMS` (attested instead); the resolver log line "answers
    channel unavailable: Permission denied" is not investigated.
+0b. Blocking for v0.1.1 (found installing v0.1.0 as a desktop user):
+   nothing can be changed from the app. The daemon asks polkit with no
+   interactive flag, so actions that need `auth_admin_keep` (apply,
+   rollback, plugins.manage) are denied and no password prompt appears.
+   Needs an ADR (the spec said no interactive flag). Also: the sidebar
+   scrolls with the page and its "protection active" footer is a fixed
+   string; Organisation shows in the main menu without managed mode; no
+   first-run onboarding for dependencies and permissions; the VM matrix
+   runs as root and cannot catch any of this.
 1. The maintainer's call on `docs/plans/F10c-audit-fixes.md`, then its
    M1 (P0) and M2 (transaction engine) before any v1.0 tag; M3 and M4
    (the rest of the audit, fuzz decision) after.

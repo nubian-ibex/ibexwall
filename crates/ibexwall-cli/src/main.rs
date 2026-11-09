@@ -203,6 +203,11 @@ enum AppsAction {
         #[arg(value_parser = ["allow", "monitor", "ask"])]
         mode: String,
     },
+    /// Turn the connection monitor on or off (on at once and at boot).
+    Monitor {
+        #[arg(value_parser = ["on", "off"])]
+        state: String,
+    },
     /// Choose what an application may do on the network.
     Set {
         /// Key from `apps list`.

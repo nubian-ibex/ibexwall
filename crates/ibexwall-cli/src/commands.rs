@@ -223,6 +223,18 @@ pub(crate) async fn apps(
                 println!("apps nobody decided about: {mode}");
             }
         }
+        AppsAction::Monitor { state } => {
+            let enabled = state == "on";
+            client
+                .call(
+                    "com.ibexwall.Core.SetMonitorEnabled",
+                    ask(serde_json::json!({ "enabled": enabled })),
+                )
+                .await?;
+            if !json {
+                println!("connection monitor: {state}");
+            }
+        }
         AppsAction::Set { app, mode } => {
             let value = client
                 .call(

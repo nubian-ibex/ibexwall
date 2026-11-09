@@ -549,3 +549,9 @@ settings-managed-title = Organisation
 settings-managed-yes = Une organisation gère cet ordinateur avec une politique signée. Certains réglages sont verrouillés.
 settings-managed-no = Cet ordinateur n'est pas géré par une organisation. Si votre entreprise utilise IbexWall, son administrateur applique une politique signée, et cette section et l'écran Organisation montrent alors ce qu'elle définit.
 settings-managed-open = Ouvrir l'écran Organisation
+
+## What is missing
+missing-title = Ce dont certaines protections ont besoin
+missing-body = Ces protections sont activées mais ont besoin d'un programme qui n'est pas installé. IbexWall n'installe rien lui-même : copiez une commande, exécutez-la dans un terminal, puis vérifiez à nouveau.
+missing-copy = Copier la commande
+missing-copied = Copié

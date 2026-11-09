@@ -549,3 +549,9 @@ settings-managed-title = Verwaltung
 settings-managed-yes = Dieser Computer wird mit einer signierten Richtlinie verwaltet. Einige Einstellungen sind gesperrt.
 settings-managed-no = Dieser Computer wird nicht zentral verwaltet. Wenn Ihr Unternehmen IbexWall nutzt, wendet dessen Administrator eine signierte Richtlinie an; dann zeigen dieser Abschnitt und der Bildschirm Verwaltung, was sie festlegt.
 settings-managed-open = Bildschirm Verwaltung öffnen
+
+## What is missing
+missing-title = Was einige Schutzfunktionen brauchen
+missing-body = Diese Schutzfunktionen sind eingeschaltet, brauchen aber ein Programm, das nicht installiert ist. IbexWall installiert selbst nichts: Kopieren Sie einen Befehl, führen Sie ihn in einem Terminal aus und prüfen Sie dann erneut.
+missing-copy = Befehl kopieren
+missing-copied = Kopiert

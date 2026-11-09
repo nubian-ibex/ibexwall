@@ -6,6 +6,7 @@
   import { relativeTime } from '../lib/time';
   import Button from '../components/Button.svelte';
   import Icon from '../components/Icon.svelte';
+  import MissingPrograms from '../components/MissingPrograms.svelte';
   import ProtectionCard from '../components/ProtectionCard.svelte';
   import ScoreRing from '../components/ScoreRing.svelte';
   import StateMessage from '../components/StateMessage.svelte';
@@ -96,6 +97,8 @@
       {/each}
     </div>
   {/if}
+
+  <MissingPrograms />
 {/if}
 
 <style>

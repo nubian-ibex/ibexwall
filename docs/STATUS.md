@@ -177,6 +177,9 @@ Phases, newest first (report, plan):
    string; Organisation shows in the main menu without managed mode; no
    first-run onboarding for dependencies and permissions; the VM matrix
    runs as root and cannot catch any of this.
+   The resolver answers socket never opens in a packaged install:
+   `/run/ibexwall/dns` is `ibexwall-dns` 0750 and ibexwalld has no
+   CAP_DAC_OVERRIDE, so the monitor gets no DNS answers.
 1. The maintainer's call on `docs/plans/F10c-audit-fixes.md`, then its
    M1 (P0) and M2 (transaction engine) before any v1.0 tag; M3 and M4
    (the rest of the audit, fuzz decision) after.

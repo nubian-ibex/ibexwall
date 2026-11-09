@@ -6,6 +6,7 @@
     PROFILES,
     PROTOCOLS,
     canEnableBasic,
+    canTurnOnManager,
     canSwitchProfile,
     format,
     hasServices,
@@ -143,6 +144,29 @@
     <section class="card notice" role="status">
       <h2>{t('firewall-plugin-off-title')}</h2>
       <p class="muted">{t('firewall-plugin-off-body')}</p>
+    </section>
+  {/if}
+
+  {#if canTurnOnManager(fw)}
+    <section class="card" aria-labelledby="fw-turn-on">
+      <h2 id="fw-turn-on">{t('firewall-turn-on-title')}</h2>
+      <p>
+        {t('firewall-turn-on-body', { manager: t(`firewall-manager-${fw.backend}`) })}
+      </p>
+      <label class="check">
+        <input type="checkbox" bind:checked={keepListening} />
+        <span>{t('firewall-enable-keep')}</span>
+      </label>
+      <div>
+        <button
+          type="button"
+          class="action"
+          disabled={!controls}
+          onclick={() => propose({ enable_manager: true, allow_listening: keepListening })}
+        >
+          {t('firewall-turn-on-title')}
+        </button>
+      </div>
     </section>
   {/if}
 

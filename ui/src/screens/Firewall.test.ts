@@ -111,6 +111,30 @@ describe('Firewall screen', () => {
     });
   });
 
+  it('offers to turn on an installed ufw that is off, keeping what listens', async () => {
+    const transport = new FixtureTransport('attention');
+    const state = await transport.getFirewall();
+    vi.spyOn(transport, 'getFirewall').mockResolvedValue({
+      ...state,
+      backend: 'ufw',
+      active: false,
+      zone: null,
+      services: [],
+    });
+    app.useTransport(transport);
+    render(Firewall);
+    await turnOn(transport);
+    expect(await screen.findByRole('heading', { name: 'The firewall is off' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: /turn on basic protection/i })).toBeNull();
+    const plan = vi.spyOn(transport, 'planChange');
+    await fireEvent.click(screen.getByRole('button', { name: 'Turn on the firewall' }));
+    await fireEvent.click(await screen.findByRole('button', { name: /simulate/i }));
+    expect(plan).toHaveBeenCalledWith('net.firewall', {
+      enable_manager: true,
+      allow_listening: true,
+    });
+  });
+
   it('renders in Portuguese', async () => {
     i18n.set('pt-BR');
     await open();

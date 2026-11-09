@@ -50,3 +50,8 @@ export function profileOf(name: string): ProfileId {
 export function canEnableBasic(state: FirewallState): boolean {
   return state.backend === 'nftables' && state.active !== true;
 }
+
+/** firewalld or ufw is installed but off: IbexWall can turn it on (ADR-0046). */
+export function canTurnOnManager(state: FirewallState): boolean {
+  return (state.backend === 'firewalld' || state.backend === 'ufw') && state.active === false;
+}

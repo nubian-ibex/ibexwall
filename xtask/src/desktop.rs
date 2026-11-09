@@ -184,6 +184,23 @@ sudo rm -f /etc/polkit-1/rules.d/00-ibexwall-test.rules
 echo "METRIC: with no agent a change says no dialog could be shown"
 "#;
 
+/// The administrators group: shipped empty; a member changes IbexWall
+/// without a password, and leaving the group takes that away.
+const ADMINS: &str = r#"
+getent group ibexwall-admins >/dev/null || { echo "NO ibexwall-admins GROUP"; exit 1; }
+[ -z "$(getent group ibexwall-admins | cut -d: -f4)" ] || { echo "THE GROUP IS NOT EMPTY"; exit 1; }
+sudo gpasswd -a ibxuser ibexwall-admins >/dev/null
+out=$(sudo -u ibxuser ibexctl --json plugins disable system.audit 2>&1 </dev/null) || {
+  echo "A MEMBER WAS REFUSED: $out"; sudo gpasswd -d ibxuser ibexwall-admins >/dev/null; exit 1;
+}
+sudo gpasswd -d ibxuser ibexwall-admins >/dev/null
+sudo ibexctl plugins list | grep -Eq '^system\.audit +off' || { echo "THE CHANGE DID NOT HAPPEN"; exit 1; }
+if sudo -u ibxuser ibexctl --json plugins enable system.audit </dev/null >/dev/null 2>&1; then
+  echo "A FORMER MEMBER STILL CHANGES WITHOUT A PASSWORD"; exit 1
+fi
+echo "METRIC: ibexwall-admins ships empty; a member changes without a password, and no longer once removed"
+"#;
+
 pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     println!("== desktop: stage ==");
     let input = stage_and_pack(workspace)?;
@@ -212,6 +229,7 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     scenario!("d5 the agent asks and the change goes through", AGENT_OK);
     scenario!("d6 a wrong password is a refusal", AGENT_WRONG);
     scenario!("d7 no agent, no dialog", NO_AGENT);
+    scenario!("d8 the administrators group", ADMINS);
 
     if failures == 0 {
         println!("PASS: desktop suite (all scenarios)");

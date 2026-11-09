@@ -39,6 +39,11 @@ pub enum FirewallAction {
     },
     /// firewalld only: the zone interfaces without one fall into.
     SetDefaultZone { name: String },
+    /// ufw only: turn the firewall on (ADR-0046). firewalld is started as
+    /// a systemd unit instead, by the unit operations.
+    Enable,
+    /// ufw only: turn the firewall off.
+    Disable,
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -73,7 +78,7 @@ impl FirewallAction {
             | Self::RemovePort { zone, .. }
             | Self::AllowService { zone, .. }
             | Self::RemoveService { zone, .. } => zone.as_deref(),
-            Self::SetDefaultZone { .. } => None,
+            Self::SetDefaultZone { .. } | Self::Enable | Self::Disable => None,
         }
     }
 
@@ -84,6 +89,8 @@ impl FirewallAction {
             Self::AllowService { .. } => "allow_service",
             Self::RemoveService { .. } => "remove_service",
             Self::SetDefaultZone { .. } => "set_default_zone",
+            Self::Enable => "enable",
+            Self::Disable => "disable",
         }
     }
 }
@@ -111,6 +118,14 @@ pub fn validate(backend: Backend, action: &FirewallAction) -> Result<(), ActionE
         return Err(ActionError::BadName(zone.into()));
     }
     match backend {
+        Backend::Firewalld
+            if matches!(action, FirewallAction::Enable | FirewallAction::Disable) =>
+        {
+            Err(ActionError::Unsupported {
+                backend: "firewalld",
+                what: action.what(),
+            })
+        }
         Backend::Firewalld => Ok(()),
         Backend::Ufw => {
             // ufw has no zones, and its "services" are application
@@ -162,6 +177,7 @@ pub fn argv(backend: Backend, action: &FirewallAction) -> Vec<Vec<String>> {
                         format!("--set-default-zone={name}"),
                     ]];
                 }
+                FirewallAction::Enable | FirewallAction::Disable => return vec![],
             };
             let command = |permanent: bool| {
                 let mut words = vec![FIREWALL_CMD.to_string()];
@@ -191,6 +207,10 @@ pub fn argv(backend: Backend, action: &FirewallAction) -> Vec<Vec<String>> {
                 "allow".into(),
                 format!("{port}/{}", proto.name()),
             ]],
+            // --force: ufw would otherwise ask whether to keep SSH
+            // sessions, and there is no one at its prompt.
+            FirewallAction::Enable => vec![vec![UFW.into(), "--force".into(), "enable".into()]],
+            FirewallAction::Disable => vec![vec![UFW.into(), "disable".into()]],
             _ => vec![],
         },
         Backend::Nftables => vec![],
@@ -226,7 +246,12 @@ pub fn snapshot_paths(
                 vec![]
             }
         }
-        Backend::Ufw => vec!["/etc/ufw/user.rules".into(), "/etc/ufw/user6.rules".into()],
+        Backend::Ufw => vec![
+            "/etc/ufw/user.rules".into(),
+            "/etc/ufw/user6.rules".into(),
+            // Whether it is on: rollback converges on this file.
+            "/etc/ufw/ufw.conf".into(),
+        ],
         Backend::Nftables => vec![],
     }
 }
@@ -265,6 +290,26 @@ mod tests {
                 "--zone=FedoraWorkstation",
                 "--remove-service=ssh"
             ]
+        );
+    }
+
+    #[test]
+    fn ufw_turns_on_and_off_and_firewalld_does_not_through_here() {
+        assert_eq!(
+            argv(Backend::Ufw, &FirewallAction::Enable),
+            vec![vec![UFW.to_string(), "--force".into(), "enable".into()]]
+        );
+        assert_eq!(
+            argv(Backend::Ufw, &FirewallAction::Disable),
+            vec![vec![UFW.to_string(), "disable".into()]]
+        );
+        assert!(validate(Backend::Firewalld, &FirewallAction::Enable).is_err());
+        assert!(argv(Backend::Firewalld, &FirewallAction::Enable).is_empty());
+        let action: FirewallAction = serde_json::from_str(r#"{"action":"enable"}"#).unwrap();
+        assert_eq!(action, FirewallAction::Enable);
+        assert!(
+            snapshot_paths(Backend::Ufw, &FirewallAction::Enable, "public")
+                .contains(&"/etc/ufw/ufw.conf".to_string())
         );
     }
 
@@ -352,7 +397,7 @@ mod tests {
         assert!(snapshot_paths(Backend::Firewalld, &allow(1, Proto::Tcp), "../x").is_empty());
         assert_eq!(
             snapshot_paths(Backend::Ufw, &allow(1, Proto::Tcp), "").len(),
-            2
+            3
         );
     }
 

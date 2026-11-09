@@ -7,13 +7,12 @@ Last updated: 2026-11-07 (F11b fully delivered; all five distros green)
 
 ## Current phase
 
-**Now: v0.1.1, desktop fixes.** v0.1.0 is published; installing it on
-Fedora 45 and Ubuntu 26.10 (KDE) showed the app cannot change anything
-as a desktop user. Plan: `docs/plans/v0.1.1-desktop-fixes.md` (M1 to
-M7). Decision: ADR-0045 (interactive polkit authorization, option 1:
-an `allowInteractiveAuthentication` field per call). Both are proposed
-and wait for the maintainer's approval. Next after it: the first-run
-assistant (B-04/B-06).
+**Now: v0.1.1, desktop fixes, built and waiting for a person.** M1 to M6
+of `docs/plans/v0.1.1-desktop-fixes.md` are done and verified (report:
+`docs/reports/v0.1.1-report.md`); the release `v0.1.1` is a **draft**.
+Left (M7): in the desktop app, type the password and make real changes
+on the Fedora and Ubuntu KDE VMs, then publish the release and deploy the
+docs. Next after it: the first-run assistant (B-04/B-06).
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five
@@ -176,18 +175,9 @@ Phases, newest first (report, plan):
    rpm carries the builder's dist tag (`fc45`); the packages are not in
    `SHA256SUMS` (attested instead); the resolver log line "answers
    channel unavailable: Permission denied" is not investigated.
-0b. Blocking for v0.1.1 (found installing v0.1.0 as a desktop user):
-   nothing can be changed from the app. The daemon asks polkit with no
-   interactive flag, so actions that need `auth_admin_keep` (apply,
-   rollback, plugins.manage) are denied and no password prompt appears.
-   ADR-0045 and `docs/plans/v0.1.1-desktop-fixes.md` cover it. Also: the sidebar
-   scrolls with the page and its "protection active" footer is a fixed
-   string; Organisation shows in the main menu without managed mode; no
-   first-run onboarding for dependencies and permissions; the VM matrix
-   runs as root and cannot catch any of this.
-   The resolver answers socket never opens in a packaged install:
-   `/run/ibexwall/dns` is `ibexwall-dns` 0750 and ibexwalld has no
-   CAP_DAC_OVERRIDE, so the monitor gets no DNS answers.
+0b. v0.1.1 fixes the desktop findings (password prompts, the resolver
+   socket, sidebar, Organisation, fresh audit chain); draft release,
+   waiting for the manual check in the app.
 1. The maintainer's call on `docs/plans/F10c-audit-fixes.md`, then its
    M1 (P0) and M2 (transaction engine) before any v1.0 tag; M3 and M4
    (the rest of the audit, fuzz decision) after.

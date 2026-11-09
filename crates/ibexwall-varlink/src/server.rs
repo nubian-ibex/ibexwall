@@ -335,6 +335,7 @@ async fn connection(
 
         let mut dispatch_done = false;
         let mut wrote_any = false;
+        let mut watch_peer = true;
         // Drive the handler and the writer concurrently; for oneway
         // calls the replies are discarded. The `if` guards prevent
         // polling a completed future or a closed channel again.
@@ -342,6 +343,16 @@ async fn connection(
             tokio::select! {
                 _ = dispatch.as_mut(), if !dispatch_done => {
                     dispatch_done = true;
+                }
+                // A client that hangs up mid-call takes the call with it:
+                // dropping the handler cancels what it waits on (a polkit
+                // password dialog, ADR-0045). Data instead of a hang-up is
+                // the next request, left for the framer.
+                closed = peer_closed(&reader), if watch_peer && !dispatch_done => {
+                    if closed {
+                        return Ok(());
+                    }
+                    watch_peer = false;
                 }
                 item = stream.next() => match item {
                     Some(reply) => {
@@ -367,6 +378,33 @@ async fn connection(
                     }
                 },
             }
+        }
+    }
+}
+
+/// Waits until the peer either sends more data (false) or hangs up
+/// (true), without consuming anything: the check peeks one byte.
+async fn peer_closed(reader: &tokio::net::unix::OwnedReadHalf) -> bool {
+    let stream: &UnixStream = reader.as_ref();
+    loop {
+        if stream.readable().await.is_err() {
+            return true;
+        }
+        let peeked = stream.try_io(tokio::io::Interest::READABLE, || {
+            let mut byte = [0u8; 1];
+            rustix::net::recv(
+                stream,
+                &mut byte[..],
+                rustix::net::RecvFlags::PEEK | rustix::net::RecvFlags::DONTWAIT,
+            )
+            .map(|(read, _)| read)
+            .map_err(std::io::Error::from)
+        });
+        match peeked {
+            Ok(0) => return true,
+            Ok(_) => return false,
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
+            Err(_) => return true,
         }
     }
 }
@@ -418,6 +456,74 @@ mod tests {
 
     struct Echo;
 
+    static WAIT_DROPPED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+    fn test_info() -> ServiceInfo {
+        ServiceInfo {
+            vendor: "Nubian Ibex".into(),
+            product: "test".into(),
+            version: "1".into(),
+            url: "https://ibexwall.com".into(),
+            interfaces: HashMap::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_client_that_hangs_up_takes_its_call_with_it() {
+        let path = tmp_socket();
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+        tokio::spawn(serve(listener, test_info(), Arc::new(Echo)));
+
+        let mut raw = UnixStream::connect(&path).await.unwrap();
+        use tokio::io::AsyncWriteExt;
+        raw.write_all(b"{\"method\":\"com.test.Wait\",\"parameters\":{}}\0")
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(!WAIT_DROPPED.load(std::sync::atomic::Ordering::SeqCst));
+        drop(raw);
+        for _ in 0..50 {
+            if WAIT_DROPPED.load(std::sync::atomic::Ordering::SeqCst) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        panic!("the call outlived its client");
+    }
+
+    #[tokio::test]
+    async fn requests_sent_back_to_back_are_both_answered() {
+        let path = tmp_socket();
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+        tokio::spawn(serve(listener, test_info(), Arc::new(Echo)));
+
+        let mut raw = UnixStream::connect(&path).await.unwrap();
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        raw.write_all(
+            b"{\"method\":\"com.test.Echo\",\"parameters\":{\"n\":1}}\0{\"method\":\"com.test.Echo\",\"parameters\":{\"n\":2}}\0",
+        )
+        .await
+        .unwrap();
+        let mut got = Vec::new();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        while got.iter().filter(|&&b| b == 0).count() < 2 {
+            let mut chunk = [0u8; 256];
+            let n = tokio::time::timeout_at(deadline, raw.read(&mut chunk))
+                .await
+                .expect("both replies in time")
+                .unwrap();
+            assert!(n > 0, "the server closed early");
+            got.extend_from_slice(&chunk[..n]);
+        }
+        let text = String::from_utf8(got).unwrap();
+        assert!(
+            text.contains("\"n\":1") && text.contains("\"n\":2"),
+            "{text}"
+        );
+    }
+
     impl Handler for Echo {
         fn handle(&self, call: Call, out: mpsc::Sender<Reply>) -> BoxHandle {
             BoxHandle::new(async move {
@@ -441,6 +547,17 @@ mod tests {
                                 .await;
                         }
                         let _ = out.send(Reply::result(serde_json::json!({ "i": 3 }))).await;
+                    }
+                    "com.test.Wait" => {
+                        // Never answers; records when it is dropped.
+                        struct Flag;
+                        impl Drop for Flag {
+                            fn drop(&mut self) {
+                                WAIT_DROPPED.store(true, std::sync::atomic::Ordering::SeqCst);
+                            }
+                        }
+                        let _flag = Flag;
+                        std::future::pending::<()>().await;
                     }
                     "com.test.Fail" => {
                         let _ = out

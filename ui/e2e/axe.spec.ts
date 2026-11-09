@@ -1,6 +1,11 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 
+// These flows start after the first-run welcome, which has its own tests.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('ibexwall.welcome-done', '1'));
+});
+
 // The build is what ships; accessibility is checked on the built app.
 for (const theme of ['light', 'dark'] as const) {
   for (const locale of ['en', 'pt-BR'] as const) {
@@ -64,7 +69,9 @@ test('keyboard navigation reaches every navigation item', async ({ page }) => {
   await page.goto('/?scenario=attention');
   const overview = page.getByRole('button', { name: 'Overview' });
   await overview.focus();
-  for (let step = 0; step < 10; step += 1) {
+  // Every menu item, then one more Tab into the content.
+  const items = await page.getByRole('navigation').getByRole('button').count();
+  for (let step = 0; step < items; step += 1) {
     await page.keyboard.press('Tab');
   }
   // After the nav, focus moves into the content: the "Check now" button.

@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test';
 
+// These flows start after the first-run welcome, which has its own tests.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('ibexwall.welcome-done', '1'));
+});
+
 test('overview: attention scenario shows the score and the recommendation', async ({ page }) => {
   await page.goto('/?scenario=attention');
   await expect(page.getByRole('heading', { name: /can be better protected/i })).toBeVisible();

@@ -1,3 +1,10 @@
+ibexwall (0.1.1) unstable; urgency=medium
+
+  * Changes from the desktop ask for a password; the resolver's answers
+    reach the monitor; see CHANGELOG.md.
+
+ -- Nubian Ibex <maintainers@nubian-ibex.invalid>  Mon, 09 Nov 2026 12:00:00 +0000
+
 ibexwall (0.1.0) unstable; urgency=medium
 
   * First package.

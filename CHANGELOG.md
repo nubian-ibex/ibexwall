@@ -6,7 +6,7 @@
 Versions follow [Semantic Versioning](https://semver.org). The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## 0.1.1 (unreleased)
+## 0.1.1 (2026-11-09)
 
 Makes the desktop app usable by a person who is not root. Found by
 installing 0.1.0 from the release on Fedora 45 and Ubuntu 26.10 with KDE.

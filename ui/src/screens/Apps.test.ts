@@ -151,4 +151,21 @@ describe('Apps screen', () => {
     expect(await screen.findByRole('alert')).toBeVisible();
     expect(screen.getByRole('button', { name: /try again/i })).toBeVisible();
   });
+
+  it('offers to turn the connection monitor on when it is off', async () => {
+    const transport = new FixtureTransport('attention');
+    const listing = await transport.listApps();
+    vi.spyOn(transport, 'listApps').mockResolvedValue({
+      ...listing,
+      monitor: { running: false, reason: 'waiting for ibexwall-monitor' },
+    });
+    const turnOn = vi.spyOn(transport, 'setMonitorEnabled');
+    app.useTransport(transport);
+    render(Apps);
+    await app.refresh();
+    await fireEvent.click(
+      await screen.findByRole('button', { name: 'Turn on the connection monitor' }),
+    );
+    expect(turnOn).toHaveBeenCalledWith(true);
+  });
 });

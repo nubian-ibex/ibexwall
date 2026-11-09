@@ -250,6 +250,7 @@ apps-monitor-running = El monitor de conexiones está en marcha.
 apps-monitor-limited = El monitor de conexiones está en marcha con una limitación: { $reason }
 apps-monitor-off = El monitor de conexiones está apagado: { $reason }
 apps-monitor-off-body = Las aplicaciones y los destinos aparecen aquí cuando está en marcha. No se bloquea nada mientras está apagado.
+apps-monitor-turn-on = Activar el monitor de conexiones
 apps-search = Buscar aplicaciones
 apps-filters = Filtrar aplicaciones
 apps-filter-all = Todas · { $count }

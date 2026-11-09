@@ -250,6 +250,7 @@ apps-monitor-running = Le moniteur de connexions fonctionne.
 apps-monitor-limited = Le moniteur de connexions fonctionne avec une limite : { $reason }
 apps-monitor-off = Le moniteur de connexions est désactivé : { $reason }
 apps-monitor-off-body = Les applications et les destinations apparaissent ici une fois qu'il fonctionne. Rien n'est bloqué tant qu'il est désactivé.
+apps-monitor-turn-on = Activer le moniteur de connexions
 apps-search = Rechercher des applications
 apps-filters = Filtrer les applications
 apps-filter-all = Toutes · { $count }

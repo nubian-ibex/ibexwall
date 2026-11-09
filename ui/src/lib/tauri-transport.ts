@@ -117,6 +117,10 @@ export class TauriTransport implements Transport {
     await invoke('set_plugin_enabled', { id, enabled });
   }
 
+  async setMonitorEnabled(enabled: boolean): Promise<void> {
+    await invoke('set_monitor_enabled', { enabled });
+  }
+
   async getManifest(id: string): Promise<Record<string, unknown>> {
     return invoke('get_manifest', { id });
   }

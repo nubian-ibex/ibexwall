@@ -250,6 +250,7 @@ apps-monitor-running = The connection monitor is running.
 apps-monitor-limited = The connection monitor is running with a limit: { $reason }
 apps-monitor-off = The connection monitor is off: { $reason }
 apps-monitor-off-body = Apps and destinations appear here once it is running. Nothing is blocked while it is off.
+apps-monitor-turn-on = Turn on the connection monitor
 apps-search = Search apps
 apps-filters = Filter apps
 apps-filter-all = All · { $count }

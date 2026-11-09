@@ -612,6 +612,10 @@ export class FixtureTransport implements Transport {
     return this.gate(() => undefined);
   }
 
+  setMonitorEnabled() {
+    return this.gate(() => undefined);
+  }
+
   makeAssistantToken(request: NewTokenRequest) {
     return this.gate(() => ({
       token: 'ibx_fix01_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789',

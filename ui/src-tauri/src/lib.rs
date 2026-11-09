@@ -16,6 +16,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 /// desktop, so it lets the daemon ask for their password (ADR-0045).
 const ASKS_FOR_PASSWORD: &[&str] = &[
     "SetPluginEnabled",
+    "SetMonitorEnabled",
     "Apply",
     "Confirm",
     "Rollback",
@@ -131,6 +132,13 @@ async fn list_proposals(status: Option<String>) -> Result<Value, Value> {
 #[tauri::command]
 async fn decide_proposal(id: String, decision: String) -> Result<Value, Value> {
     core("DecideProposal", json!({ "id": id, "decision": decision }))
+        .await
+        .map_err(|e| err_text(&e))
+}
+
+#[tauri::command]
+async fn set_monitor_enabled(enabled: bool) -> Result<Value, Value> {
+    core("SetMonitorEnabled", json!({ "enabled": enabled }))
         .await
         .map_err(|e| err_text(&e))
 }
@@ -347,6 +355,7 @@ pub fn run() {
             list_proposals,
             decide_proposal,
             set_plugin_enabled,
+            set_monitor_enabled,
             get_manifest,
             plan_change,
             apply,

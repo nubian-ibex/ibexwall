@@ -41,6 +41,20 @@
   let now = $state(new Date());
   let modeFailure = $state<string | null>(null);
 
+  let monitorBusy = $state(false);
+
+  async function setMonitor(enabled: boolean) {
+    monitorBusy = true;
+    try {
+      await app.change(() => app.transport.setMonitorEnabled(enabled));
+      // The unit needs a moment to attach and connect to the core.
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await load();
+    } finally {
+      monitorBusy = false;
+    }
+  }
+
   async function load() {
     try {
       listing = { status: 'ready', data: await app.transport.listApps() };
@@ -154,6 +168,11 @@
     <section class="notice warning" role="status">
       <strong>{t('apps-monitor-off', { reason: monitor.reason ?? '' })}</strong>
       <span>{t('apps-monitor-off-body')}</span>
+      <div>
+        <Button variant="primary" busy={monitorBusy} onclick={() => setMonitor(true)}>
+          {t('apps-monitor-turn-on')}
+        </Button>
+      </div>
     </section>
   {:else if monitor?.reason}
     <section class="notice" role="status">

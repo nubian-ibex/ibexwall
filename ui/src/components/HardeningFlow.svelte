@@ -4,7 +4,7 @@
   // they are shown together, applied one after the other, and undone in
   // reverse. Nothing is applied by simulating.
   import { app } from '../lib/app.svelte';
-  import { TransportError } from '../lib/transport';
+  import { changeErrorKey, TransportError } from '../lib/transport';
   import { t } from '../lib/i18n.svelte';
   import { groupByPlugin, type Item } from '../lib/hardening';
   import type { Plan, Transaction } from '../gen/contracts';
@@ -29,7 +29,7 @@
         return typeof field === 'string' ? `${field}: ${reason}` : reason;
       }
     }
-    return t('change-failed-other');
+    return t(changeErrorKey(error));
   }
 
   async function simulate() {
@@ -57,7 +57,7 @@
     failure = null;
     try {
       for (const plan of plans) {
-        const tx = await app.transport.apply(plan.id);
+        const tx = await app.waiting(() => app.transport.apply(plan.id));
         applied = [...applied, tx];
         if (tx.state === 'pending_confirm') pending = [...pending, tx];
         if (tx.state === 'failed' || tx.state === 'rolled_back') {
@@ -76,7 +76,12 @@
   }
 
   async function keepAll() {
-    for (const tx of pending) await app.transport.confirm(tx.id);
+    try {
+      for (const tx of pending) await app.waiting(() => app.transport.confirm(tx.id));
+    } catch (error) {
+      failure = describe(error);
+      return;
+    }
     applied = applied.map((a) =>
       pending.some((p) => p.id === a.id) ? { ...a, state: 'committed' } : a,
     );
@@ -88,7 +93,7 @@
     try {
       for (const tx of [...applied].reverse()) {
         if (tx.state === 'committed' || tx.state === 'pending_confirm') {
-          await app.transport.rollback(tx.id);
+          await app.waiting(() => app.transport.rollback(tx.id));
         }
       }
       undone = true;

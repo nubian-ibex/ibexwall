@@ -16,7 +16,7 @@
   } from '../lib/apps';
   import { i18n, t } from '../lib/i18n.svelte';
   import { relativeTime } from '../lib/time';
-  import { TransportError, type AppsListing } from '../lib/transport';
+  import { TransportError, type AppsListing, changeErrorKey } from '../lib/transport';
   import Button from '../components/Button.svelte';
   import ChangeFlow from '../components/ChangeFlow.svelte';
   import StateMessage from '../components/StateMessage.svelte';
@@ -112,12 +112,13 @@
     blockFailure = false;
     try {
       if (blockPlugin && !blockPlugin.enabled) {
-        await app.transport.setPluginEnabled(BLOCK_PLUGIN, true);
+        await app.waiting(() => app.transport.setPluginEnabled(BLOCK_PLUGIN, true));
         await app.refresh();
       }
       blocking = true;
-    } catch {
+    } catch (error) {
       blockFailure = true;
+      app.notice = changeErrorKey(error);
     } finally {
       blockBusy = false;
     }

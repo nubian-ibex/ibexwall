@@ -23,7 +23,7 @@
   async function undo(transaction: string) {
     busy = true;
     try {
-      await app.transport.rollback(transaction);
+      await app.change(() => app.transport.rollback(transaction));
       await load();
     } finally {
       busy = false;

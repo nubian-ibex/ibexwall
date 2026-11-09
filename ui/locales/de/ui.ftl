@@ -201,6 +201,13 @@ dns-review-note = Es ändert sich nichts, bis Sie die genauen Änderungen prüfe
 
 change-failed-title = IbexWall konnte nicht fortfahren
 change-failed-other = Die Anfrage ist fehlgeschlagen. Es wurde nichts geändert.
+change-waiting = Warte auf Autorisierung. Wenn das System nach Ihrem Passwort fragt, geben Sie es im Dialog ein.
+notice-dismiss = Schließen
+auth-refused = Die Änderung wurde nicht autorisiert. Sie braucht einen Administrator dieses Computers.
+auth-required = Diese Änderung braucht das Passwort eines Administrators.
+auth-no-agent = Diese Änderung braucht ein Passwort, aber es konnte kein Passwortdialog angezeigt werden. Öffnen Sie IbexWall aus Ihrer Desktop-Sitzung oder verwenden Sie sudo ibexctl in einem Terminal.
+change-locked = Diese Einstellung ist von Ihrer Verwaltung gesperrt.
+change-unreachable = Der IbexWall-Dienst antwortet nicht. Es wurde nichts geändert.
 
 dns-browser-policy = Das eigene verschlüsselte DNS jedes Browsers ausschalten
 dns-browser-policy-body = Mit Ihrer Zustimmung wird die Browser-Richtlinie geschrieben, die Firefox, Chrome, Chromium, Brave und Edge daran hindert, eigene DoH-Server zu verwenden. Es werden nur Browser angepasst, die auf diesem Computer installiert sind, und das Rückgängigmachen entfernt die Richtlinie.

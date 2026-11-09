@@ -2,7 +2,7 @@
   // The reviewed-change flow every control plugin shares: simulate (show
   // exactly what would change), apply, keep within the deadline or undo.
   import { app } from '../lib/app.svelte';
-  import { TransportError } from '../lib/transport';
+  import { changeErrorKey, TransportError } from '../lib/transport';
   import { t } from '../lib/i18n.svelte';
   import type { Plan, Transaction } from '../gen/contracts';
   import Button from './Button.svelte';
@@ -28,7 +28,7 @@
         return typeof field === 'string' ? `${field}: ${reason}` : reason;
       }
     }
-    return t('change-failed-other');
+    return t(changeErrorKey(error));
   }
 
   async function simulate() {
@@ -46,13 +46,16 @@
 
   async function apply() {
     if (!plan) return;
+    const planId = plan.id;
     busy = true;
     failure = null;
     try {
-      applied = await app.transport.apply(plan.id).catch((error: unknown) => {
-        failure = describe(error);
-        return null;
-      });
+      applied = await app
+        .waiting(() => app.transport.apply(planId))
+        .catch((error: unknown) => {
+          failure = describe(error);
+          return null;
+        });
       if (!applied) return;
       plan = null;
       if (applied.state === 'pending_confirm') keepCountdown = applied;
@@ -63,7 +66,9 @@
 
   async function keep() {
     if (!keepCountdown) return;
-    await app.transport.confirm(keepCountdown.id);
+    const keepId = keepCountdown.id;
+    const kept = await app.change(() => app.transport.confirm(keepId));
+    if (kept === undefined && app.notice) return;
     applied = { ...keepCountdown, state: 'committed' };
     keepCountdown = null;
     await app.refresh();
@@ -71,7 +76,9 @@
 
   async function undo() {
     if (!applied) return;
-    await app.transport.rollback(applied.id);
+    const id = applied.id;
+    const undone = await app.change(() => app.transport.rollback(id));
+    if (undone === undefined) return;
     applied = { ...applied, state: 'rolled_back' };
     keepCountdown = null;
     await app.refresh();

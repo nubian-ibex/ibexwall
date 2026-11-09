@@ -72,7 +72,7 @@
     if (!plugin) return;
     busy = true;
     try {
-      await app.transport.setPluginEnabled(plugin.id, value);
+      await app.change(() => app.transport.setPluginEnabled(plugin.id, value));
       await app.refresh();
     } finally {
       busy = false;

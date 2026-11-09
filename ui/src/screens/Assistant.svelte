@@ -3,7 +3,7 @@
   import { app } from '../lib/app.svelte';
   import { i18n, t } from '../lib/i18n.svelte';
   import { relativeTime } from '../lib/time';
-  import { TransportError } from '../lib/transport';
+  import { TransportError, changeErrorKey } from '../lib/transport';
   import Button from '../components/Button.svelte';
   import Callouts from '../components/Callouts.svelte';
   import DiffViewer from '../components/DiffViewer.svelte';
@@ -33,12 +33,14 @@
     busy = id;
     problem = null;
     try {
-      await app.transport.decideProposal(id, decision);
+      await app.waiting(() => app.transport.decideProposal(id, decision));
     } catch (error) {
       problem =
         error instanceof TransportError && error.code.endsWith('.ProposalStale')
           ? 'assistant-stale'
-          : 'assistant-failed';
+          : changeErrorKey(error) === 'change-failed-other'
+            ? 'assistant-failed'
+            : changeErrorKey(error);
     } finally {
       busy = null;
     }

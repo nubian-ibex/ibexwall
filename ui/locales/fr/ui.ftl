@@ -201,6 +201,13 @@ dns-review-note = Rien ne change tant que vous n'avez pas examiné les modificat
 
 change-failed-title = IbexWall n'a pas pu continuer
 change-failed-other = La demande a échoué. Rien n'a été modifié.
+change-waiting = En attente d'autorisation. Si le système demande votre mot de passe, saisissez-le dans la fenêtre.
+notice-dismiss = Fermer
+auth-refused = La modification n'a pas été autorisée. Elle demande un administrateur de cet ordinateur.
+auth-required = Cette modification demande le mot de passe d'un administrateur.
+auth-no-agent = Cette modification demande un mot de passe, mais aucune fenêtre de mot de passe n'a pu s'afficher. Ouvrez IbexWall depuis votre session de bureau, ou utilisez sudo ibexctl dans un terminal.
+change-locked = Ce réglage est verrouillé par votre organisation.
+change-unreachable = Le service IbexWall ne répond pas. Rien n'a été modifié.
 
 dns-browser-policy = Désactiver le DNS chiffré propre à chaque navigateur
 dns-browser-policy-body = Avec votre accord, écrit la politique qui empêche Firefox, Chrome, Chromium, Brave et Edge d'utiliser leurs propres serveurs DoH. Seuls les navigateurs installés sur cet ordinateur sont touchés, et annuler la modification supprime la politique.

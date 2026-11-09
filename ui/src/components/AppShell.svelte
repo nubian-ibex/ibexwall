@@ -3,6 +3,7 @@
   import { app, type Route } from '../lib/app.svelte';
   import { t } from '../lib/i18n.svelte';
   import Icon from './Icon.svelte';
+  import ChangeStatus from './ChangeStatus.svelte';
   import logo from '../assets/logo.png';
 
   let { children }: { children: Snippet } = $props();
@@ -52,7 +53,7 @@
     </nav>
     <footer><span class="dot" aria-hidden="true"></span>{t('sidebar-status-active')}</footer>
   </aside>
-  <main id="content" tabindex="-1">{@render children()}</main>
+  <main id="content" tabindex="-1"><ChangeStatus />{@render children()}</main>
 </div>
 
 <style>

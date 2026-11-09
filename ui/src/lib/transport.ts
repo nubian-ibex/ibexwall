@@ -36,11 +36,35 @@ export class TransportError extends Error {
     this.name = 'TransportError';
   }
 
-  get kind(): 'denied' | 'locked' | 'unreachable' | 'other' {
+  get kind(): 'denied' | 'auth-required' | 'no-agent' | 'locked' | 'unreachable' | 'other' {
     if (this.code.endsWith('.PermissionDenied')) return 'denied';
+    // ADR-0045: a password is needed. When the call already allowed the
+    // dialog and still got this, no agent could show one.
+    if (this.code.endsWith('.AuthenticationRequired')) {
+      return this.parameters['interactive_possible'] === false ? 'no-agent' : 'auth-required';
+    }
     if (this.code.endsWith('.Locked')) return 'locked';
     if (this.code === 'unreachable') return 'unreachable';
     return 'other';
+  }
+}
+
+/** The message key that explains why a change did not happen. */
+export function changeErrorKey(error: unknown): string {
+  if (!(error instanceof TransportError)) return 'change-failed-other';
+  switch (error.kind) {
+    case 'denied':
+      return 'auth-refused';
+    case 'auth-required':
+      return 'auth-required';
+    case 'no-agent':
+      return 'auth-no-agent';
+    case 'locked':
+      return 'change-locked';
+    case 'unreachable':
+      return 'change-unreachable';
+    default:
+      return 'change-failed-other';
   }
 }
 

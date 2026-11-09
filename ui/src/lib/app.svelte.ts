@@ -1,7 +1,7 @@
 import type { Finding, PluginInfo, Posture, Prompt } from '../gen/contracts';
 import { FixtureTransport, type Scenario } from './fixtures';
 import { insideTauri, TauriTransport } from './tauri-transport';
-import { TransportError, type Transport } from './transport';
+import { changeErrorKey, TransportError, type Transport } from './transport';
 
 export type Route =
   | 'overview'
@@ -33,6 +33,37 @@ class AppState {
   checking = $state(false);
   /** Connections held in Ask mode, waiting for an answer. */
   prompts = $state<Prompt[]>([]);
+  /** Changes sent to the daemon and not answered yet: while one waits,
+   * the system may be showing a password dialog (ADR-0045). */
+  changing = $state(0);
+  /** Why the last change did not happen, as a message key. */
+  notice = $state<string | null>(null);
+
+  /** Runs a change, counting it as pending; errors propagate. */
+  async waiting<T>(work: () => Promise<T>): Promise<T> {
+    this.changing += 1;
+    try {
+      return await work();
+    } finally {
+      this.changing -= 1;
+    }
+  }
+
+  /** Runs a change and reports a failure in the notice instead of
+   * throwing; the result is undefined when it failed. */
+  async change<T>(work: () => Promise<T>): Promise<T | undefined> {
+    this.notice = null;
+    try {
+      return await this.waiting(work);
+    } catch (error) {
+      this.notice = changeErrorKey(error);
+      return undefined;
+    }
+  }
+
+  dismissNotice() {
+    this.notice = null;
+  }
 
   useTransport(transport: Transport) {
     this.transport = transport;

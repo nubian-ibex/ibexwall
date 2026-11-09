@@ -564,6 +564,35 @@ async fn authentication_is_asked_only_when_the_client_allows_it() {
     assert_eq!(refused.parameters["action"], "com.ibexwall.rollback");
 }
 
+/// The person at the machine may read what an organisation locked; only
+/// the policy provider may change it.
+#[tokio::test]
+async fn reading_the_effective_policy_needs_only_read() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let mut polkit = FakePolkit::new();
+    polkit.allow(current_uid(), "com.ibexwall.read");
+    let (_core, mut client) = spawn_daemon(&sandbox, polkit).await;
+    let effective = client
+        .call("com.ibexwall.Policy.GetEffective", json!({}))
+        .await
+        .unwrap();
+    assert_eq!(effective["managed"], false);
+    assert!(effective["locks"].as_array().unwrap().is_empty());
+    let refused = client
+        .call(
+            "com.ibexwall.Policy.BuildReport",
+            json!({ "kind": "posture" }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(refused.name, "com.ibexwall.Core.PermissionDenied");
+    assert_eq!(refused.parameters["action"], "com.ibexwall.policy.provider");
+}
+
 #[tokio::test]
 async fn unsigned_plugins_are_refused_on_use() {
     if plugin_binary().is_none() {

@@ -139,7 +139,7 @@ const POLICY_METHODS: &str = "\
 # Managed-mode policy provider contract; access is restricted to the
 # principal authorized for com.ibexwall.policy.provider.
 method ApplyBundle(bundle: object) -> (version: int, locks: []string)
-method GetEffective() -> (config: object, locks: []string, sources: [string]string)
+method GetEffective() -> (config: object, locks: []string, sources: [string]string, managed: bool)
 method BuildReport(kind: string) -> (report: object)
 method UseBreakGlass(code: string) -> (unlocked: []string, expires_at: string)
 

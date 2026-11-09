@@ -170,16 +170,20 @@ impl Handler for Api {
             // dispatch before the Core prefix strip.
             if let Some(policy_method) = call.method.strip_prefix("com.ibexwall.Policy.") {
                 let identity = identity_of(call.peer);
-                match polkit
-                    .check(names::POLKIT_POLICY_PROVIDER.to_string(), identity)
-                    .await
-                {
+                // Reading the effective policy is reading: the person at
+                // the machine may see what an organisation locked.
+                let action = if policy_method == "GetEffective" {
+                    names::POLKIT_READ
+                } else {
+                    names::POLKIT_POLICY_PROVIDER
+                };
+                match polkit.check(action.to_string(), identity).await {
                     Ok(Decision::Authorized) => {}
                     _ => {
                         let _ = out
                             .send(Reply::error(
                                 "com.ibexwall.Core.PermissionDenied",
-                                serde_json::json!({ "action": names::POLKIT_POLICY_PROVIDER }),
+                                serde_json::json!({ "action": action }),
                             ))
                             .await;
                         return;
@@ -749,10 +753,22 @@ async fn dispatch_policy(
         "GetEffective" => {
             let config = core.config.read().expect("config lock poisoned");
             let locks: Vec<String> = config.locks.clone();
+            let managed = core
+                .state
+                .with_conn(|conn| {
+                    conn.query_row(
+                        "SELECT 1 FROM config WHERE key = 'policy_version'",
+                        [],
+                        |_| Ok(()),
+                    )
+                    .ok()
+                })
+                .is_some();
             Ok(Reply::result(json!({
                 "config": json!({}),
                 "locks": locks,
                 "sources": json!({}),
+                "managed": managed,
             })))
         }
         "BuildReport" => {

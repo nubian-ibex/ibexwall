@@ -12,7 +12,22 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
 /// Calls one Core method and returns its `parameters` object.
-async fn core(method: &str, parameters: Value) -> Result<Value, String> {
+/// The methods that change the machine. The app is a person at their
+/// desktop, so it lets the daemon ask for their password (ADR-0045).
+const ASKS_FOR_PASSWORD: &[&str] = &[
+    "SetPluginEnabled",
+    "Apply",
+    "Confirm",
+    "Rollback",
+    "DecideProposal",
+];
+
+async fn core(method: &str, mut parameters: Value) -> Result<Value, String> {
+    if ASKS_FOR_PASSWORD.contains(&method)
+        && let Some(map) = parameters.as_object_mut()
+    {
+        map.insert("allowInteractiveAuthentication".into(), Value::Bool(true));
+    }
     let socket = names::core_socket();
     let mut client = ibexwall_varlink::Client::connect(&socket)
         .await

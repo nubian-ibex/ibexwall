@@ -517,6 +517,53 @@ async fn unauthorized_callers_get_permission_denied() {
     assert_eq!(err.parameters["action"], "com.ibexwall.plugins.manage");
 }
 
+/// ADR-0045: a person at the desktop gets a password prompt only when the
+/// client asks for one; without it, the daemon says authentication is
+/// required instead of refusing.
+#[tokio::test]
+async fn authentication_is_asked_only_when_the_client_allows_it() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let mut polkit = FakePolkit::new();
+    polkit.challenge(current_uid(), "com.ibexwall.plugins.manage", true);
+    polkit.challenge(current_uid(), "com.ibexwall.rollback", false);
+    let (_core, mut client) = spawn_daemon(&sandbox, polkit).await;
+
+    let quiet = client
+        .call(
+            "com.ibexwall.Core.SetPluginEnabled",
+            json!({ "id": "dev.echo", "enabled": true }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(quiet.name, "com.ibexwall.Core.AuthenticationRequired");
+    assert_eq!(quiet.parameters["action"], "com.ibexwall.plugins.manage");
+    assert_eq!(quiet.parameters["interactive_possible"], true);
+
+    // The person authenticates: the call goes through.
+    client
+        .call(
+            "com.ibexwall.Core.SetPluginEnabled",
+            json!({ "id": "dev.echo", "enabled": true, "allowInteractiveAuthentication": true }),
+        )
+        .await
+        .unwrap();
+
+    // The person refuses: a refusal, not a request to authenticate.
+    let refused = client
+        .call(
+            "com.ibexwall.Core.Rollback",
+            json!({ "target": "nothing", "allowInteractiveAuthentication": true }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(refused.name, "com.ibexwall.Core.PermissionDenied");
+    assert_eq!(refused.parameters["action"], "com.ibexwall.rollback");
+}
+
 #[tokio::test]
 async fn unsigned_plugins_are_refused_on_use() {
     if plugin_binary().is_none() {

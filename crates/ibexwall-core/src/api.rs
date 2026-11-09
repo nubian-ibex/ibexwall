@@ -75,6 +75,18 @@ fn permission_denied(action: &str) -> VarlinkError {
     err("PermissionDenied", json!({ "action": action }))
 }
 
+/// The action needs the person to authenticate. `interactive_possible`
+/// tells the client whether asking again with
+/// `allowInteractiveAuthentication` can help: it cannot when this call
+/// already asked and no agent answered (no graphical session, or the
+/// prompt timed out).
+fn authentication_required(action: &str, asked: bool) -> VarlinkError {
+    err(
+        "AuthenticationRequired",
+        json!({ "action": action, "interactive_possible": !asked }),
+    )
+}
+
 fn invalid_argument(field: &str, reason: String) -> VarlinkError {
     err(
         "InvalidArgument",
@@ -212,13 +224,19 @@ async fn dispatch(
 
     let identity = identity_of(peer);
     let actor = identity.actor();
-    if polkit
-        .check(action.to_string(), identity)
+    // ADR-0045: only a client that asks for it may raise a password dialog.
+    let interactive = parameters
+        .get("allowInteractiveAuthentication")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let decision = polkit
+        .check_with(action.to_string(), identity, interactive)
         .await
-        .map_err(|e| err("Conflict", json!({"reason": e.to_string()})))?
-        != Decision::Authorized
-    {
-        return Err(permission_denied(action));
+        .map_err(|e| err("Conflict", json!({"reason": e.to_string()})))?;
+    match decision {
+        Decision::Authorized => {}
+        Decision::NotAuthorized => return Err(permission_denied(action)),
+        Decision::Challenge => return Err(authentication_required(action, interactive)),
     }
 
     match method {

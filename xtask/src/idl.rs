@@ -67,23 +67,27 @@ const CORE_TYPES: &[&str] = &[
 
 const CORE_METHODS: &str = "\
 # Client-facing API. Subscribe is called with \"more\": true for streaming.
+# allowInteractiveAuthentication (additive, ADR-0045): when true, a method
+# whose polkit action needs authentication may ask the person for their
+# password through their session's agent; absent or false, it answers
+# AuthenticationRequired instead.
 method GetInfo() -> (info: Info)
 method GetPosture() -> (posture: Posture)
 method ListPlugins() -> (plugins: []PluginInfo)
-method SetPluginEnabled(id: string, enabled: bool) -> (plan: ?Plan)
+method SetPluginEnabled(id: string, enabled: bool, allowInteractiveAuthentication: ?bool) -> (plan: ?Plan)
 method GetPlugin(id: string) -> (plugin: PluginInfo, manifest: object)
 method RunChecks(plugin: ?string) -> (findings: []Finding)
 method ListFindings(plugin: ?string, min_severity: ?Severity) -> (findings: []Finding)
 method GetConfig(plugin: string) -> (effective: object, layers: object, locks: []string)
 method PlanChange(plugin: string, patch: object) -> (plan: Plan)
-method Apply(plan_id: string, confirm_timeout_s: ?int) -> (transaction: Transaction)
-method Confirm(transaction_id: string) -> ()
-method Rollback(target: string) -> (transaction: Transaction)
+method Apply(plan_id: string, confirm_timeout_s: ?int, allowInteractiveAuthentication: ?bool) -> (transaction: Transaction)
+method Confirm(transaction_id: string, allowInteractiveAuthentication: ?bool) -> ()
+method Rollback(target: string, allowInteractiveAuthentication: ?bool) -> (transaction: Transaction)
 method History(limit: ?int, before: ?int) -> (entries: []HistoryEntry)
 method Subscribe(sources: ?[]string) -> (event: Event)
 method ListProposals(status: ?string) -> (proposals: []Proposal)
 method CreateProposal(plugin: string, patch: object, justification: string, client: ?string) -> (proposal: Proposal)
-method DecideProposal(id: string, decision: string, patch: ?object) -> (transaction: ?Transaction)
+method DecideProposal(id: string, decision: string, patch: ?object, allowInteractiveAuthentication: ?bool) -> (transaction: ?Transaction)
 
 # Added in v1 (additive): audit chain validation and event history.
 method ListAudit(limit: ?int) -> (entries: []HistoryEntry)
@@ -111,6 +115,7 @@ method GetAppDestinations(app: string) -> (destinations: []AppDestination)
 method GetFirewall() -> (firewall: FirewallState)
 
 error PermissionDenied (action: string)
+error AuthenticationRequired (action: string, interactive_possible: bool)
 error NotFound (kind: string, id: string)
 error Locked (keys: []string, source: string)
 error PlanExpired (plan_id: string)

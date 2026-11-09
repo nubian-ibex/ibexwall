@@ -121,6 +121,11 @@ id ibxuser >/dev/null 2>&1 || sudo useradd -m ibxuser
 echo 'ibxuser:ibx-Test-pass-1' | sudo chpasswd
 command -v pkttyagent >/dev/null || { [ $FAM = deb ] && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq pkexec >/dev/null; }
 command -v pkttyagent >/dev/null || { echo "NO pkttyagent ON THIS MACHINE"; exit 1; }
+# Newer polkit runs the password helper from a socket unit instead of a
+# setuid binary; a freshly installed polkit has not started it yet.
+if systemctl list-unit-files polkit-agent-helper.socket >/dev/null 2>&1; then
+  sudo systemctl enable --now polkit-agent-helper.socket >/dev/null 2>&1 || true
+fi
 sudo install -d -m 755 /etc/polkit-1/rules.d
 sudo tee /etc/polkit-1/rules.d/00-ibexwall-test.rules >/dev/null <<'JS'
 // Test only: the defaults an active desktop session gets for IbexWall.

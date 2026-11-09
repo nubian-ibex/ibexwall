@@ -561,6 +561,7 @@ welcome-step = Schritt { $step } von { $total }
 welcome-intro-title = Willkommen bei IbexWall
 welcome-intro-body = IbexWall prüft, wie dieser Computer geschützt ist, und hilft Ihnen, das zu ändern: die Firewall, sicheres DNS, Updates, Konten und mehr. Jede Änderung wird gezeigt, bevor sie geschieht, und lässt sich im Verlauf rückgängig machen.
 welcome-intro-password = Änderungen am System brauchen einen Administrator: Ihr Desktop fragt nach Ihrem Passwort und merkt es sich einige Minuten.
+welcome-intro-admins = Ein Administrator kann ausgewählten Konten erlauben, IbexWall ohne Passwort zu ändern, indem er sie zur Gruppe ibexwall-admins hinzufügt. Niemand ist darin, bis jemand hinzugefügt wird.
 welcome-intro-local = Alles bleibt auf diesem Computer. IbexWall sendet nichts irgendwohin.
 welcome-check-title = Eine erste Prüfung
 welcome-check-body = IbexWall sieht sich die eingeschalteten Schutzfunktionen an und vergibt einen Wert. Es liest nur; nichts wird geändert.

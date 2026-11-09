@@ -561,6 +561,7 @@ welcome-step = Étape { $step } sur { $total }
 welcome-intro-title = Bienvenue dans IbexWall
 welcome-intro-body = IbexWall vérifie comment cet ordinateur est protégé et vous aide à le changer : le pare-feu, le DNS sécurisé, les mises à jour, les comptes et plus. Chaque modification est montrée avant d'avoir lieu et peut être annulée depuis l'Historique.
 welcome-intro-password = Les modifications du système demandent un administrateur : votre bureau demande votre mot de passe et le retient quelques minutes.
+welcome-intro-admins = Un administrateur peut permettre à des comptes choisis de modifier IbexWall sans mot de passe, en les ajoutant au groupe ibexwall-admins. Personne n'y est tant que quelqu'un ne l'ajoute pas.
 welcome-intro-local = Tout reste sur cet ordinateur. IbexWall n'envoie rien nulle part.
 welcome-check-title = Une première vérification
 welcome-check-body = IbexWall regarde les protections activées et donne un score. Il ne fait que lire ; rien n'est modifié.

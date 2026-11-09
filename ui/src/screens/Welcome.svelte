@@ -71,6 +71,7 @@
   {#if STEPS[step] === 'intro'}
     <p>{t('welcome-intro-body')}</p>
     <p>{t('welcome-intro-password')}</p>
+    <p class="muted">{t('welcome-intro-admins')}</p>
     <p class="muted">{t('welcome-intro-local')}</p>
   {:else if STEPS[step] === 'check'}
     <p>{t('welcome-check-body')}</p>

@@ -255,8 +255,21 @@ fn plan_manager(
             &FirewallAction::SetDefaultZone { name: zone.into() },
         )?);
     }
+    // A port a range already lets in needs nothing, and the manager would
+    // refuse to add it (firewalld: ALREADY_ENABLED).
+    let state = detect::read_state(reader);
+    let mut covered = Vec::new();
     for text in &config.allow {
-        let PortRule { port, proto } = parse_port(text)?;
+        let rule = parse_port(text)?;
+        if let Some(range) = state.covering_range(rule) {
+            covered.push(format!(
+                "{}/{} is already allowed by {range}",
+                rule.port,
+                rule.proto.name()
+            ));
+            continue;
+        }
+        let PortRule { port, proto } = rule;
         ops.push(adapter_op(
             backend,
             &FirewallAction::AllowPort {
@@ -296,10 +309,12 @@ fn plan_manager(
         )?);
     }
     if ops.is_empty() {
-        return Err(PluginError::invalid(
-            "allow",
-            "nothing to change: name a port or service to allow or remove".to_string(),
-        ));
+        let reason = if covered.is_empty() {
+            "nothing to change: name a port or service to allow or remove".to_string()
+        } else {
+            format!("nothing to change: {}", covered.join("; "))
+        };
+        return Err(PluginError::invalid("allow", reason));
     }
     Ok(ops)
 }
@@ -529,7 +544,7 @@ fn verify(sandbox: &Sandbox, ops: &[Op]) -> bool {
         };
         match serde_json::from_value::<FirewallAction>(action.clone()) {
             Ok(FirewallAction::AllowPort { port, proto, .. }) => {
-                state.ports.contains(&PortRule { port, proto })
+                state.allows(PortRule { port, proto })
             }
             Ok(FirewallAction::RemovePort { port, proto, .. }) => {
                 !state.ports.contains(&PortRule { port, proto })
@@ -703,6 +718,38 @@ mod tests {
             )
             .is_err()
         );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_port_a_range_already_allows_is_not_planned_and_says_why() {
+        let zone = r#"<?xml version="1.0" encoding="utf-8"?>
+<zone><short>Fedora Workstation</short>
+  <service name="ssh"/>
+  <port port="1025-65535" protocol="tcp"/>
+</zone>"#;
+        let (root, sandbox) = tree(&[
+            FIREWALLD,
+            (
+                "/etc/firewalld/firewalld.conf",
+                "DefaultZone=FedoraWorkstation\n",
+            ),
+            ("/etc/firewalld/zones/FedoraWorkstation.xml", zone),
+        ]);
+        let error = plan(&sandbox, config(serde_json::json!({"allow": "9099/tcp"}))).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("9099/tcp is already allowed by port 1025-65535/tcp"),
+            "{error}"
+        );
+        // A port outside the range is planned as usual.
+        let ops = plan(
+            &sandbox,
+            config(serde_json::json!({"allow": ["9099/tcp", "80/tcp"]})),
+        )
+        .unwrap();
+        assert_eq!(ops.len(), 1);
         std::fs::remove_dir_all(root).unwrap();
     }
 

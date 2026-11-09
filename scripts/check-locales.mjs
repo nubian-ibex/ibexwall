@@ -76,6 +76,30 @@ for (const locale of wanted) {
     );
   }
 }
+// Every key the interface asks for by its literal name must exist in
+// English: a missing one shows its id on screen instead of a text.
+function sourceFiles(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return sourceFiles(path);
+    return /\.(svelte|ts)$/.test(entry.name) && !/\.test\.ts$/.test(entry.name) ? [path] : [];
+  });
+}
+{
+  const english = new Set(parse(readFileSync(join(root, 'ui/locales/en/ui.ftl'), 'utf8'), 'en', []).ids);
+  for (const file of sourceFiles(join(root, 'ui/src'))) {
+    const text = readFileSync(file, 'utf8');
+    for (const match of text.matchAll(/\bt\(\s*['"]([a-z0-9][a-z0-9-]*)['"]/g)) {
+      if (!english.has(match[1])) problems.push(`${file.slice(root.length + 1)}: uses ${match[1]}, which is not in English`);
+    }
+    for (const match of text.matchAll(/\bkey:\s*['"]([a-z][a-z0-9-]*)['"]/g)) {
+      if (match[1].startsWith('nav-') && !english.has(match[1])) {
+        problems.push(`${file.slice(root.length + 1)}: uses ${match[1]}, which is not in English`);
+      }
+    }
+  }
+}
+
 if (problems.length) {
   console.error(problems.join('\n'));
   console.error(`\n${problems.length} problem(s)`);

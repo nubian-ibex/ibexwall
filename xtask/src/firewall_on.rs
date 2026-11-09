@@ -102,6 +102,28 @@ if is_on; then echo "THE UNKEPT CHANGE DID NOT UNDO ITSELF"; exit 1; fi
 echo "METRIC: a change nobody kept turned $MGR off again after the timeout"
 "#;
 
+/// A port inside a range the manager already allows is not a change: the
+/// plan says so instead of failing its check and rolling back.
+const RANGE: &str = r#"
+P=$(plan_on); case "$P" in plan-*) ;; *) echo "PLAN FAILED"; cat /tmp/plan.out; exit 1 ;; esac
+OUT=$(sudo ibexctl apply "$P" --confirm-timeout 300 --json 2>&1 || true)
+TX=$(echo "$OUT" | id_of)
+if echo "$OUT" | grep -q pending_confirm; then sudo ibexctl confirm "$TX" >/dev/null; fi
+case $MGR in
+ufw) sudo ufw allow 2000:3000/tcp >/dev/null ;;
+firewalld) sudo firewall-cmd -q --permanent --add-port=2000-3000/tcp ;;
+esac
+OUT=$(sudo ibexctl plan net.firewall --set allow=2500/tcp --json 2>&1 || true)
+echo "$OUT" | grep -q 'already allowed by' || { echo "EXPECTED 'already allowed by': $OUT"; exit 1; }
+echo "$OUT" | grep -q 'InvalidArgument' || { echo "EXPECTED InvalidArgument: $OUT"; exit 1; }
+case $MGR in
+ufw) sudo ufw delete allow 2000:3000/tcp >/dev/null ;;
+firewalld) sudo firewall-cmd -q --permanent --remove-port=2000-3000/tcp ;;
+esac
+sudo ibexctl rollback "$TX" --json >/dev/null
+echo "METRIC: a port inside an allowed range is reported as already allowed"
+"#;
+
 pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     println!("== firewall-on: stage ==");
     let input = stage_and_pack(workspace)?;
@@ -125,6 +147,7 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     scenario!("w4 a new SSH connection still gets in", STILL_HERE);
     scenario!("w5 a rollback turns it off again", ROLL_BACK);
     scenario!("w6 a change nobody keeps undoes itself", TIMEOUT);
+    scenario!("w7 a port a range already allows", RANGE);
 
     if failures == 0 {
         println!("PASS: firewall-on suite (all scenarios)");

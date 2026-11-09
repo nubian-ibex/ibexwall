@@ -201,6 +201,46 @@ fi
 echo "METRIC: ibexwall-admins ships empty; a member changes without a password, and no longer once removed"
 "#;
 
+/// The connection monitor runs after the install, and can be turned off
+/// and on; the choice survives.
+const MONITOR: &str = r#"
+for _ in $(seq 1 20); do systemctl is-active -q ibexwall-monitor.service && break; sleep 1; done
+systemctl is-active -q ibexwall-monitor.service || { echo "THE MONITOR DOES NOT RUN AFTER THE INSTALL"; systemctl status ibexwall-monitor --no-pager | head -15; exit 1; }
+for _ in $(seq 1 20); do sudo ibexctl apps list | grep -q '^monitor: on' && break; sleep 1; done
+sudo ibexctl apps list | head -1 | grep -q '^monitor: on' || { echo "THE CORE DOES NOT SEE THE MONITOR"; sudo ibexctl apps list | head -3; exit 1; }
+sudo ibexctl --no-ask-password apps monitor off >/dev/null
+systemctl is-enabled -q ibexwall-monitor.service && { echo "STILL ENABLED AFTER off"; exit 1; }
+sudo grep -qx off /var/lib/ibexwall/monitor.choice || { echo "THE CHOICE WAS NOT RECORDED"; exit 1; }
+sudo ibexctl --no-ask-password apps monitor on >/dev/null
+systemctl is-active -q ibexwall-monitor.service || { echo "NOT RUNNING AFTER on"; exit 1; }
+echo "METRIC: the connection monitor runs after the install, turns off and on, and the choice is kept"
+"#;
+
+/// Secure DNS with a block list, through the packaged resolver: the list
+/// downloads into the resolver's own directory and blocks.
+const DNS_LIST: &str = r#"
+id_of() { python3 -c 'import json,sys;d=json.JSONDecoder().raw_decode(sys.stdin.read())[0];t=d.get("plan") or d.get("transaction");print(t["id"] if isinstance(t,dict) else t)'; }
+sudo ibexctl --no-ask-password plugins enable net.dns >/dev/null
+P=$(sudo ibexctl plan net.dns --set provider=quad9 --set list=hagezi-light --json 2>&1 | tee /tmp/dplan | id_of)
+case "$P" in plan-*) ;; *) echo "PLAN FAILED"; cat /tmp/dplan; exit 1 ;; esac
+OUT=$(sudo ibexctl apply "$P" --confirm-timeout 300 --json 2>&1 || true)
+TX=$(echo "$OUT" | id_of); case "$TX" in tx-*) ;; *) echo "APPLY FAILED: $OUT"; exit 1 ;; esac
+if echo "$OUT" | grep -q pending_confirm; then sudo ibexctl confirm "$TX" >/dev/null; fi
+for _ in $(seq 1 60); do sudo ls /var/lib/ibexwall-dns/blocklists 2>/dev/null | grep -q . && break; sleep 3; done
+sudo ls -la /var/lib/ibexwall-dns/blocklists | grep -q hagezi || {
+  echo "THE LIST WAS NOT STORED"; sudo journalctl -u ibexwall-dns -n 20 --no-pager -o cat; exit 1;
+}
+for _ in $(seq 1 20); do
+  OUT=$(resolvectl query doubleclick.net 2>&1 || true)
+  echo "$OUT" | grep -Eqi 'not found|nxdomain|no such name' && break
+  sleep 3
+done
+echo "$OUT" | grep -Eqi 'not found|nxdomain|no such name' || { echo "A LISTED DOMAIN STILL RESOLVES: $OUT"; exit 1; }
+getent hosts example.com >/dev/null || { echo "AN ORDINARY NAME STOPPED RESOLVING"; exit 1; }
+sudo ibexctl rollback "$TX" --json >/dev/null
+echo "METRIC: the block list downloads into /var/lib/ibexwall-dns and blocks; ordinary names resolve"
+"#;
+
 pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     println!("== desktop: stage ==");
     let input = stage_and_pack(workspace)?;
@@ -230,6 +270,8 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     scenario!("d6 a wrong password is a refusal", AGENT_WRONG);
     scenario!("d7 no agent, no dialog", NO_AGENT);
     scenario!("d8 the administrators group", ADMINS);
+    scenario!("d9 the connection monitor", MONITOR);
+    scenario!("d10 secure DNS with a block list", DNS_LIST);
 
     if failures == 0 {
         println!("PASS: desktop suite (all scenarios)");

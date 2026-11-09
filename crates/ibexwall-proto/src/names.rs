@@ -99,10 +99,11 @@ pub fn dns_status_file() -> PathBuf {
 }
 
 /// Datagram socket the core binds for the resolver's answers (name, ip,
-/// ttl), so the monitor can name a connection's destination. Lives in the
-/// resolver's own runtime directory: only that user and root reach it.
+/// ttl), so the monitor can name a connection's destination. It lives in
+/// the core's runtime directory, which the core may write (the resolver's
+/// own directory is closed to it), and is open to the resolver's group.
 pub fn dns_answers_socket() -> PathBuf {
-    runtime_dir().join("dns").join("answers.sock")
+    runtime_dir().join("answers.sock")
 }
 
 /// Stream socket the core binds for the connection monitor (root only).

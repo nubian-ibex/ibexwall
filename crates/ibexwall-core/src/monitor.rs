@@ -408,7 +408,7 @@ pub async fn listen_answers(core: Arc<Core>, path: PathBuf) -> Result<()> {
     }
     let _ = std::fs::remove_file(&path);
     let socket = tokio::net::UnixDatagram::bind(&path)?;
-    chmod_socket_no_symlink(&path, 0o666)?;
+    open_to_the_resolver(&path)?;
     // One DNS answer is far below this; a longer datagram is not ours.
     let mut buffer = [0u8; 1024];
     loop {
@@ -416,6 +416,22 @@ pub async fn listen_answers(core: Arc<Core>, path: PathBuf) -> Result<()> {
         let now = ibexwall_sys::RealClock.unix_now();
         core.monitor.ingest_answer(&buffer[..received], now);
     }
+}
+
+/// Lets the resolver's group, and no one else, send answers: a local user
+/// who could would name other people's connections. Where the group does
+/// not exist or cannot be given (a sandbox run as a person), the socket is
+/// open to everyone, as a development tree has no one to protect from.
+fn open_to_the_resolver(path: &Path) -> std::io::Result<()> {
+    if let Some(gid) = ibexwall_sys::group_id(ibexwall_proto::names::DNS_USER) {
+        match std::os::unix::fs::lchown(path, None, Some(gid)) {
+            Ok(()) => return chmod_socket_no_symlink(path, 0o660),
+            Err(error) => {
+                tracing::warn!(%error, "the answers socket stays open to all users");
+            }
+        }
+    }
+    chmod_socket_no_symlink(path, 0o666)
 }
 
 /// Chmods a freshly bound socket, refusing a path that stopped being our

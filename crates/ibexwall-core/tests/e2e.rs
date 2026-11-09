@@ -1054,7 +1054,7 @@ async fn resolver_answers_over_the_socket_name_later_connections() {
     }
     let sandbox = prepare_sandbox();
     let (core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
-    let path = sandbox.root.join("run/ibexwall/dns/answers.sock");
+    let path = sandbox.root.join("run/ibexwall/answers.sock");
     let task = tokio::spawn(ibexwall_core::monitor::listen_answers(
         Arc::clone(&core),
         path.clone(),

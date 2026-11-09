@@ -450,6 +450,11 @@ pub fn named_group_allowed(group: &str) -> bool {
     group.is_empty() || group == "root" || NAMED_GROUPS.contains(&group)
 }
 
+/// The gid of a group named in `/etc/group`, if it exists.
+pub fn group_id(name: &str) -> Option<u32> {
+    gid_in(&std::fs::read_to_string("/etc/group").ok()?, name)
+}
+
 fn gid_in(group_file: &str, name: &str) -> Option<u32> {
     group_file.lines().find_map(|line| {
         let mut fields = line.split(':');

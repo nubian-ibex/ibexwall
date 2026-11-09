@@ -329,11 +329,11 @@ wait_for 'd["monitor"]["running"]'
 
 # The resolver reports which name it answered for an address; do it the
 # way ibexwall-dns does, over the datagram socket the core owns.
-sudo test -S /run/ibexwall/dns/answers.sock
+sudo test -S /run/ibexwall/answers.sock
 sudo python3 - <<'EOF'
 import socket
 s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-s.sendto(b'{"domain":"named.example.test.","ip":"203.0.113.1","ttl":300}', "/run/ibexwall/dns/answers.sock")
+s.sendto(b'{"domain":"named.example.test.","ip":"203.0.113.1","ttl":300}', "/run/ibexwall/answers.sock")
 EOF
 sleep 1
 

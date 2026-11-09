@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-policy_module(ibexwall, 1.0.0)
+policy_module(ibexwall, 1.0.1)
 
 require {
 	type init_t;
@@ -67,6 +67,12 @@ manage_files_pattern(ibexwall_dns_t, ibexwall_var_run_t, ibexwall_var_run_t)
 manage_dirs_pattern(ibexwall_dns_t, ibexwall_var_run_t, ibexwall_var_run_t)
 files_search_var_lib(ibexwall_dns_t)
 files_search_pids(ibexwall_dns_t)
+
+# The answers it sends the daemon's monitor, over a datagram socket the
+# daemon binds at /run/ibexwall/answers.sock.
+allow ibexwall_dns_t self:unix_dgram_socket create_socket_perms;
+allow ibexwall_dns_t ibexwall_var_run_t:sock_file write;
+allow ibexwall_dns_t unconfined_service_t:unix_dgram_socket sendto;
 
 corenet_all_recvfrom_unlabeled(ibexwall_dns_t)
 corenet_all_recvfrom_netlabel(ibexwall_dns_t)

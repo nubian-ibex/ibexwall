@@ -20,7 +20,7 @@ pub mod ops;
 pub mod tls;
 pub use ops::{
     OpError, PriorFile, SnapshotEntry, SnapshotManifest, apply_snapshot_inverses, execute,
-    ops_digest, write_directories,
+    group_id, ops_digest, write_directories,
 };
 
 use std::sync::Arc;

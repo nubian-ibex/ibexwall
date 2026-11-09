@@ -431,6 +431,39 @@ async fn dispatch(
             );
             Ok(Reply::result(json!({ "plan": null })))
         }
+        "SetMonitorEnabled" => {
+            let enabled = parameters
+                .get("enabled")
+                .and_then(Value::as_bool)
+                .ok_or_else(|| invalid_argument("enabled", "boolean required".into()))?;
+            let action = if enabled {
+                ibexwall_proto::UnitAction::Enable
+            } else {
+                ibexwall_proto::UnitAction::Disable
+            };
+            // enable --now / disable --now: on at once and after a reboot.
+            core.engine
+                .sys
+                .systemd
+                .apply(names::UNIT_MONITOR, action, true)
+                .map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?;
+            let choice = names::path_under(&core.root, names::MONITOR_CHOICE);
+            if let Some(dir) = choice.parent() {
+                let _ = std::fs::create_dir_all(dir);
+            }
+            let _ = std::fs::write(&choice, if enabled { "on\n" } else { "off\n" });
+            if !enabled {
+                core.monitor.set_status(false, Some("turned off"));
+            }
+            core.audit(
+                &actor,
+                "core",
+                None,
+                "",
+                &format!("monitor enabled={enabled}"),
+            );
+            Ok(Reply::result(json!({})))
+        }
         "GetPlugin" => {
             let id = str_field(&parameters, "id")?;
             let manifest = core.manifest(&id).map_err(|_| not_found("plugin", &id))?;
@@ -917,7 +950,7 @@ fn polkit_action(method: &str) -> Option<&'static str> {
         | "ListComplianceProfiles"
         | "GetCompliance"
         | "ExportCompliance" => names::POLKIT_READ,
-        "SetPluginEnabled" => names::POLKIT_PLUGINS_MANAGE,
+        "SetPluginEnabled" | "SetMonitorEnabled" => names::POLKIT_PLUGINS_MANAGE,
         "SetAppMode" | "SetDefaultMode" | "AnswerPrompt" => names::POLKIT_APPS_DECIDE,
         "PlanChange" => names::POLKIT_PLAN,
         "ListProposals" => names::POLKIT_READ,

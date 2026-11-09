@@ -76,6 +76,9 @@ method GetAppDestinations(app: string) -> (destinations: []AppDestination)
 # Added in v1 (additive): the inbound firewall, as read from the manager.
 method GetFirewall() -> (firewall: FirewallState)
 
+# Added in v1 (additive): turn the connection monitor unit on or off.
+method SetMonitorEnabled(enabled: bool, allowInteractiveAuthentication: ?bool) -> ()
+
 error PermissionDenied (action: string)
 error AuthenticationRequired (action: string, interactive_possible: bool)
 error NotFound (kind: string, id: string)

@@ -31,6 +31,12 @@ post_install() {
             systemctl preset $(cat "$sockets_list") >/dev/null 2>&1 || true
             systemctl start $(cat "$sockets_list") >/dev/null 2>&1 || true
         }
+        # The connection monitor runs by default, once: afterwards the
+        # person's choice (on or off) is kept across upgrades.
+        if [ ! -e /var/lib/ibexwall/monitor.choice ]; then
+            systemctl enable --now ibexwall-monitor.service >/dev/null 2>&1 || true
+            printf 'on\n' > /var/lib/ibexwall/monitor.choice 2>/dev/null || true
+        fi
     fi
 }
 

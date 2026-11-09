@@ -26,6 +26,9 @@ de = "Steuert, welche Verbindungen diesen Computer erreichen können, über die 
 [privileges]
 write_paths = ["/etc/ibexwall/firewall"]
 firewall_backends = ["firewalld", "ufw"]
+# Turning on an installed firewalld that is off (ADR-0046).
+units = ["firewalld.service"]
+unit_actions = ["enable"]
 nft_prefix = "net_firewall"
 
 [sandbox]

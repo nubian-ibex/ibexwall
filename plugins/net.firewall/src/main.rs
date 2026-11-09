@@ -74,6 +74,9 @@ struct Config {
     remove_service: Vec<String>,
     /// Turn on IbexWall's own inbound protection (when no manager exists).
     enable_basic: bool,
+    /// Turn on the firewall manager the distribution installed, when it
+    /// is off (ADR-0046).
+    enable_manager: bool,
     /// When enabling basic protection, keep the TCP services that are
     /// listening now reachable, so an SSH session is not lost.
     allow_listening: bool,
@@ -92,6 +95,7 @@ impl Default for Config {
             allow_service: vec![],
             remove_service: vec![],
             enable_basic: false,
+            enable_manager: false,
             allow_listening: true,
             mdns: false,
             profile: None,
@@ -201,13 +205,16 @@ fn plan(sandbox: &Sandbox, config: Config) -> Result<Vec<Op>, PluginError> {
     match backend {
         Backend::Firewalld | Backend::Ufw => {
             if active != Some(true) {
-                return Err(PluginError::invalid(
-                    "backend",
-                    format!(
-                        "{} is installed but not running; start it first",
-                        backend.name()
-                    ),
-                ));
+                if !config.enable_manager {
+                    return Err(PluginError::invalid(
+                        "enable_manager",
+                        format!(
+                            "{} is installed but off; set enable_manager=true to turn it on",
+                            backend.name()
+                        ),
+                    ));
+                }
+                return plan_turn_on(backend, &reader, &config);
             }
             plan_manager(backend, &reader, &config)
         }
@@ -296,6 +303,65 @@ fn plan_manager(
     }
     Ok(ops)
 }
+
+/// Turns on the installed manager (ADR-0046). The TCP services listening
+/// on every address now stay reachable, so the session the person is in
+/// (SSH, for one) is not cut; the confirm timeout undoes the rest.
+fn plan_turn_on(
+    backend: Backend,
+    reader: &Files<'_>,
+    config: &Config,
+) -> Result<Vec<Op>, PluginError> {
+    let listening: Vec<PortRule> = if config.allow_listening {
+        detect::read_state(reader)
+            .listening
+            .into_iter()
+            .filter(|p| p.proto == Proto::Tcp)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    } else {
+        vec![]
+    };
+    let keep = |ops: &mut Vec<Op>| -> Result<(), PluginError> {
+        for PortRule { port, proto } in &listening {
+            ops.push(adapter_op(
+                backend,
+                &FirewallAction::AllowPort {
+                    port: *port,
+                    proto: *proto,
+                    zone: None,
+                },
+            )?);
+        }
+        Ok(())
+    };
+    let mut ops = Vec::new();
+    match backend {
+        // ufw keeps rules while off: allow first, then turn it on.
+        Backend::Ufw => {
+            keep(&mut ops)?;
+            ops.push(adapter_op(backend, &FirewallAction::Enable)?);
+        }
+        // firewall-cmd needs the daemon: start it, then allow.
+        Backend::Firewalld => {
+            ops.push(Op::SystemdUnit {
+                unit: FIREWALLD_UNIT.into(),
+                action: ibexwall_proto::UnitAction::Enable,
+                now: Some(true),
+            });
+            keep(&mut ops)?;
+        }
+        Backend::Nftables => unreachable!("only a manager is turned on"),
+    }
+    // Anything else asked in the same plan, now that the manager runs.
+    if let Ok(more) = plan_manager(backend, reader, config) {
+        ops.extend(more);
+    }
+    Ok(ops)
+}
+
+const FIREWALLD_UNIT: &str = "firewalld.service";
 
 /// Traffic from these interfaces is container, VM or VPN plumbing, not
 /// other computers on the network; the basic protection leaves it alone.
@@ -473,6 +539,8 @@ fn verify(sandbox: &Sandbox, ops: &[Op]) -> bool {
             Ok(FirewallAction::SetDefaultZone { name }) => {
                 state.zone.as_deref() == Some(name.as_str())
             }
+            Ok(FirewallAction::Enable) => state.active == Some(true),
+            Ok(FirewallAction::Disable) => state.active == Some(false),
             Err(_) => false,
         }
     })
@@ -562,6 +630,64 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
+    /// What each op of a plan is, in order, as `backend action` or `unit`.
+    fn shape(ops: &[Op]) -> Vec<String> {
+        ops.iter()
+            .map(|op| match op {
+                Op::FirewallAdapter { backend, action } => format!(
+                    "{backend} {} {}",
+                    action["action"].as_str().unwrap(),
+                    action["port"]
+                ),
+                Op::SystemdUnit { unit, action, now } => format!("{unit} {action:?} {now:?}"),
+                other => panic!("{other:?}"),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn an_installed_ufw_that_is_off_is_turned_on_keeping_ssh() {
+        let tcp = format!(
+            "{HEADER}   0: 00000000:0016 00000000:0000 0A 0\n   1: 0100007F:0CEA 00000000:0000 0A 0\n"
+        );
+        let (root, sandbox) = tree(&[
+            ("/usr/sbin/ufw", ""),
+            ("/etc/ufw/ufw.conf", "ENABLED=no\n"),
+            ("/proc/net/tcp", &tcp),
+        ]);
+        let refused = plan(&sandbox, config(serde_json::json!({}))).unwrap_err();
+        assert!(refused.to_string().contains("enable_manager"), "{refused}");
+        let ops = plan(
+            &sandbox,
+            config(serde_json::json!({"enable_manager": true})),
+        )
+        .unwrap();
+        // SSH (22, on every address) first; the loopback-only port is not
+        // opened; then ufw is turned on.
+        assert_eq!(shape(&ops), ["ufw allow_port 22", "ufw enable null"]);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn an_installed_firewalld_that_is_off_is_started_then_told() {
+        let tcp = format!("{HEADER}   0: 00000000:0016 00000000:0000 0A 0\n");
+        let (root, sandbox) = tree(&[("/usr/bin/firewall-cmd", ""), ("/proc/net/tcp", &tcp)]);
+        let ops = plan(
+            &sandbox,
+            config(serde_json::json!({"enable_manager": true, "allow": "8080/tcp"})),
+        )
+        .unwrap();
+        assert_eq!(
+            shape(&ops),
+            [
+                "firewalld.service Enable Some(true)",
+                "firewalld allow_port 22",
+                "firewalld allow_port 8080"
+            ]
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn ufw_takes_ports_but_not_services() {
         let (root, sandbox) = tree(&[
@@ -584,7 +710,7 @@ mod tests {
     fn a_manager_that_is_not_running_is_reported_not_bypassed() {
         let (root, sandbox) = tree(&[("/usr/bin/firewall-cmd", "")]);
         let error = plan(&sandbox, config(serde_json::json!({"allow": "22"}))).unwrap_err();
-        assert!(error.to_string().contains("not running"), "{error}");
+        assert!(error.to_string().contains("installed but off"), "{error}");
         std::fs::remove_dir_all(root).unwrap();
     }
 

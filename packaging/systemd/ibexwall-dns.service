@@ -23,7 +23,7 @@ NoNewPrivileges=yes
 AppArmorProfile=-ibexwall-dns
 
 # Reads /etc/ibexwall/dns/resolver.json; writes only its own block lists.
-StateDirectory=ibexwall-dns ibexwall-dns/blocklists
+StateDirectory=ibexwall-dns
 StateDirectoryMode=0750
 # Where the counters are published for the core (tmpfiles.d creates it).
 ReadWritePaths=/run/ibexwall/dns

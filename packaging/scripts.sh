@@ -31,11 +31,11 @@ post_install() {
             systemctl preset $(cat "$sockets_list") >/dev/null 2>&1 || true
             systemctl start $(cat "$sockets_list") >/dev/null 2>&1 || true
         }
-        # The connection monitor runs by default, once: afterwards the
-        # person's choice (on or off) is kept across upgrades.
-        if [ ! -e /var/lib/ibexwall/monitor.choice ]; then
+        # The connection monitor runs by default. Only a recorded "off"
+        # (the person turned it off) is kept across upgrades and
+        # reinstalls.
+        if [ "$(cat /var/lib/ibexwall/monitor.choice 2>/dev/null)" != off ]; then
             systemctl enable --now ibexwall-monitor.service >/dev/null 2>&1 || true
-            printf 'on\n' > /var/lib/ibexwall/monitor.choice 2>/dev/null || true
         fi
     fi
 }
@@ -52,6 +52,9 @@ post_upgrade() {
 
 pre_remove() {
     if have_systemd; then
+        # The monitor first: it wants the daemon and restarts when the
+        # daemon goes, which would start the daemon again mid-removal.
+        systemctl disable --now ibexwall-monitor.service >/dev/null 2>&1 || true
         # Stop taking connections, then undo, then stop the rest.
         systemctl stop ibexwalld.socket ibexwalld.service >/dev/null 2>&1 || true
         if [ -x /usr/bin/ibexwalld ]; then
@@ -59,7 +62,7 @@ pre_remove() {
         fi
         # shellcheck disable=SC2046
         systemctl disable --now $(cat "$sockets_list") >/dev/null 2>&1 || true
-        systemctl stop 'ibexwall-plugin-*.service' ibexwall-dns.service ibexwall-monitor.service ibexwall-mcp.service ibexwall-mcp.path >/dev/null 2>&1 || true
+        systemctl stop 'ibexwall-plugin-*.service' ibexwall-dns.service ibexwall-mcp.service ibexwall-mcp.path >/dev/null 2>&1 || true
     fi
 }
 
@@ -72,7 +75,7 @@ post_remove() {
 # What a purge removes: the user's data, kept until now (state, audit chain,
 # settings). Only the formats that have a purge call it.
 purge_data() {
-    rm -rf /var/lib/ibexwall /var/lib/ibexwall-mcp /etc/ibexwall /run/ibexwall
+    rm -rf /var/lib/ibexwall /var/lib/ibexwall-mcp /var/lib/ibexwall-dns /etc/ibexwall /run/ibexwall
 }
 
 # AppArmor (Debian and Ubuntu, package ibexwall-apparmor). The profiles live

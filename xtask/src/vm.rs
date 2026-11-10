@@ -84,7 +84,7 @@ const DISTROS: &[Distro] = &[
     },
     Distro {
         id: "arch",
-        install: "sudo pacman -Sy --noconfirm --needed polkit python",
+        install: "sudo pacman -Syu --noconfirm --needed --ignore linux --ignore linux-headers polkit python",
         image: Some(Image {
             base_url: "https://geo.mirror.pkgbuild.com/images/latest",
             file: "Arch-Linux-x86_64-cloudimg.qcow2",

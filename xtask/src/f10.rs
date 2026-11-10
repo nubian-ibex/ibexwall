@@ -41,7 +41,7 @@ apply_change() {
 change() { apply_change "$@"; }
 # Everything the packages put or leave on the machine that carries the name.
 leftovers() {
-  sudo find /usr /etc /var /opt /lib /lib64 /boot -xdev \( -name '*ibexwall*' -o -name '*ibexctl*' \) 2>/dev/null | grep -vE '^/(var/lib/ibexwall(-mcp)?|etc/ibexwall|var/lib/cloud/instances/ibexwall[^/]*|var/lib/dpkg/info/ibexwall[^/]*)(/|$)' | sort || true
+  sudo find /usr /etc /var /opt /lib /lib64 /boot -xdev \( -name '*ibexwall*' -o -name '*ibexctl*' \) 2>/dev/null | grep -vE '^/(var/lib/ibexwall(-mcp|-dns)?|etc/ibexwall|var/lib/cloud/instances/ibexwall[^/]*|var/lib/dpkg/info/ibexwall[^/]*)(/|$)' | sort || true
 }
 "#;
 

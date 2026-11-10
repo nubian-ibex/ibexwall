@@ -206,8 +206,8 @@ echo "METRIC: ibexwall-admins ships empty; a member changes without a password, 
 const MONITOR: &str = r#"
 for _ in $(seq 1 20); do systemctl is-active -q ibexwall-monitor.service && break; sleep 1; done
 systemctl is-active -q ibexwall-monitor.service || { echo "THE MONITOR DOES NOT RUN AFTER THE INSTALL"; systemctl status ibexwall-monitor --no-pager | head -15; exit 1; }
-for _ in $(seq 1 20); do sudo ibexctl apps list | grep -q '^monitor: on' && break; sleep 1; done
-sudo ibexctl apps list | head -1 | grep -q '^monitor: on' || { echo "THE CORE DOES NOT SEE THE MONITOR"; sudo ibexctl apps list | head -3; exit 1; }
+for _ in $(seq 1 20); do sudo ibexctl apps list | grep -q '^monitor: running' && break; sleep 1; done
+sudo ibexctl apps list | head -1 | grep -q '^monitor: running' || { echo "THE CORE DOES NOT SEE THE MONITOR"; sudo ibexctl apps list | head -3; exit 1; }
 sudo ibexctl --no-ask-password apps monitor off >/dev/null
 systemctl is-enabled -q ibexwall-monitor.service && { echo "STILL ENABLED AFTER off"; exit 1; }
 sudo grep -qx off /var/lib/ibexwall/monitor.choice || { echo "THE CHOICE WAS NOT RECORDED"; exit 1; }
@@ -224,18 +224,28 @@ sudo ibexctl --no-ask-password plugins enable net.dns >/dev/null
 P=$(sudo ibexctl plan net.dns --set provider=quad9 --set list=hagezi-light --json 2>&1 | tee /tmp/dplan | id_of)
 case "$P" in plan-*) ;; *) echo "PLAN FAILED"; cat /tmp/dplan; exit 1 ;; esac
 OUT=$(sudo ibexctl apply "$P" --confirm-timeout 300 --json 2>&1 || true)
-TX=$(echo "$OUT" | id_of); case "$TX" in tx-*) ;; *) echo "APPLY FAILED: $OUT"; exit 1 ;; esac
+TX=$(echo "$OUT" | id_of); case "$TX" in tx-*) ;; *)
+  echo "APPLY FAILED: $OUT"
+  sudo journalctl -b --no-pager -o cat -u 'ibexwall-exec-*' | tail -8
+  sudo journalctl -b --no-pager -o cat -u ibexwall-dns | tail -15
+  sudo ausearch -m avc -ts recent 2>/dev/null | grep -i ibexwall | tail -8
+  sudo ls -laZ /var/lib/ibexwall-dns 2>&1 | head -5
+  exit 1 ;;
+esac
 if echo "$OUT" | grep -q pending_confirm; then sudo ibexctl confirm "$TX" >/dev/null; fi
 for _ in $(seq 1 60); do sudo ls /var/lib/ibexwall-dns/blocklists 2>/dev/null | grep -q . && break; sleep 3; done
 sudo ls -la /var/lib/ibexwall-dns/blocklists | grep -q hagezi || {
   echo "THE LIST WAS NOT STORED"; sudo journalctl -u ibexwall-dns -n 20 --no-pager -o cat; exit 1;
 }
+
+# A name the stored list holds, whatever the list's content is today.
+NAME=$(sudo sh -c 'grep -hv "^#" /var/lib/ibexwall-dns/blocklists/* | grep -m1 "\."')
 for _ in $(seq 1 20); do
-  OUT=$(resolvectl query doubleclick.net 2>&1 || true)
+  OUT=$(resolvectl query "$NAME" 2>&1 || true)
   echo "$OUT" | grep -Eqi 'not found|nxdomain|no such name' && break
   sleep 3
 done
-echo "$OUT" | grep -Eqi 'not found|nxdomain|no such name' || { echo "A LISTED DOMAIN STILL RESOLVES: $OUT"; exit 1; }
+echo "$OUT" | grep -Eqi 'not found|nxdomain|no such name' || { echo "A LISTED DOMAIN ($NAME) STILL RESOLVES: $OUT"; exit 1; }
 getent hosts example.com >/dev/null || { echo "AN ORDINARY NAME STOPPED RESOLVING"; exit 1; }
 sudo ibexctl rollback "$TX" --json >/dev/null
 echo "METRIC: the block list downloads into /var/lib/ibexwall-dns and blocks; ordinary names resolve"

@@ -324,6 +324,22 @@ impl Core {
         result
     }
 
+    /// `rollback_transaction` for async callers. The inverses run commands
+    /// and wait for them (`systemd-run --wait`), for seconds; run on a
+    /// runtime thread they starve it, the watchdog heartbeat stops and
+    /// systemd aborts the daemon. They run on the blocking pool instead.
+    pub async fn rollback_transaction_blocking(
+        self: &Arc<Self>,
+        tx: &str,
+        ops: &[Op],
+    ) -> Result<()> {
+        let core = Arc::clone(self);
+        let (tx, ops) = (tx.to_string(), ops.to_vec());
+        tokio::task::spawn_blocking(move || core.rollback_transaction(&tx, &ops))
+            .await
+            .map_err(|error| anyhow::anyhow!("the rollback task failed: {error}"))?
+    }
+
     pub fn manifest(&self, plugin: &str) -> Result<ibexwall_proto::Manifest> {
         Ok(self.plugins.manifest(plugin)?.clone())
     }

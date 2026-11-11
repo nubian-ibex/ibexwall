@@ -102,7 +102,8 @@ pub(crate) async fn rollback(
             json!({ "reason": format!("a newer transaction {newer} touches the same target; roll it back first") }),
         ));
     }
-    core.rollback_transaction(&target, &ops)
+    core.rollback_transaction_blocking(&target, &ops)
+        .await
         .map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?;
     core.state
         .mark_transaction(&target, TxStatus::RolledBack)
@@ -194,21 +195,22 @@ pub(crate) fn spawn_confirmation_watchdog(
                 return;
             }
             tracing::warn!(transaction = %tx_id, "confirmation window expired, rolling back");
-            let (status, result, final_state) = match core.rollback_transaction(&tx_id, &ops) {
-                Ok(()) => (
-                    TxStatus::RolledBack,
-                    "confirm-timeout-rollback",
-                    TransactionState::RolledBack,
-                ),
-                Err(error) => {
-                    tracing::error!(transaction = %tx_id, %error, "automatic rollback failed");
-                    (
-                        TxStatus::Failed,
-                        "confirm-timeout-rollback-failed",
-                        TransactionState::Failed,
-                    )
-                }
-            };
+            let (status, result, final_state) =
+                match core.rollback_transaction_blocking(&tx_id, &ops).await {
+                    Ok(()) => (
+                        TxStatus::RolledBack,
+                        "confirm-timeout-rollback",
+                        TransactionState::RolledBack,
+                    ),
+                    Err(error) => {
+                        tracing::error!(transaction = %tx_id, %error, "automatic rollback failed");
+                        (
+                            TxStatus::Failed,
+                            "confirm-timeout-rollback-failed",
+                            TransactionState::Failed,
+                        )
+                    }
+                };
             let _ = core.state.mark_transaction(&tx_id, status);
             core.audit(
                 "system",

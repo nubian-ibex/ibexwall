@@ -168,4 +168,25 @@ describe('Apps screen', () => {
     );
     expect(turnOn).toHaveBeenCalledWith(true);
   });
+
+  it("shows the desktop entry's name and icon, and the binary path in the list", async () => {
+    const transport = new FixtureTransport('attention');
+    vi.spyOn(transport, 'getAppInfo').mockResolvedValue([
+      {
+        key: 'app:firefox',
+        name: 'Firefox Web Browser',
+        icon: 'data:image/png;base64,AAAA',
+      },
+    ]);
+    app.useTransport(transport);
+    render(Apps);
+    await app.refresh();
+    const list = await screen.findByRole('region', { name: 'Apps' });
+    expect(await within(list).findByText('Firefox Web Browser')).toBeVisible();
+    expect(list.querySelector('img.tile')?.getAttribute('src')).toBe('data:image/png;base64,AAAA');
+    // Without an entry an app keeps its letter and its derived name.
+    expect(within(list).getByText('Telegram')).toBeVisible();
+    // A program shows where its binary is.
+    expect(within(list).getByText('/home/user/Downloads/install.sh')).toBeVisible();
+  });
 });

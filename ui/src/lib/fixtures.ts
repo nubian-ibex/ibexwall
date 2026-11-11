@@ -21,6 +21,7 @@ import type {
 import { CATALOG } from './hardening';
 import {
   TransportError,
+  type AppDisplay,
   type AppsListing,
   type ComplianceProfileSummary,
   type NewTokenRequest,
@@ -610,6 +611,10 @@ export class FixtureTransport implements Transport {
 
   setPluginEnabled() {
     return this.gate(() => undefined);
+  }
+
+  getAppInfo() {
+    return this.gate((): AppDisplay[] => []);
   }
 
   getConfig() {

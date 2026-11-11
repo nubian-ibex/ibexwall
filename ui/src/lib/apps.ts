@@ -37,8 +37,14 @@ function basename(path: string | null | undefined): string {
   return trimmed.slice(trimmed.lastIndexOf('/') + 1);
 }
 
-/** A readable name for an app, derived from its identity. */
-export function displayName(app: AppEntry): string {
+/** What the desktop entries say, by app key (see `getAppInfo`). */
+export type AppDisplays = Record<string, { name?: string | null; icon?: string | null }>;
+
+/** A readable name for an app: the desktop entry's own when it has one,
+ * else derived from its identity. */
+export function displayName(app: AppEntry, displays: AppDisplays = {}): string {
+  const given = displays[app.key]?.name?.trim();
+  if (given) return given;
   switch (app.kind) {
     case 'flatpak':
     case 'desktop_app': {
@@ -64,8 +70,8 @@ export function displayName(app: AppEntry): string {
 }
 
 /** The letter shown in the app's tile. */
-export function initialOf(app: AppEntry): string {
-  const name = displayName(app).trim();
+export function initialOf(app: AppEntry, displays: AppDisplays = {}): string {
+  const name = displayName(app, displays).trim();
   return name.length === 0 ? '?' : [...name][0]!.toUpperCase();
 }
 

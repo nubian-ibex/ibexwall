@@ -17,6 +17,7 @@ import type {
 } from '../gen/contracts';
 import {
   TransportError,
+  type AppDisplay,
   type AppsListing,
   type ComplianceProfileSummary,
   type NewToken,
@@ -115,6 +116,10 @@ export class TauriTransport implements Transport {
 
   async setPluginEnabled(id: string, enabled: boolean): Promise<void> {
     await invoke('set_plugin_enabled', { id, enabled });
+  }
+
+  getAppInfo(apps: { key: string; kind: string; id: string; exe_path?: string | null }[]) {
+    return invoke<AppDisplay[]>('get_app_info', { apps });
   }
 
   getConfig(plugin: string) {

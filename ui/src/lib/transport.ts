@@ -68,6 +68,14 @@ export function changeErrorKey(error: unknown): string {
   }
 }
 
+/** What the desktop entries say about an app; the screen falls back to its own. */
+export interface AppDisplay {
+  key: string;
+  name?: string | null;
+  /** A `data:image/...` URL. */
+  icon?: string | null;
+}
+
 export type PromptScope = 'once' | 'destination' | 'always';
 
 export interface AppsListing {
@@ -96,6 +104,10 @@ export interface Transport {
   getDnsStatus(): Promise<DnsStatus>;
   getFirewall(): Promise<FirewallState>;
   listApps(): Promise<AppsListing>;
+  /** Names and icons from this session's desktop entries (what is found). */
+  getAppInfo(
+    apps: { key: string; kind: string; id: string; exe_path?: string | null }[],
+  ): Promise<AppDisplay[]>;
   getAppDestinations(app: string): Promise<AppDestination[]>;
   setAppMode(app: string, mode: string): Promise<void>;
   setDefaultMode(mode: string): Promise<void>;

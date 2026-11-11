@@ -11,6 +11,7 @@
     isNew,
     kindKey,
     unavailableKey,
+    type AppDisplays,
     type AppFilter,
     type NetMode,
   } from '../lib/apps';
@@ -42,6 +43,24 @@
   let modeFailure = $state<string | null>(null);
 
   let monitorBusy = $state(false);
+  // Names and icons the desktop entries give; the rest keeps its fallback.
+  let displays = $state<AppDisplays>({});
+
+  async function loadDisplays(entries: AppEntry[]) {
+    const wanted = entries.filter((entry) => !(entry.key in displays));
+    if (wanted.length === 0) return;
+    try {
+      const found = await app.transport.getAppInfo(
+        wanted.map(({ key, kind, id, exe_path }) => ({ key, kind, id, exe_path })),
+      );
+      const next = { ...displays };
+      for (const entry of wanted) next[entry.key] = {};
+      for (const info of found) next[info.key] = { name: info.name, icon: info.icon };
+      displays = next;
+    } catch {
+      // The fallbacks stay: a letter and the name from the identity.
+    }
+  }
 
   async function setMonitor(enabled: boolean) {
     monitorBusy = true;
@@ -58,6 +77,7 @@
   async function load() {
     try {
       listing = { status: 'ready', data: await app.transport.listApps() };
+      void loadDisplays(listing.data.apps);
     } catch (error) {
       listing = {
         status: 'error',
@@ -218,14 +238,18 @@
                 <button
                   type="button"
                   class="pick"
-                  aria-label={t('apps-select', { app: displayName(entry) })}
+                  aria-label={t('apps-select', { app: displayName(entry, displays) })}
                   aria-current={entry.key === selectedKey ? 'true' : undefined}
                   onclick={() => select(entry)}
                 >
-                  <span class="tile" aria-hidden="true">{initialOf(entry)}</span>
+                  {#if displays[entry.key]?.icon}
+                    <img class="tile icon" src={displays[entry.key]?.icon} alt="" />
+                  {:else}
+                    <span class="tile" aria-hidden="true">{initialOf(entry, displays)}</span>
+                  {/if}
                   <span class="who">
                     <span class="name">
-                      {displayName(entry)}
+                      {displayName(entry, displays)}
                       <span class="badge">{t(kindKey(entry))}</span>
                       {#if isNew(entry, now)}<span class="badge fresh">{t('apps-new-badge')}</span
                         >{/if}
@@ -236,12 +260,17 @@
                         connections: entry.connections,
                       })}
                     </span>
+                    {#if entry.exe_path}
+                      <span class="muted small mono path" title={entry.exe_path}
+                        >{entry.exe_path}</span
+                      >
+                    {/if}
                   </span>
                 </button>
                 <div
                   class="segmented"
                   role="radiogroup"
-                  aria-label={t('apps-mode-group', { app: displayName(entry) })}
+                  aria-label={t('apps-mode-group', { app: displayName(entry, displays) })}
                 >
                   {#each MODES as mode (mode)}
                     {@const why = unavailableKey(entry, monitor, mode)}
@@ -273,9 +302,13 @@
           <p class="muted">{t('apps-details-hint')}</p>
         {:else}
           <div class="head">
-            <span class="tile big" aria-hidden="true">{initialOf(selected)}</span>
+            {#if displays[selected.key]?.icon}
+              <img class="tile big icon" src={displays[selected.key]?.icon} alt="" />
+            {:else}
+              <span class="tile big" aria-hidden="true">{initialOf(selected, displays)}</span>
+            {/if}
             <div>
-              <h3>{displayName(selected)}</h3>
+              <h3>{displayName(selected, displays)}</h3>
               <span class="badge">{t(kindKey(selected))}</span>
             </div>
           </div>
@@ -515,6 +548,19 @@
     color: var(--surface);
     font-weight: 700;
     font-size: 18px;
+  }
+  .path {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  .who {
+    min-width: 0;
+  }
+  .tile.icon {
+    background: transparent;
+    object-fit: contain;
   }
   .tile.big {
     width: 56px;

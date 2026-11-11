@@ -84,9 +84,19 @@ describe('Assistant: connect an AI', () => {
     await open();
     expect(screen.getByText(/\.mcp\.json/)).toBeVisible();
     expect(screen.getByText(/"command": "ibexwall-mcp"/)).toBeVisible();
-    await fireEvent.change(screen.getByLabelText(/^program$/i), { target: { value: 'opencode' } });
+    await fireEvent.click(screen.getByRole('radio', { name: /OpenCode/ }));
     expect(screen.getByText(/opencode\.json/)).toBeVisible();
     expect(screen.getByText(/"type": "local"/)).toBeVisible();
+  });
+
+  it('offers Cursor and Gemini CLI with the files their docs name', async () => {
+    await open();
+    await fireEvent.click(screen.getByRole('radio', { name: /Cursor/ }));
+    expect(screen.getByText(/~\/\.cursor\/mcp\.json/)).toBeVisible();
+    expect(screen.getByText(/"--client",\s*"cursor"/)).toBeVisible();
+    await fireEvent.click(screen.getByRole('radio', { name: /Gemini CLI/ }));
+    expect(screen.getByText(/~\/\.gemini\/settings\.json/)).toBeVisible();
+    expect(screen.getByText('Only on this computer')).toBeVisible();
   });
 
   it('offers three presets only, and plans exactly the chosen one', async () => {

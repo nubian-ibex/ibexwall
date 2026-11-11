@@ -1,7 +1,17 @@
 import type { Finding } from '../gen/contracts';
 
-export type ClientId = 'claude-code' | 'opencode' | 'vscode';
-export const CLIENTS: ClientId[] = ['claude-code', 'opencode', 'vscode'];
+export type ClientId = 'claude-code' | 'opencode' | 'vscode' | 'cursor' | 'gemini-cli';
+export const CLIENTS: ClientId[] = ['claude-code', 'opencode', 'vscode', 'cursor', 'gemini-cli'];
+
+/** What a catalog card shows besides the name: the tile, and whether the
+ * client can also connect to a server on another machine. */
+export const CLIENT_CARDS: Record<ClientId, { tile: string; color: string; remote: boolean }> = {
+  'claude-code': { tile: 'C', color: '#b85c38', remote: true },
+  opencode: { tile: 'O', color: '#2f6f8f', remote: true },
+  vscode: { tile: 'V', color: '#1f6fb5', remote: true },
+  cursor: { tile: 'Cu', color: '#3a3a3a', remote: true },
+  'gemini-cli': { tile: 'G', color: '#5b4bb7', remote: false },
+};
 export type Preset = 'read' | 'plan' | 'propose';
 export const PRESETS: Preset[] = ['read', 'plan', 'propose'];
 
@@ -35,6 +45,28 @@ export function snippet(client: ClientId): { where: string; text: string } {
               },
             },
           },
+          null,
+          2,
+        ),
+      };
+    case 'cursor':
+      return {
+        where: '~/.cursor/mcp.json',
+        text: JSON.stringify(
+          {
+            mcpServers: {
+              ibexwall: { type: 'stdio', command: 'ibexwall-mcp', args: ['--client', client] },
+            },
+          },
+          null,
+          2,
+        ),
+      };
+    case 'gemini-cli':
+      return {
+        where: '~/.gemini/settings.json',
+        text: JSON.stringify(
+          { mcpServers: { ibexwall: { command: 'ibexwall-mcp', args: ['--client', client] } } },
           null,
           2,
         ),

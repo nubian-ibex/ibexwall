@@ -6,6 +6,7 @@
   import { t } from '../lib/i18n.svelte';
   import {
     CLIENTS,
+    CLIENT_CARDS,
     PRESETS,
     remoteState,
     remoteUrl,
@@ -76,14 +77,23 @@
   <h2 id="connect-title">{t('connect-title')}</h2>
   <p class="muted">{t('connect-body')}</p>
 
-  <label class="field">
-    <span>{t('connect-client')}</span>
-    <select bind:value={client}>
-      {#each CLIENTS as id (id)}
-        <option value={id}>{t(`connect-client-${id}`)}</option>
-      {/each}
-    </select>
-  </label>
+  <fieldset class="catalog">
+    <legend>{t('connect-client')}</legend>
+    {#each CLIENTS as id (id)}
+      <label class="choice" class:chosen={client === id}>
+        <input type="radio" name="assistant-client" value={id} bind:group={client} />
+        <span class="tile" style:background={CLIENT_CARDS[id].color} aria-hidden="true"
+          >{CLIENT_CARDS[id].tile}</span
+        >
+        <span class="who">
+          <strong>{t(`connect-client-${id}`)}</strong>
+          <span class="muted small"
+            >{t(CLIENT_CARDS[id].remote ? 'connect-card-remote' : 'connect-card-local')}</span
+          >
+        </span>
+      </label>
+    {/each}
+  </fieldset>
   <p class="muted">{t('connect-paste', { where: shown.where })}</p>
   <pre class="code">{shown.text}</pre>
   <Button onclick={() => copy(shown.text)}
@@ -249,6 +259,59 @@
 </section>
 
 <style>
+  .catalog {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: var(--space-3);
+    border: 0;
+    padding: 0;
+    margin: 0 0 var(--space-4);
+  }
+  .catalog legend {
+    font-weight: 600;
+    margin-bottom: var(--space-2);
+    padding: 0;
+  }
+  .choice {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: var(--target);
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    background: var(--surface);
+    cursor: pointer;
+  }
+  .choice.chosen {
+    border-color: var(--primary-strong);
+    background: var(--primary-soft);
+  }
+  .choice input {
+    position: absolute;
+    opacity: 0;
+    inset: 0;
+    cursor: pointer;
+  }
+  .choice:has(input:focus-visible) {
+    outline: 2px solid var(--primary-strong);
+    outline-offset: 2px;
+  }
+  .tile {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    color: #fff;
+    font-weight: 700;
+  }
+  .who {
+    display: grid;
+  }
+
   .card {
     background: var(--surface);
     border: 1px solid var(--border);

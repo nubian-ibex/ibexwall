@@ -5,6 +5,8 @@
 //! logic lives in the web frontend and talks to these typed commands.
 //! No remote content, no updater (updates come from the distro).
 
+mod appinfo;
+
 use ibexwall_proto::names;
 use serde_json::{Value, json};
 use tauri::Manager;
@@ -134,6 +136,15 @@ async fn decide_proposal(id: String, decision: String) -> Result<Value, Value> {
     core("DecideProposal", json!({ "id": id, "decision": decision }))
         .await
         .map_err(|e| err_text(&e))
+}
+
+/// Names and icons for the apps on the Apps screen, from this session's
+/// desktop entries and icon themes.
+#[tauri::command]
+async fn get_app_info(apps: Vec<appinfo::AppRef>) -> Result<Vec<appinfo::AppInfo>, Value> {
+    tokio::task::spawn_blocking(move || appinfo::app_info(&apps))
+        .await
+        .map_err(|_| json!({ "code": "unreachable", "parameters": {} }))
 }
 
 #[tauri::command]
@@ -364,6 +375,7 @@ pub fn run() {
             set_plugin_enabled,
             set_monitor_enabled,
             get_config,
+            get_app_info,
             get_manifest,
             plan_change,
             apply,

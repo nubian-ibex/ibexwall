@@ -29,5 +29,6 @@ ibexwall-token.workspace = true
 ibexwall-varlink.workspace = true
 serde_json.workspace = true
 serde.workspace = true
+base64.workspace = true
 tokio.workspace = true
 tauri = { version = "2", features = ["tray-icon"] }

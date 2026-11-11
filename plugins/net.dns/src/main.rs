@@ -24,7 +24,7 @@ use ibexwall_proto::{
 use ibexwall_sdk::{Plugin, PluginError, Sandbox};
 use ibexwall_sys::nft::{Chain, Fragment, Proto, Rule, Verdict};
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 const ID: &str = "net.dns";
 const SERVICE: &str = "ibexwall-dns.service";
@@ -126,6 +126,28 @@ impl Config {
         })
     }
 
+    /// The choice in the words the app uses, to be stored with the settings.
+    fn choice(&self) -> Value {
+        let mut choice = json!({
+            "provider": self.provider,
+            "transport": self.transport,
+            "lists": self.lists,
+            "block_doh": self.block_doh,
+            "enforcement": self.enforcement,
+            "browser_policies": self.browser_policies,
+        });
+        if !self.servers.is_empty() {
+            choice["servers"] = json!(self.servers);
+        }
+        if !self.routes.is_empty() {
+            choice["routes"] = json!(self.routes);
+        }
+        if let Some(list) = &self.list {
+            choice["list"] = json!(list);
+        }
+        choice
+    }
+
     fn settings(&self) -> Result<Settings, PluginError> {
         let mut lists = self.lists.clone();
         if let Some(list) = &self.list
@@ -156,6 +178,7 @@ impl Config {
                 url: Some(DOH_ENDPOINTS_URL.into()),
             }),
             update_interval_hours: 24,
+            choice: Some(self.choice()),
         };
         settings
             .validate()
@@ -235,6 +258,14 @@ fn plan(sandbox: &Sandbox, config: Config) -> Result<Vec<Op>, PluginError> {
             unit: SERVICE.into(),
             action: UnitAction::Enable,
             now: Some(true),
+        },
+        // `enable --now` leaves a resolver that already runs as it is, and
+        // it reads its settings only when it starts: without this, changing
+        // the provider or a block list would be written and then ignored.
+        Op::SystemdUnit {
+            unit: SERVICE.into(),
+            action: UnitAction::Restart,
+            now: None,
         },
         Op::SystemdUnit {
             unit: RESOLVED.into(),

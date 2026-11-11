@@ -156,6 +156,11 @@ pub struct Settings {
     /// Hours between list updates (jitter is added on top).
     #[serde(default = "default_update_hours")]
     pub update_interval_hours: u64,
+    /// What the person chose (provider, transport, list, ...), kept beside
+    /// the settings it produced so the app can show what is applied. The
+    /// resolver ignores it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub choice: Option<serde_json::Value>,
 }
 
 fn default_update_hours() -> u64 {

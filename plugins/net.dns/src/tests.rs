@@ -136,6 +136,11 @@ fn plans_the_resolver_settings_dropin_and_unit_changes_in_order() {
                 unit,
                 action: UnitAction::Restart,
                 ..
+            } if unit == SERVICE => "restart-resolver",
+            Op::SystemdUnit {
+                unit,
+                action: UnitAction::Restart,
+                ..
             } if unit == RESOLVED => "restart-resolved",
             Op::NftFragment { .. } => "enforce",
             _ => "other",
@@ -147,6 +152,8 @@ fn plans_the_resolver_settings_dropin_and_unit_changes_in_order() {
             "settings",
             "dropin",
             "enable-resolver",
+            // A resolver that already runs must read the new settings.
+            "restart-resolver",
             "restart-resolved",
             "enforce"
         ]
@@ -208,7 +215,7 @@ fn enforcement_is_last_optional_and_exempts_only_the_resolver_user() {
 
     let off = Config::parse(json!({ "enforcement": false })).unwrap();
     let ops = plan(&sandbox, off).unwrap();
-    assert_eq!(ops.len(), 4);
+    assert_eq!(ops.len(), 5);
     let no_doh = Config::parse(json!({ "block_doh": false, "enforcement": false })).unwrap();
     assert!(no_doh.settings().unwrap().doh_list.is_none());
     assert!(!ops.iter().any(|op| matches!(op, Op::NftFragment { .. })));

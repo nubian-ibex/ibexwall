@@ -5,7 +5,7 @@ members = ["crates/*", "xtask", "plugins/*/src", "ui/src-tauri"]
 exclude = ["crates/ibexwall-ebpf"]
 
 [workspace.package]
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.96"
 license = "GPL-3.0-or-later"
@@ -13,18 +13,18 @@ repository = "https://github.com/nubian-ibex/ibexwall"
 homepage = "https://ibexwall.com"
 
 [workspace.dependencies]
-ibexwall-proto = { path = "crates/ibexwall-proto", version = "0.1.0" }
-ibexwall-sdk = { path = "crates/ibexwall-sdk", version = "0.1.0" }
-ibexwall-varlink = { path = "crates/ibexwall-varlink", version = "0.1.0" }
-ibexwall-token = { path = "crates/ibexwall-token", version = "0.1.0" }
-ibexwall-tui = { path = "crates/ibexwall-tui", version = "0.1.0" }
-ibexwall-sys = { path = "crates/ibexwall-sys", version = "0.1.0" }
-ibexwall-dns = { path = "crates/ibexwall-dns", version = "0.1.0" }
-ibexwall-apps = { path = "crates/ibexwall-apps", version = "0.1.0" }
-ibexwall-firewall = { path = "crates/ibexwall-firewall", version = "0.1.0" }
-ibexwall-identity = { path = "crates/ibexwall-identity", version = "0.1.0" }
-ibexwall-nfq = { path = "crates/ibexwall-nfq", version = "0.1.0" }
-ibexwall-net-common = { path = "crates/ibexwall-net-common", version = "0.1.0" }
+ibexwall-proto = { path = "crates/ibexwall-proto", version = "0.2.0" }
+ibexwall-sdk = { path = "crates/ibexwall-sdk", version = "0.2.0" }
+ibexwall-varlink = { path = "crates/ibexwall-varlink", version = "0.2.0" }
+ibexwall-token = { path = "crates/ibexwall-token", version = "0.2.0" }
+ibexwall-tui = { path = "crates/ibexwall-tui", version = "0.2.0" }
+ibexwall-sys = { path = "crates/ibexwall-sys", version = "0.2.0" }
+ibexwall-dns = { path = "crates/ibexwall-dns", version = "0.2.0" }
+ibexwall-apps = { path = "crates/ibexwall-apps", version = "0.2.0" }
+ibexwall-firewall = { path = "crates/ibexwall-firewall", version = "0.2.0" }
+ibexwall-identity = { path = "crates/ibexwall-identity", version = "0.2.0" }
+ibexwall-nfq = { path = "crates/ibexwall-nfq", version = "0.2.0" }
+ibexwall-net-common = { path = "crates/ibexwall-net-common", version = "0.2.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml_ng = "0.10"

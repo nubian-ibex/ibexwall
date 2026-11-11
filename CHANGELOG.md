@@ -6,7 +6,7 @@
 Versions follow [Semantic Versioning](https://semver.org). The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## Unreleased (0.2)
+## 0.2.0 (2026-11-10)
 
 ### Added
 
@@ -24,10 +24,26 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
 - An `ibexwall-admins` group, empty by default: its members change
   IbexWall without a password.
 
+- The connection monitor runs after the install, and Apps and network
+  has a button to turn it on or off (`ibexctl apps monitor on|off`). A
+  recorded "off" is kept across upgrades and reinstalls.
+
 ### Fixed
 
+- Allowing a port did nothing on Fedora Workstation, whose firewall zone
+  already allows 1025-65535: firewalld refused to add the port, the check
+  did not find it listed and the change was undone without a word. The
+  plan now says the port is already allowed and by which rule.
+- A plugin's own refusal reaches the app with its reason instead of a
+  transport error.
+- Block lists did nothing in a packaged install: the resolver could not
+  write them. They live in `/var/lib/ibexwall-dns` now.
+- The DNS screen showed the defaults after a change; it shows what is
+  applied.
 - Rolling back a change that started firewalld failed on the reload.
 - A rollback that had turned ufw on left it on.
+- Removing the packages left the monitor's link behind, and a monitor
+  still running could start the daemon again during the removal.
 
 ## 0.1.1 (2026-11-09)
 

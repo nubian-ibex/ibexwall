@@ -217,38 +217,66 @@ echo "METRIC: the connection monitor runs after the install, turns off and on, a
 "#;
 
 /// Secure DNS with a block list, through the packaged resolver: the list
-/// downloads into the resolver's own directory and blocks.
+/// downloads into the resolver's own directory and blocks, and a second
+/// change (another provider and list) reaches the running resolver.
 const DNS_LIST: &str = r#"
 id_of() { python3 -c 'import json,sys;d=json.JSONDecoder().raw_decode(sys.stdin.read())[0];t=d.get("plan") or d.get("transaction");print(t["id"] if isinstance(t,dict) else t)'; }
 sudo ibexctl --no-ask-password plugins enable net.dns >/dev/null
-P=$(sudo ibexctl plan net.dns --set provider=quad9 --set list=hagezi-light --json 2>&1 | tee /tmp/dplan | id_of)
-case "$P" in plan-*) ;; *) echo "PLAN FAILED"; cat /tmp/dplan; exit 1 ;; esac
-OUT=$(sudo ibexctl apply "$P" --confirm-timeout 300 --json 2>&1 || true)
-TX=$(echo "$OUT" | id_of); case "$TX" in tx-*) ;; *)
-  echo "APPLY FAILED: $OUT"
-  sudo journalctl -b --no-pager -o cat -u 'ibexwall-exec-*' | tail -8
-  sudo journalctl -b --no-pager -o cat -u ibexwall-dns | tail -15
-  sudo ausearch -m avc -ts recent 2>/dev/null | grep -i ibexwall | tail -8
-  sudo ls -laZ /var/lib/ibexwall-dns 2>&1 | head -5
-  exit 1 ;;
-esac
-if echo "$OUT" | grep -q pending_confirm; then sudo ibexctl confirm "$TX" >/dev/null; fi
-for _ in $(seq 1 60); do sudo ls /var/lib/ibexwall-dns/blocklists 2>/dev/null | grep -q . && break; sleep 3; done
-sudo ls -la /var/lib/ibexwall-dns/blocklists | grep -q hagezi || {
-  echo "THE LIST WAS NOT STORED"; sudo journalctl -u ibexwall-dns -n 20 --no-pager -o cat; exit 1;
+change_dns() {
+  local P OUT TX
+  P=$(sudo ibexctl plan net.dns --set provider=$1 --set list=$2 --json 2>&1 | tee /tmp/dplan | id_of)
+  case "$P" in plan-*) ;; *) echo "PLAN FAILED"; cat /tmp/dplan; return 1 ;; esac
+  OUT=$(sudo ibexctl apply "$P" --confirm-timeout 300 --json 2>&1 || true)
+  TX=$(echo "$OUT" | id_of); case "$TX" in tx-*) ;; *)
+    echo "APPLY FAILED: $OUT"
+    sudo journalctl -b --no-pager -o cat -u 'ibexwall-exec-*' | tail -8
+    sudo journalctl -b --no-pager -o cat -u ibexwall-dns | tail -15
+    return 1 ;;
+  esac
+  if echo "$OUT" | grep -q pending_confirm; then sudo ibexctl confirm "$TX" >/dev/null; fi
+  echo "$TX"
 }
-
-# A name the stored list holds, whatever the list's content is today.
-NAME=$(sudo sh -c 'grep -hv "^#" /var/lib/ibexwall-dns/blocklists/* | grep -m1 "\."')
+wait_list() {
+  for _ in $(seq 1 60); do sudo test -s /var/lib/ibexwall-dns/blocklists/$1.list && return 0; sleep 3; done
+  echo "THE LIST $1 WAS NOT STORED"; sudo ls -la /var/lib/ibexwall-dns/blocklists; sudo journalctl -u ibexwall-dns -n 20 --no-pager -o cat; return 1
+}
+TX1=$(change_dns quad9 hagezi-light) || { echo "$TX1"; exit 1; }
+wait_list hagezi-light || exit 1
+# A name the stored list holds, and the counter that proves it was blocked.
+# The resolver publishes its counters a little after it starts.
+blocked() {
+  sudo python3 -c 'import json;print(json.load(open("/run/ibexwall/dns/status.json"))["blocked_list"])' 2>/dev/null || echo 0
+}
+NAME=$(sudo sh -c 'grep -hv "^#" /var/lib/ibexwall-dns/blocklists/hagezi-light.list | grep -m1 "\."')
+[ -n "$NAME" ] || { echo "THE STORED LIST IS EMPTY"; exit 1; }
+before=$(blocked)
+after=$before
 for _ in $(seq 1 20); do
-  OUT=$(resolvectl query "$NAME" 2>&1 || true)
-  echo "$OUT" | grep -Eqi 'not found|nxdomain|no such name' && break
-  sleep 3
+  resolvectl query "$NAME" >/dev/null 2>&1 || true
+  sleep 1
+  after=$(blocked)
+  [ "$after" -gt "$before" ] && break
 done
-echo "$OUT" | grep -Eqi 'not found|nxdomain|no such name' || { echo "A LISTED DOMAIN ($NAME) STILL RESOLVES: $OUT"; exit 1; }
+[ "$after" -gt "$before" ] || { echo "A LISTED DOMAIN ($NAME) WAS NOT BLOCKED (counter $before -> $after)"; sudo cat /run/ibexwall/dns/status.json; exit 1; }
 getent hosts example.com >/dev/null || { echo "AN ORDINARY NAME STOPPED RESOLVING"; exit 1; }
-sudo ibexctl rollback "$TX" --json >/dev/null
-echo "METRIC: the block list downloads into /var/lib/ibexwall-dns and blocks; ordinary names resolve"
+
+# A second change while the resolver runs: it must read the new settings.
+before_run=$(systemctl show -p InvocationID --value ibexwall-dns)
+TX2=$(change_dns cloudflare hagezi-pro) || { echo "$TX2"; exit 1; }
+wait_list hagezi-pro || exit 1
+after_run=$(systemctl show -p InvocationID --value ibexwall-dns)
+[ "$after_run" != "$before_run" ] || { echo "THE RESOLVER WAS NOT RESTARTED BY THE SECOND CHANGE"; exit 1; }
+sudo python3 - <<'PY' || exit 1
+import json
+c = json.load(open("/etc/ibexwall/dns/resolver.json"))
+ips = [s["ip"] for s in c["servers"]]
+assert "1.1.1.1" in ips, ("the provider was not changed", ips)
+assert c["lists"][0]["id"] == "hagezi-pro", c["lists"]
+assert c["choice"]["provider"] == "cloudflare", c.get("choice")
+PY
+sudo ibexctl rollback "$TX2" --json >/dev/null
+sudo ibexctl rollback "$TX1" --json >/dev/null
+echo "METRIC: a block list blocks (counter), and a second change reaches the running resolver"
 "#;
 
 pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {

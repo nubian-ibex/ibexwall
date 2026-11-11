@@ -51,6 +51,44 @@ export function canEnableBasic(state: FirewallState): boolean {
   return state.backend === 'nftables' && state.active !== true;
 }
 
+/** The rule, as the firewall shows it, that already lets `port/proto` in
+ * through a range (Fedora Workstation allows 1025-65535, for one). Mirrors
+ * the plugin, which refuses to add a port such a rule covers. */
+export function coveringRange(state: FirewallState, spec: string): string | null {
+  const [portText, proto] = spec.split('/');
+  const port = Number(portText);
+  const inRange = (range: string, separator: string) => {
+    const [low, high] = range.split(separator).map(Number);
+    return low !== undefined && high !== undefined && port >= low && port <= high;
+  };
+  const protoOk = (text: string | undefined) => text === proto || text === 'any';
+  for (const rule of state.other) {
+    if (rule.startsWith('port ')) {
+      const [range, ruleProto] = rule.slice(5).split('/');
+      if (range && range.includes('-') && protoOk(ruleProto) && inRange(range, '-')) return rule;
+      continue;
+    }
+    // A plain ufw tuple: action proto dport dst sport src direction
+    const fields = rule.split(/\s+/);
+    const [action, ruleProto, dport, dst, sport, src, direction] = fields;
+    const open = (net: string | undefined) => net === '0.0.0.0/0' || net === '::/0';
+    if (
+      action === 'allow' &&
+      direction === 'in' &&
+      sport === 'any' &&
+      open(dst) &&
+      open(src) &&
+      dport &&
+      dport.includes(':') &&
+      protoOk(ruleProto) &&
+      inRange(dport, ':')
+    ) {
+      return rule;
+    }
+  }
+  return null;
+}
+
 /** firewalld or ufw is installed but off: IbexWall can turn it on (ADR-0046). */
 export function canTurnOnManager(state: FirewallState): boolean {
   return (state.backend === 'firewalld' || state.backend === 'ufw') && state.active === false;

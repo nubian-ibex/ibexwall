@@ -7,6 +7,7 @@
     PROTOCOLS,
     canEnableBasic,
     canTurnOnManager,
+    coveringRange,
     canSwitchProfile,
     format,
     hasServices,
@@ -61,6 +62,10 @@
   );
   const controls = $derived(plugin?.enabled === true);
   const portValue = $derived(portSpec(port, proto));
+  /** The range that already lets this port in, when there is one. */
+  const covered = $derived(fw && portValue ? coveringRange(fw, portValue) : null);
+  /** The manager is installed but off: nothing can be allowed until it is on. */
+  const managerOff = $derived(fw ? canTurnOnManager(fw) : false);
   const serviceValid = $derived(/^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$/.test(service.trim()));
   const unnamed = $derived(fw ? unnamedListening(fw) : []);
 
@@ -234,10 +239,22 @@
           {/each}
         </select>
       </label>
-      <button type="button" class="action" disabled={!controls} onclick={addPort}>
+      <button
+        type="button"
+        class="action"
+        disabled={!controls || managerOff || covered !== null}
+        onclick={addPort}
+      >
         {t('firewall-allow')}
       </button>
     </div>
+    {#if managerOff}
+      <p class="muted" role="status">{t('firewall-forms-off')}</p>
+    {:else if covered}
+      <p class="muted" role="status">
+        {t('firewall-port-covered', { port: portValue ?? '', rule: covered })}
+      </p>
+    {/if}
     {#if portTouched && !portValue}
       <p id="port-error" class="error" role="alert">{t('firewall-port-invalid')}</p>
     {/if}

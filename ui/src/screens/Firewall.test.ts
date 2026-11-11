@@ -163,4 +163,40 @@ describe('Firewall screen', () => {
     expect(await screen.findByRole('alert')).toBeVisible();
     expect(screen.getByRole('button', { name: /try again/i })).toBeVisible();
   });
+
+  it('says a port is already allowed by a range, and does not offer to add it', async () => {
+    const transport = new FixtureTransport('attention');
+    const state = await transport.getFirewall();
+    vi.spyOn(transport, 'getFirewall').mockResolvedValue({
+      ...state,
+      other: ['port 1025-65535/tcp', 'forward'],
+    });
+    app.useTransport(transport);
+    render(Firewall);
+    await turnOn(transport);
+    await fireEvent.input(await screen.findByLabelText('Port'), { target: { value: '9099' } });
+    expect(await screen.findByText(/9099\/tcp is already allowed by this rule/)).toBeVisible();
+    expect(screen.getByRole('button', { name: /allow this port/i })).toBeDisabled();
+    // Below the range it is a normal request.
+    await fireEvent.input(screen.getByLabelText('Port'), { target: { value: '80' } });
+    expect(screen.queryByText(/already allowed by this rule/)).toBeNull();
+    expect(screen.getByRole('button', { name: /allow this port/i })).toBeEnabled();
+  });
+
+  it('asks to turn the firewall on first when its manager is off', async () => {
+    const transport = new FixtureTransport('attention');
+    const state = await transport.getFirewall();
+    vi.spyOn(transport, 'getFirewall').mockResolvedValue({
+      ...state,
+      backend: 'ufw',
+      active: false,
+      zone: null,
+      services: [],
+    });
+    app.useTransport(transport);
+    render(Firewall);
+    await turnOn(transport);
+    expect(await screen.findByText(/Turn the firewall on first/)).toBeVisible();
+    expect(screen.getByRole('button', { name: /allow this port/i })).toBeDisabled();
+  });
 });

@@ -14,7 +14,9 @@ the installed firewall, ports inside allowed ranges, block lists and DNS
 that now take effect, the connection monitor on by default with a button,
 the first-run welcome and the `ibexwall-admins` group. Matrix green on the
 five distributions. Left: the check in the app, `gh release edit v0.2.0
---draft=false`, and the docs deploy. Next: see planning/12-roadmap.md.
+--draft=false`, and the docs deploy. In `main`, after v0.2.0 (0.3 work): B-01
+(icons, names and paths on Apps and network) and B-02 (catalog of
+assistants with Cursor and Gemini CLI). Next: see planning/12-roadmap.md.
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

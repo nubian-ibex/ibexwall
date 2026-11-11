@@ -6,6 +6,17 @@
 Versions follow [Semantic Versioning](https://semver.org). The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## Unreleased (0.3)
+
+### Added
+
+- Apps and network shows each program's icon and name from its desktop
+  entry (flatpak, snap, desktop and plain programs), with the path of its
+  binary under the name.
+- A catalog of assistants to connect, as cards: Claude Code, OpenCode,
+  VS Code, and now Cursor and Gemini CLI (`ibexctl mcp config cursor`,
+  `gemini-cli`). The network form is not offered for Gemini CLI.
+
 ## 0.2.0 (2026-11-10)
 
 ### Added

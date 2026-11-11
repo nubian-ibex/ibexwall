@@ -13,6 +13,8 @@ pub enum McpClient {
     ClaudeCode,
     Opencode,
     Vscode,
+    Cursor,
+    GeminiCli,
 }
 
 impl McpClient {
@@ -22,6 +24,8 @@ impl McpClient {
             Self::ClaudeCode => "claude-code",
             Self::Opencode => "opencode",
             Self::Vscode => "vscode",
+            Self::Cursor => "cursor",
+            Self::GeminiCli => "gemini-cli",
         }
     }
 
@@ -30,6 +34,8 @@ impl McpClient {
             Self::ClaudeCode => ".mcp.json (project) or ~/.claude.json",
             Self::Opencode => "opencode.json (project) or ~/.config/opencode/opencode.json",
             Self::Vscode => ".vscode/mcp.json",
+            Self::Cursor => ".cursor/mcp.json (project) or ~/.cursor/mcp.json",
+            Self::GeminiCli => ".gemini/settings.json (project) or ~/.gemini/settings.json",
         }
     }
 
@@ -48,6 +54,13 @@ impl McpClient {
                     "description": "IbexWall MCP token", "password": true }],
                 "servers": { "ibexwall": { "type": "http", "url": url,
                     "headers": { "Authorization": "Bearer ${input:ibexwall-token}" } } } }),
+            // Cursor expands ${env:NAME} in url and headers (its MCP docs).
+            Self::Cursor => json!({ "mcpServers": { "ibexwall": {
+                "url": url,
+                "headers": { "Authorization": "Bearer ${env:IBEXWALL_MCP_TOKEN}" } } } }),
+            // Gemini CLI documents no way to keep a header's token out of
+            // settings.json, so the network form is not offered for it.
+            Self::GeminiCli => unreachable!("render_for refuses the network form first"),
         }
     }
 
@@ -60,6 +73,10 @@ impl McpClient {
                 "type": "local", "command": ["ibexwall-mcp", "--client", name], "enabled": true } } }),
             Self::Vscode => json!({ "servers": { "ibexwall": {
                 "type": "stdio", "command": "ibexwall-mcp", "args": ["--client", name] } } }),
+            Self::Cursor => json!({ "mcpServers": { "ibexwall": {
+                "type": "stdio", "command": "ibexwall-mcp", "args": ["--client", name] } } }),
+            Self::GeminiCli => json!({ "mcpServers": { "ibexwall": {
+                "command": "ibexwall-mcp", "args": ["--client", name] } } }),
         }
     }
 }
@@ -83,6 +100,11 @@ pub fn check_url(url: &str) -> Result<(), String> {
 /// With `url`: the client reaches `ibexwall-mcp --http` on another machine.
 pub fn render_for(client: McpClient, with_proposals: bool, url: Option<&str>) -> String {
     let name = client.name();
+    if url.is_some() && matches!(client, McpClient::GeminiCli) {
+        return format!(
+            "Connect {name} to IbexWall\n\nOver the network is not offered for {name}: its settings file has no documented way to keep the token out of the file, and the token must never be written there. Run {name} on the machine that runs IbexWall instead (without --url).\n"
+        );
+    }
     let snippet = match url {
         Some(url) => serde_json::to_string_pretty(&client.remote_snippet(url)),
         None => serde_json::to_string_pretty(&client.snippet()),
@@ -137,6 +159,8 @@ mod tests {
             McpClient::ClaudeCode,
             McpClient::Opencode,
             McpClient::Vscode,
+            McpClient::Cursor,
+            McpClient::GeminiCli,
         ] {
             let text = render_for(client, false, None);
             let start = text.find('{').unwrap();
@@ -153,6 +177,7 @@ mod tests {
             McpClient::ClaudeCode,
             McpClient::Opencode,
             McpClient::Vscode,
+            McpClient::Cursor,
         ] {
             let text = render_for(client, false, Some("https://mcp.example:8765/mcp"));
             assert!(
@@ -178,6 +203,14 @@ mod tests {
         ] {
             assert!(check_url(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn a_client_without_a_safe_token_place_is_not_given_the_network_form() {
+        let text = render_for(McpClient::GeminiCli, false, Some("https://mcp.example/mcp"));
+        assert!(text.contains("not offered"));
+        assert!(!text.contains("mcp.example"));
+        assert!(!text.contains("Authorization"));
     }
 
     #[test]

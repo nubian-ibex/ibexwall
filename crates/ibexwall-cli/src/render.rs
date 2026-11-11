@@ -388,6 +388,43 @@ pub(crate) fn emit(value: serde_json::Value, json: bool) {
     }
 }
 
+/// What to tell the person, after the error name, for the errors that have
+/// something to say.
+fn hint(err: &VarlinkError) -> String {
+    match err.name.as_str() {
+        "com.ibexwall.Core.PermissionDenied" => {
+            format!(
+                ": try with sudo, or ask an administrator (action {})",
+                err.parameters["action"]
+            )
+        }
+        "com.ibexwall.Core.InvalidArgument" => {
+            match (
+                err.parameters["field"].as_str(),
+                err.parameters["reason"].as_str(),
+            ) {
+                (Some(field), Some(reason)) => format!(": {field}: {reason}"),
+                (None, Some(reason)) => format!(": {reason}"),
+                _ => String::new(),
+            }
+        }
+        "com.ibexwall.Core.AuthenticationRequired" => {
+            if err.parameters["interactive_possible"] == true {
+                format!(
+                    ": a password is needed (action {}); run it from a terminal without --no-ask-password, or with sudo",
+                    err.parameters["action"]
+                )
+            } else {
+                format!(
+                    ": a password is needed and no authentication agent answered (action {}); run it from the desktop session, or with sudo",
+                    err.parameters["action"]
+                )
+            }
+        }
+        _ => String::new(),
+    }
+}
+
 pub(crate) fn report_varlink(err: &VarlinkError, json: bool) {
     if json {
         println!(
@@ -399,28 +436,26 @@ pub(crate) fn report_varlink(err: &VarlinkError, json: bool) {
             .unwrap_or_default()
         );
     } else {
-        let hint = match err.name.as_str() {
-            "com.ibexwall.Core.PermissionDenied" => {
-                format!(
-                    ": try with sudo, or ask an administrator (action {})",
-                    err.parameters["action"]
-                )
-            }
-            "com.ibexwall.Core.AuthenticationRequired" => {
-                if err.parameters["interactive_possible"] == true {
-                    format!(
-                        ": a password is needed (action {}); run it from a terminal without --no-ask-password, or with sudo",
-                        err.parameters["action"]
-                    )
-                } else {
-                    format!(
-                        ": a password is needed and no authentication agent answered (action {}); run it from the desktop session, or with sudo",
-                        err.parameters["action"]
-                    )
-                }
-            }
-            _ => String::new(),
-        };
+        let hint = hint(err);
         eprintln!("ibexctl: {}{hint}", err.name);
+    }
+}
+
+#[cfg(test)]
+mod hint_tests {
+    use super::*;
+
+    #[test]
+    fn an_invalid_argument_says_which_field_and_why() {
+        let err = VarlinkError::new(
+            "com.ibexwall.Core.InvalidArgument",
+            serde_json::json!({ "field": "allow", "reason": "nothing to change: 9099/tcp is already allowed by port 1025-65535/tcp" }),
+        );
+        assert_eq!(
+            hint(&err),
+            ": allow: nothing to change: 9099/tcp is already allowed by port 1025-65535/tcp"
+        );
+        let bare = VarlinkError::new("com.ibexwall.Core.InvalidArgument", serde_json::json!({}));
+        assert_eq!(hint(&bare), "");
     }
 }

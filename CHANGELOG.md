@@ -35,7 +35,7 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
   did not find it listed and the change was undone without a word. The
   plan now says the port is already allowed and by which rule.
 - A plugin's own refusal reaches the app with its reason instead of a
-  transport error.
+  transport error, and `ibexctl` prints that reason after the error name.
 - Block lists did nothing in a packaged install: the resolver could not
   write them. They live in `/var/lib/ibexwall-dns` now.
 - The DNS screen showed the defaults after a change; it shows what is

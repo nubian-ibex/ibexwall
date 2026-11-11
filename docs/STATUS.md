@@ -7,15 +7,14 @@ Last updated: 2026-11-07 (F11b fully delivered; all five distros green)
 
 ## Current phase
 
-**Now: v0.1.1, desktop fixes, built and waiting for a person.** M1 to M6
-of `docs/plans/v0.1.1-desktop-fixes.md` are done and verified (report:
-`docs/reports/v0.1.1-report.md`); the release `v0.1.1` is a **draft**.
-Left (M7): in the desktop app, type the password and make real changes
-on the Fedora and Ubuntu KDE VMs, then publish the release and deploy the
-docs. In progress meanwhile: v0.2 (`docs/plans/v0.2-first-run.md`,
-ADR-0046): M1 to M4 done and tested (turn on the installed firewall,
-what is missing, the first-run welcome, the ibexwall-admins group); M5
-(full matrix, draft release) waits for the v0.1.1 check.
+**Now: v0.2.0, built and waiting for the maintainer's check.** v0.1.1 is
+published. v0.2.0 (`docs/plans/v0.2-first-run.md`, report
+`docs/reports/v0.2.0-report.md`, ADR-0046) is a **draft** release: turn on
+the installed firewall, ports inside allowed ranges, block lists and DNS
+that now take effect, the connection monitor on by default with a button,
+the first-run welcome and the `ibexwall-admins` group. Matrix green on the
+five distributions. Left: the check in the app, `gh release edit v0.2.0
+--draft=false`, and the docs deploy. Next: see planning/12-roadmap.md.
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

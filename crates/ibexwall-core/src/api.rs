@@ -87,6 +87,18 @@ fn authentication_required(action: &str, asked: bool) -> VarlinkError {
     )
 }
 
+/// The choice a plugin recorded with what it applied, if it records one.
+/// Only `net.dns` does: its settings file carries a `choice`.
+fn applied_choice(root: &std::path::Path, plugin: &str) -> Option<Value> {
+    if plugin != "net.dns" {
+        return None;
+    }
+    let path = names::path_under(root, names::ARTIFACT_DNS_SETTINGS);
+    let text = std::fs::read_to_string(path).ok()?;
+    let settings: Value = serde_json::from_str(&text).ok()?;
+    settings.get("choice").cloned()
+}
+
 fn invalid_argument(field: &str, reason: String) -> VarlinkError {
     err(
         "InvalidArgument",
@@ -505,7 +517,13 @@ async fn dispatch(
                 .manifest(&plugin)
                 .map_err(|_| not_found("plugin", &plugin))?;
             let config = core.config.read().expect("config lock poisoned");
-            let effective = config.effective(&plugin, &std::collections::BTreeMap::new());
+            let mut effective = config.effective(&plugin, &std::collections::BTreeMap::new());
+            // What a plugin applied is stored beside the files it wrote, not
+            // in a settings layer: show that, so a screen reflects the
+            // machine and not the defaults.
+            if let Some(Value::Object(applied)) = applied_choice(&core.root, &plugin) {
+                effective.extend(applied);
+            }
             let locks: Vec<String> = config
                 .locks
                 .iter()
@@ -1331,7 +1349,7 @@ async fn apply(core: &Arc<Core>, parameters: &Value, actor: &str) -> Result<Repl
         Err(e) => {
             // A failed apply still rolls back; record the real outcome
             // rather than always saying Failed.
-            let rollback = core.rollback_transaction(&tx_id, &ops);
+            let rollback = core.rollback_transaction_blocking(&tx_id, &ops).await;
             core.state
                 .mark_transaction(
                     &tx_id,
@@ -1361,7 +1379,7 @@ async fn apply(core: &Arc<Core>, parameters: &Value, actor: &str) -> Result<Repl
         .await
         .unwrap_or(false);
     if !verified {
-        let rollback = core.rollback_transaction(&tx_id, &ops);
+        let rollback = core.rollback_transaction_blocking(&tx_id, &ops).await;
         core.state
             .mark_transaction(
                 &tx_id,
@@ -1428,4 +1446,31 @@ async fn apply(core: &Arc<Core>, parameters: &Value, actor: &str) -> Result<Repl
     };
     core.publish_transaction_event(&transaction);
     Ok(Reply::result(json!({ "transaction": transaction })))
+}
+
+#[cfg(test)]
+mod applied_tests {
+    use super::*;
+
+    #[test]
+    fn the_dns_choice_comes_from_the_settings_file_it_was_stored_with() {
+        let root = std::env::temp_dir().join(format!("ibx-applied-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let file = names::path_under(&root, names::ARTIFACT_DNS_SETTINGS);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        // Nothing applied yet, or a file from before the choice was kept.
+        assert!(applied_choice(&root, "net.dns").is_none());
+        std::fs::write(&file, r#"{"servers":[]}"#).unwrap();
+        assert!(applied_choice(&root, "net.dns").is_none());
+        std::fs::write(
+            &file,
+            r#"{"servers":[],"choice":{"provider":"cloudflare","lists":[{"id":"hagezi-pro"}]}}"#,
+        )
+        .unwrap();
+        let choice = applied_choice(&root, "net.dns").unwrap();
+        assert_eq!(choice["provider"], "cloudflare");
+        // Only the DNS plugin keeps one.
+        assert!(applied_choice(&root, "net.firewall").is_none());
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

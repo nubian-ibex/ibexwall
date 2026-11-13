@@ -18,8 +18,8 @@ importers:
         specifier: ^5.3.0
         version: 5.3.0
       '@lucide/svelte':
-        specifier: ^1.66.0
-        version: 1.66.0(svelte@5.57.3(@typescript-eslint/types@8.72.1))
+        specifier: ^1.71.0
+        version: 1.71.0(svelte@5.57.3(@typescript-eslint/types@8.72.1))
       '@tauri-apps/api':
         specifier: ^2.12.4
         version: 2.12.4
@@ -278,8 +278,8 @@ packages:
   '@keyv/serialize@1.1.1':
     resolution: {integrity: sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==}
 
-  '@lucide/svelte@1.66.0':
-    resolution: {integrity: sha512-G2qFyutQpgk9TY0QYgqXk9rQtUt8p509mFpQzmTpyc894hfRSFhGNcGAVAUgB8znAyVsp5WTF/2vmCwprnNQ/w==}
+  '@lucide/svelte@1.71.0':
+    resolution: {integrity: sha512-m1a8SzMcEqjrG/uIEWCzbWqxK7yVn9q4ukaU4adVIFM7MW6rBg1+UbpeRQSBsXyuqIzIqCr1Ty0g2rrMTdQWYA==}
     peerDependencies:
       svelte: ^5
 
@@ -1302,6 +1302,7 @@ packages:
 
   tldts-core@7.4.20:
     resolution: {integrity: sha512-C630TWXZCZmLq0F2bW4QqwnaaxCQ/svpAqvJwnC4JvgEM5ohhBnGsEzTLSOXcN+xjz+kEaHS5uoWIw2klnqd0A==}
+    deprecated: Partial release, see https://github.com/remusao/tldts/issues/2735. Use >=7.4.22.
 
   tldts@7.4.19:
     resolution: {integrity: sha512-48dH6aSpQnpbzDUc4vIQZ1VjB8tkK+e8c1yx05/SZK+rkssgjEOlxDd/yU8/a4vGYQ9vRgJr9dwMq9TJ0b3X2Q==}
@@ -1657,7 +1658,7 @@ snapshots:
 
   '@keyv/serialize@1.1.1': {}
 
-  '@lucide/svelte@1.66.0(svelte@5.57.3(@typescript-eslint/types@8.72.1))':
+  '@lucide/svelte@1.71.0(svelte@5.57.3(@typescript-eslint/types@8.72.1))':
     dependencies:
       svelte: 5.57.3(@typescript-eslint/types@8.72.1)
 

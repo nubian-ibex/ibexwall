@@ -5,7 +5,10 @@ After=network.target
 # If the resolver cannot stay up, give the machine its previous DNS back.
 OnFailure=ibexwall-dns-failsafe.service
 StartLimitIntervalSec=60
-StartLimitBurst=3
+# Every change of provider or list restarts the resolver on purpose, and a
+# few close together must not look like a crash loop; five starts in a
+# minute still does.
+StartLimitBurst=5
 
 [Service]
 Type=exec

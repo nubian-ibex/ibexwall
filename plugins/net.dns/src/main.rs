@@ -254,14 +254,17 @@ fn plan(sandbox: &Sandbox, config: Config) -> Result<Vec<Op>, PluginError> {
         write(settings_path, format!("{settings_json}\n")),
         write(names::ARTIFACT_RESOLVED.into(), dropin_content()),
         // The resolver must be up before resolved is pointed at it.
+        // Enabled for the next boot only: the restart below is the one
+        // start. The resolver reads its settings only when it starts, and
+        // `enable --now` leaves a running one as it is, so a change of
+        // provider or block list would be written and then ignored; and a
+        // second start per change would trip the unit's start limit (three
+        // in a minute) when changes come close together.
         Op::SystemdUnit {
             unit: SERVICE.into(),
             action: UnitAction::Enable,
-            now: Some(true),
+            now: Some(false),
         },
-        // `enable --now` leaves a resolver that already runs as it is, and
-        // it reads its settings only when it starts: without this, changing
-        // the provider or a block list would be written and then ignored.
         Op::SystemdUnit {
             unit: SERVICE.into(),
             action: UnitAction::Restart,

@@ -373,7 +373,7 @@ TX=$(echo "$OUT" | {JSON_ID})
 sudo ibexctl confirm "$TX"
 sudo test -f /etc/brave/policies/managed/ibexwall-dns.json
 sudo python3 -c 'import json,sys; d=json.load(open("/etc/brave/policies/managed/ibexwall-dns.json")); sys.exit(0 if d == {{"DnsOverHttpsMode": "off"}} else 1)' || {{ echo "WRONG POLICY CONTENT"; sudo cat /etc/brave/policies/managed/ibexwall-dns.json >&2; exit 1; }}
-sudo ibexctl rollback "$TX" --json >/dev/null || {{ echo "ROLLBACK FAILED"; exit 1; }}
+sudo ibexctl rollback "$TX" --json >/tmp/ibx-rb9.out 2>&1 || {{ echo "ROLLBACK FAILED"; cat /tmp/ibx-rb9.out; sudo journalctl -u ibexwalld -n 25 --no-pager -o cat; sudo journalctl -b --no-pager -o cat -u 'ibexwall-exec-*' | tail -15; systemctl status ibexwall-dns --no-pager | head -12; exit 1; }}
 sudo test ! -e /etc/brave/policies/managed/ibexwall-dns.json || {{ echo "POLICY FILE SURVIVED ROLLBACK"; exit 1; }}
 AFTER=$(sudo sh -c 'cat /etc/systemd/resolved.conf /etc/systemd/resolved.conf.d/* 2>/dev/null | sha256sum')
 [ "$AFTER" = "$BEFORE" ] || {{ echo "RESOLVED CONFIG CHANGED: $AFTER vs $BEFORE"; exit 1; }}

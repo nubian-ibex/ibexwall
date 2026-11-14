@@ -138,7 +138,7 @@ if [ "$1" -ge 1 ]; then
 fi
 
 %changelog
-* Tue Nov 10 2026 Nubian Ibex <maintainers@nubian-ibex.invalid> - 0.2.0-1
+* Fri Nov 13 2026 Nubian Ibex <maintainers@nubian-ibex.invalid> - 0.2.0-1
 - Turn on the installed firewall, ports inside allowed ranges, block lists,
   the connection monitor and a first-run welcome; see CHANGELOG.md.
 

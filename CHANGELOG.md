@@ -6,18 +6,7 @@
 Versions follow [Semantic Versioning](https://semver.org). The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## Unreleased (0.3)
-
-### Added
-
-- Apps and network shows each program's icon and name from its desktop
-  entry (flatpak, snap, desktop and plain programs), with the path of its
-  binary under the name.
-- A catalog of assistants to connect, as cards: Claude Code, OpenCode,
-  VS Code, and now Cursor and Gemini CLI (`ibexctl mcp config cursor`,
-  `gemini-cli`). The network form is not offered for Gemini CLI.
-
-## 0.2.0 (2026-11-10)
+## 0.2.0 (2026-11-13)
 
 ### Added
 
@@ -34,6 +23,12 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
   open it again.
 - An `ibexwall-admins` group, empty by default: its members change
   IbexWall without a password.
+- Apps and network shows each program's icon and name from its desktop
+  entry (flatpak, snap, desktop and plain programs), with the path of its
+  binary under the name.
+- A catalog of assistants to connect, as cards: Claude Code, OpenCode,
+  VS Code, and now Cursor and Gemini CLI (`ibexctl mcp config cursor`,
+  `gemini-cli`). The network form is not offered for Gemini CLI.
 
 - The connection monitor runs after the install, and Apps and network
   has a button to turn it on or off (`ibexctl apps monitor on|off`). A
@@ -50,7 +45,15 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
 - Block lists did nothing in a packaged install: the resolver could not
   write them. They live in `/var/lib/ibexwall-dns` now.
 - The DNS screen showed the defaults after a change; it shows what is
-  applied.
+  applied (the choice is kept beside the resolver's settings).
+- Changing the DNS provider or block list after the first time was written
+  and ignored: the running resolver was never restarted. It is restarted
+  once per change, and a few changes close together no longer trip its
+  start limit.
+- The Firewall screen says, in your language, when a port is already
+  allowed by a range or when the firewall must be turned on first.
+- Rollbacks no longer run on the daemon's async threads, which could stall
+  its watchdog.
 - Rolling back a change that started firewalld failed on the reload.
 - A rollback that had turned ufw on left it on.
 - Removing the packages left the monitor's link behind, and a monitor

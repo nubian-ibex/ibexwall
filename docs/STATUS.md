@@ -7,16 +7,17 @@ Last updated: 2026-11-07 (F11b fully delivered; all five distros green)
 
 ## Current phase
 
-**Now: v0.2.0, draft rebuilt 2026-11-13, waiting for the maintainer's
-check.** v0.1.1 is published. The 0.2.0 draft now also carries the fixes
-for the maintainer's second report (DNS changes after the first one were
-ignored by the running resolver; the DNS screen showed defaults; the
-Firewall screen gave English refusals for ports inside allowed ranges or
-with the manager off; rollbacks on async threads) and B-01/B-02. Matrix:
-f10 5/5, desktop 5/5 (d10 now applies two DNS changes in a row), f3 on
-Ubuntu 24.04 and Fedora, firewall-on on three. Not installed on the KDE
-VMs: they were off. Left: install it there, check in the app, publish,
-deploy docs.
+**Now: v0.2.0, draft rebuilt 2026-11-14, waiting for the maintainer's
+check.** Since the 2026-11-13 draft: a removal with DNS changes applied left
+two undone (start limit, and the removal restarting its own resolver after
+the SELinux module had left); rollbacks reset the unit's failed state and
+an uninstall leaves IbexWall's units stopped. The daemon's watchdog is 3
+minutes (core dumps showed a healthy, idle daemon killed while the VM was
+starved). New `desktop d11` removes the packages with three DNS changes
+applied. The KDE VMs (Fedora 45 .107, Ubuntu 26.10 .110) were purged and
+reinstalled from the draft. CI: all jobs green except the commit check
+(455a072's subject is 74 chars; history not rewritten). Left: the check in
+the app, publish, docs deploy.
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

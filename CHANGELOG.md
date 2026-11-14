@@ -54,6 +54,12 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
   allowed by a range or when the firewall must be turned on first.
 - Rollbacks no longer run on the daemon's async threads, which could stall
   its watchdog.
+- Removing the packages with several DNS changes applied left two of them
+  undone: the rollbacks tripped the resolver's start limit, and the removal
+  tried to start the resolver it was removing. A rollback now clears the
+  start limit, and a removal leaves IbexWall's own services stopped.
+- The daemon's watchdog is three minutes instead of 30 seconds: a machine
+  short of CPU, or a paused VM, had the healthy daemon killed.
 - Rolling back a change that started firewalld failed on the reload.
 - A rollback that had turned ufw on left it on.
 - Removing the packages left the monitor's link behind, and a monitor

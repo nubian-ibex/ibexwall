@@ -12,7 +12,10 @@ Requires=ibexwalld.socket
 Type=notify
 ExecStart=/usr/bin/ibexwalld
 Restart=on-failure
-WatchdogSec=30s
+# systemd's own daemons use 3 minutes. A machine starved of CPU, or a VM
+# paused for a while, left an idle and healthy daemon unscheduled for more
+# than 30 seconds, and it was killed; a real hang is still caught.
+WatchdogSec=3min
 NoNewPrivileges=yes
 # The AppArmor profile of this name, where the machine uses AppArmor and has
 # loaded it (ibexwall-apparmor); the leading dash ignores a machine without.

@@ -43,6 +43,10 @@ impl Default for UnitSnapshot {
 pub trait Systemd: Send + Sync {
     fn snapshot(&self, unit: &str) -> anyhow::Result<UnitSnapshot>;
     fn apply(&self, unit: &str, action: UnitAction, now: bool) -> anyhow::Result<()>;
+    /// Clears a unit's failed state and start counter. A rollback is a
+    /// deliberate start: restarts made by the changes it undoes must not
+    /// count against the start limit meant to catch a crash loop.
+    fn reset_failed(&self, _unit: &str) {}
     /// Runs the executor helper for one transaction in a transient unit
     /// (ADR-0026): `ReadWritePaths` limited to `dirs`, hardened like the
     /// daemon, and the call blocks until the unit finishes.
@@ -206,6 +210,13 @@ impl Systemd for RealSystemd {
         systemctl(&args)?;
         Ok(())
     }
+
+    fn reset_failed(&self, unit: &str) {
+        if self.enabled {
+            // Nothing to clear is not an error.
+            let _ = systemctl(&["reset-failed", unit]);
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -249,6 +260,10 @@ impl Systemd for FakeSystemd {
 
     fn snapshot(&self, unit: &str) -> anyhow::Result<UnitSnapshot> {
         Ok(self.get(unit))
+    }
+
+    fn reset_failed(&self, unit: &str) {
+        self.log.push(format!("reset-failed {unit}"));
     }
 
     fn apply(&self, unit: &str, action: UnitAction, now: bool) -> anyhow::Result<()> {

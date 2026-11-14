@@ -19,8 +19,8 @@ pub mod identity;
 pub mod ops;
 pub mod tls;
 pub use ops::{
-    OpError, PriorFile, SnapshotEntry, SnapshotManifest, apply_snapshot_inverses, execute,
-    group_id, ops_digest, write_directories,
+    OpError, PriorFile, RollbackFor, SnapshotEntry, SnapshotManifest, apply_snapshot_inverses,
+    apply_snapshot_inverses_for, execute, group_id, ops_digest, write_directories,
 };
 
 use std::sync::Arc;

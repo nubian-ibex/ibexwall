@@ -497,10 +497,36 @@ pub fn parse_fragment(value: &serde_json::Value) -> Result<crate::Fragment> {
 /// Reads a snapshot manifest and applies the inverses in reverse order.
 /// `snapshot_root` is the directory that contains `<tx>/manifest.json`
 /// and `<tx>/files/`.
+/// Why the inverses run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RollbackFor {
+    /// Undoing a change: the machine goes back to how it was.
+    #[default]
+    Undo,
+    /// The package is being removed: as `Undo`, but IbexWall's own units
+    /// are not started again, since their files are about to go (and may
+    /// already be unusable, as when the SELinux module left first).
+    Uninstall,
+}
+
 pub fn apply_snapshot_inverses(
     sys: &crate::SysBundle,
     snapshot_root: &Path,
     manifest: &SnapshotManifest,
+) -> Result<()> {
+    apply_snapshot_inverses_for(sys, snapshot_root, manifest, RollbackFor::Undo)
+}
+
+/// Whether the inverses leave this unit alone.
+fn leave_alone(unit: &str, purpose: RollbackFor) -> bool {
+    purpose == RollbackFor::Uninstall && unit.starts_with("ibexwall")
+}
+
+pub fn apply_snapshot_inverses_for(
+    sys: &crate::SysBundle,
+    snapshot_root: &Path,
+    manifest: &SnapshotManifest,
+    purpose: RollbackFor,
 ) -> Result<()> {
     // Every inverse is attempted: one failure must not skip the rest and
     // leave the machine half-restored, and the errors are reported
@@ -547,7 +573,7 @@ pub fn apply_snapshot_inverses(
                 enabled,
                 active,
                 ..
-            } => {
+            } if !leave_alone(unit, purpose) => {
                 attempt!(
                     format!("restore unit {unit}"),
                     (|| -> Result<()> {
@@ -582,6 +608,7 @@ pub fn apply_snapshot_inverses(
                         }
                         if now.active != *active {
                             let action = if *active {
+                                sys.systemd.reset_failed(unit);
                                 UnitAction::Start
                             } else {
                                 UnitAction::Stop
@@ -610,7 +637,8 @@ pub fn apply_snapshot_inverses(
             }
             SnapshotEntry::Firewall { .. }
             | SnapshotEntry::NoInverse { .. }
-            | SnapshotEntry::Reload { .. } => {}
+            | SnapshotEntry::Reload { .. }
+            | SnapshotEntry::Unit { .. } => {}
         }
     }
     // Second pass: services restarted by the transaction pick up the
@@ -624,7 +652,8 @@ pub fn apply_snapshot_inverses(
                 active: true,
                 restarted: true,
                 ..
-            } => {
+            } if !leave_alone(unit, purpose) => {
+                sys.systemd.reset_failed(unit);
                 attempt!(
                     format!("restart {unit}"),
                     sys.systemd.apply(unit, UnitAction::Restart, false)
@@ -864,6 +893,78 @@ mod tests {
         };
         apply_snapshot_inverses(&sys, Path::new("/nonexistent"), &started).unwrap();
         assert_eq!(runner.calls().len(), 1, "{:?}", runner.calls());
+    }
+
+    fn fake_sys() -> (crate::SysBundle, std::sync::Arc<crate::FakeSystemd>) {
+        use std::sync::Arc;
+        let systemd = Arc::new(crate::FakeSystemd::new());
+        let sys = crate::SysBundle {
+            fs: Arc::new(crate::FakeFs::new()),
+            runner: Arc::new(crate::firewall::FakeRunner::new()),
+            systemd: systemd.clone(),
+            sysctl: Arc::new(crate::FakeSysctl::new()),
+            clock: Arc::new(crate::FakeClock::new(1_793_534_400)),
+            nft: Arc::new(crate::FakeNft::new()),
+            allow_system_executors: false,
+            use_transient_executor: false,
+            executor_work_dir: None,
+        };
+        (sys, systemd)
+    }
+
+    /// The resolver was running and restarted by the change it undoes.
+    fn restarted(unit: &str) -> SnapshotManifest {
+        SnapshotManifest {
+            tx: "tx1".into(),
+            entries: vec![SnapshotEntry::Unit {
+                op_index: 0,
+                unit: unit.into(),
+                enabled: serde_json::to_string(&crate::Enabled::Enabled).unwrap(),
+                active: true,
+                restarted: true,
+            }],
+        }
+    }
+
+    #[test]
+    fn a_rollback_clears_the_start_limit_before_it_restarts() {
+        let (sys, systemd) = fake_sys();
+        let manifest = restarted("ibexwall-dns.service");
+        apply_snapshot_inverses(&sys, Path::new("/nonexistent"), &manifest).unwrap();
+        let log = systemd.log.snapshot();
+        let reset = log
+            .iter()
+            .position(|l| l == "reset-failed ibexwall-dns.service");
+        let restart = log
+            .iter()
+            .position(|l| l.starts_with("Restart ibexwall-dns.service"));
+        assert!(
+            reset.is_some() && restart.is_some() && reset < restart,
+            "{log:?}"
+        );
+    }
+
+    #[test]
+    fn an_uninstall_leaves_ibexwall_units_alone_and_restores_the_others() {
+        let (sys, systemd) = fake_sys();
+        let mut manifest = restarted("ibexwall-dns.service");
+        manifest
+            .entries
+            .extend(restarted("systemd-resolved.service").entries);
+        apply_snapshot_inverses_for(
+            &sys,
+            Path::new("/nonexistent"),
+            &manifest,
+            RollbackFor::Uninstall,
+        )
+        .unwrap();
+        let log = systemd.log.snapshot();
+        assert!(!log.iter().any(|l| l.contains("ibexwall-dns")), "{log:?}");
+        assert!(
+            log.iter()
+                .any(|l| l.starts_with("Restart systemd-resolved.service")),
+            "{log:?}"
+        );
     }
 
     #[test]

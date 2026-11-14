@@ -7,16 +7,16 @@ Last updated: 2026-11-07 (F11b fully delivered; all five distros green)
 
 ## Current phase
 
-**Now: v0.2.0, built and waiting for the maintainer's check.** v0.1.1 is
-published. v0.2.0 (`docs/plans/v0.2-first-run.md`, report
-`docs/reports/v0.2.0-report.md`, ADR-0046) is a **draft** release: turn on
-the installed firewall, ports inside allowed ranges, block lists and DNS
-that now take effect, the connection monitor on by default with a button,
-the first-run welcome and the `ibexwall-admins` group. Matrix green on the
-five distributions. Left: the check in the app, `gh release edit v0.2.0
---draft=false`, and the docs deploy. In `main`, after v0.2.0 (0.3 work): B-01
-(icons, names and paths on Apps and network) and B-02 (catalog of
-assistants with Cursor and Gemini CLI). Next: see planning/12-roadmap.md.
+**Now: v0.2.0, draft rebuilt 2026-11-13, waiting for the maintainer's
+check.** v0.1.1 is published. The 0.2.0 draft now also carries the fixes
+for the maintainer's second report (DNS changes after the first one were
+ignored by the running resolver; the DNS screen showed defaults; the
+Firewall screen gave English refusals for ports inside allowed ranges or
+with the manager off; rollbacks on async threads) and B-01/B-02. Matrix:
+f10 5/5, desktop 5/5 (d10 now applies two DNS changes in a row), f3 on
+Ubuntu 24.04 and Fedora, firewall-on on three. Not installed on the KDE
+VMs: they were off. Left: install it there, check in the app, publish,
+deploy docs.
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

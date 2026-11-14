@@ -279,6 +279,33 @@ sudo ibexctl rollback "$TX1" --json >/dev/null
 echo "METRIC: a block list blocks (counter), and a second change reaches the running resolver"
 "#;
 
+/// Removing the packages with DNS changes applied undoes them, even
+/// though each one restarts the resolver and the resolver itself is going
+/// away: nothing is left that could not be undone, and DNS works after.
+const REMOVE_WITH_DNS: &str = r#"
+id_of() { python3 -c 'import json,sys;d=json.JSONDecoder().raw_decode(sys.stdin.read())[0];t=d.get("plan") or d.get("transaction");print(t["id"] if isinstance(t,dict) else t)'; }
+sudo ibexctl --no-ask-password plugins enable net.dns >/dev/null
+for change in "quad9 hagezi-light" "cloudflare hagezi-pro" "adguard hagezi-light"; do
+  set -- $change
+  P=$(sudo ibexctl plan net.dns --set provider=$1 --set list=$2 --json 2>&1 | id_of)
+  OUT=$(sudo ibexctl apply "$P" --confirm-timeout 300 --json 2>&1 || true)
+  TX=$(echo "$OUT" | id_of)
+  case "$TX" in tx-*) ;; *) echo "APPLY FAILED ($1): $OUT"; exit 1 ;; esac
+  if echo "$OUT" | grep -q pending_confirm; then sudo ibexctl confirm "$TX" >/dev/null; fi
+done
+case $FAM in
+rpm) sudo dnf remove -y ibexwall ibexwall-desktop ibexwall-mcp ibexwall-selinux >/tmp/remove.log 2>&1 ;;
+deb) sudo DEBIAN_FRONTEND=noninteractive apt-get remove -y ibexwall ibexwall-desktop ibexwall-mcp ibexwall-apparmor >/tmp/remove.log 2>&1 ;;
+arch) sudo pacman -Rns --noconfirm ibexwall-mcp ibexwall-desktop ibexwall >/tmp/remove.log 2>&1 ;;
+esac
+grep -i "undid" /tmp/remove.log || true
+if grep -qi "could not undo" /tmp/remove.log; then echo "THE REMOVAL LEFT CHANGES BEHIND"; grep -i "could not" /tmp/remove.log; exit 1; fi
+sudo test ! -e /etc/systemd/resolved.conf.d/50-ibexwall.conf || { echo "THE RESOLVED DROP-IN SURVIVED"; exit 1; }
+for _ in $(seq 1 15); do getent hosts example.com >/dev/null && break; sleep 1; done
+getent hosts example.com >/dev/null || { echo "DNS DOES NOT WORK AFTER THE REMOVAL"; resolvectl status | head -8; exit 1; }
+echo "METRIC: removing the packages with three DNS changes applied undid them all and DNS works"
+"#;
+
 pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     println!("== desktop: stage ==");
     let input = stage_and_pack(workspace)?;
@@ -310,6 +337,8 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     scenario!("d8 the administrators group", ADMINS);
     scenario!("d9 the connection monitor", MONITOR);
     scenario!("d10 secure DNS with a block list", DNS_LIST);
+    // Last: it removes the packages.
+    scenario!("d11 removal with DNS changes applied", REMOVE_WITH_DNS);
 
     if failures == 0 {
         println!("PASS: desktop suite (all scenarios)");

@@ -43,17 +43,34 @@ impl PersistedPlan {
 
 pub struct Engine {
     pub sys: ibexwall_sys::SysBundle,
+    /// Set while the package is being removed (`ibexwalld --cleanup`).
+    uninstalling: std::sync::atomic::AtomicBool,
 }
 
 impl Engine {
     pub fn new() -> Self {
-        Self {
-            sys: ibexwall_sys::SysBundle::real(),
-        }
+        Self::with(ibexwall_sys::SysBundle::real())
     }
 
     pub fn with(sys: ibexwall_sys::SysBundle) -> Self {
-        Self { sys }
+        Self {
+            sys,
+            uninstalling: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+
+    /// From now on, rollbacks are for a removal of the package.
+    pub fn set_uninstalling(&self) {
+        self.uninstalling
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    fn rollback_purpose(&self) -> ibexwall_sys::RollbackFor {
+        if self.uninstalling.load(std::sync::atomic::Ordering::SeqCst) {
+            ibexwall_sys::RollbackFor::Uninstall
+        } else {
+            ibexwall_sys::RollbackFor::Undo
+        }
     }
 
     /// Preview rows for the UI (op kind, target, risk).
@@ -496,16 +513,17 @@ impl Engine {
             .with_context(|| format!("reading snapshot for {tx}"))?;
         let manifest: SnapshotManifest = serde_json::from_slice(&bytes)?;
         if !self.sys.use_transient_executor {
-            return ibexwall_sys::apply_snapshot_inverses(
+            return ibexwall_sys::apply_snapshot_inverses_for(
                 &self.sys,
                 state.snapshots_dir(),
                 &manifest,
+                self.rollback_purpose(),
             );
         }
         // The daemon unit cannot write /etc: the inverses also run inside
         // the transient executor, with the snapshot's own directories.
         let dirs = self.writable_ancestors(snapshot_write_directories(&manifest));
-        let exec_args = vec![
+        let mut exec_args = vec![
             "rollback".to_string(),
             state
                 .snapshots_dir()
@@ -513,6 +531,9 @@ impl Engine {
                 .to_string_lossy()
                 .into_owned(),
         ];
+        if self.rollback_purpose() == ibexwall_sys::RollbackFor::Uninstall {
+            exec_args.push("--uninstall".into());
+        }
         self.sys
             .systemd
             .run_transient_executor(&format!("ibexwall-exec-{tx}-rollback"), &exec_args, &dirs)

@@ -49,7 +49,12 @@ fn run(args: &[String]) -> Result<()> {
             let root = Path::new(snapshot_dir)
                 .parent()
                 .context("snapshot dir has no parent")?;
-            ibexwall_sys::apply_snapshot_inverses(&sys, root, &manifest)
+            let purpose = if args.get(2).map(String::as_str) == Some("--uninstall") {
+                ibexwall_sys::RollbackFor::Uninstall
+            } else {
+                ibexwall_sys::RollbackFor::Undo
+            };
+            ibexwall_sys::apply_snapshot_inverses_for(&sys, root, &manifest, purpose)
         }
         other => Err(anyhow::anyhow!("unknown mode `{other}`")),
     }

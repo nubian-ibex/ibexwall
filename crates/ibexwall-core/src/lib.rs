@@ -288,6 +288,7 @@ impl Core {
     /// data (state, audit log, settings) stays until a purge. A transaction
     /// that cannot be undone is reported and does not stop the rest.
     pub fn cleanup(&self) -> Result<CleanupReport> {
+        self.engine.set_uninstalling();
         let mut report = CleanupReport::default();
         for tx in self.state.list_rollback_candidates()? {
             let ops: Vec<Op> = self

@@ -19,6 +19,8 @@ pub struct Audit<W: Write> {
     writer: W,
     seq: u64,
     prev: String,
+    /// Read handle on the log file when other processes may append to it.
+    shared: Option<std::fs::File>,
 }
 
 /// Cut on a character boundary.
@@ -33,7 +35,31 @@ fn hash(line: &str) -> String {
 impl<W: Write> Audit<W> {
     /// `seq` and `prev` continue an existing log (see `resume`).
     pub fn new(writer: W, seq: u64, prev: String) -> Self {
-        Self { writer, seq, prev }
+        Self {
+            writer,
+            seq,
+            prev,
+            shared: None,
+        }
+    }
+
+    /// Two MCP processes (two clients) append to the same file. With the file
+    /// given here, every append takes an exclusive lock and continues from the
+    /// tail on disk, so the chain never forks.
+    pub fn shared_with(mut self, file: std::fs::File) -> Self {
+        self.shared = Some(file);
+        self
+    }
+
+    /// Last line of the file, read from its final bytes (lines are bounded).
+    fn disk_tail(file: &mut std::fs::File) -> std::io::Result<(u64, String)> {
+        use std::io::{Read, Seek, SeekFrom};
+        let len = file.seek(SeekFrom::End(0))?;
+        let start = len.saturating_sub(32 * 1024);
+        file.seek(SeekFrom::Start(start))?;
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf)?;
+        Ok(Self::resume(&String::from_utf8_lossy(&buf)))
     }
 
     /// `(seq, prev hash)` from the text of an existing log.
@@ -50,7 +76,23 @@ impl<W: Write> Audit<W> {
         }
     }
 
-    pub fn append(&mut self, ts: &str, mut fields: Map<String, Value>) -> std::io::Result<u64> {
+    pub fn append(&mut self, ts: &str, fields: Map<String, Value>) -> std::io::Result<u64> {
+        let Some(mut file) = self.shared.take() else {
+            return self.write_line(ts, fields);
+        };
+        let result = file.lock().and_then(|()| {
+            let (seq, prev) = Self::disk_tail(&mut file)?;
+            self.seq = seq;
+            self.prev = prev;
+            self.write_line(ts, fields)
+        });
+        // The lock is released when the handle closes or here, whichever first.
+        let _ = file.unlock();
+        self.shared = Some(file);
+        result
+    }
+
+    fn write_line(&mut self, ts: &str, mut fields: Map<String, Value>) -> std::io::Result<u64> {
         self.seq += 1;
         fields.insert("seq".into(), json!(self.seq));
         fields.insert("ts".into(), json!(ts));
@@ -160,6 +202,29 @@ mod tests {
         audit.call("t", "c", "x", &json!({})).unwrap();
         let joined = format!("{text}{}", String::from_utf8(audit.writer).unwrap());
         assert_eq!(verify(&joined), Ok(5));
+    }
+
+    #[test]
+    fn two_processes_on_one_file_keep_one_chain() {
+        let path = std::env::temp_dir().join(format!("ibexwall-audit-{}", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let open = || {
+            let w = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path)
+                .unwrap();
+            let r = std::fs::File::open(&path).unwrap();
+            Audit::new(w, 0, String::new()).shared_with(r)
+        };
+        let (mut a, mut b) = (open(), open());
+        for _ in 0..3 {
+            a.call("t", "a", "x", &json!({})).unwrap();
+            b.call("t", "b", "x", &json!({})).unwrap();
+        }
+        let text = std::fs::read_to_string(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(verify(&text), Ok(6));
     }
 
     #[test]

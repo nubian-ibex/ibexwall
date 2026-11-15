@@ -10,6 +10,9 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
 
 ### Added
 
+- Turn a running ufw or firewalld off from the Firewall switch; undoing it
+  turns it back on.
+
 - Turn on the firewall the distribution installed when it is off (ufw on
   Ubuntu, a disabled firewalld): "Turn on the firewall" on the Firewall
   screen, or `ibexctl plan net.firewall --set enable_manager=true`. The
@@ -35,6 +38,14 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
   recorded "off" is kept across upgrades and reinstalls.
 
 ### Fixed
+
+- The Firewall switch shows what the firewall is doing now, not whether the
+  plugin is on. Port, service and profile controls appear only while the
+  firewall is on, and asking for a change turns the plugin on by itself.
+- The screen reads the firewall again after a change is applied, kept or
+  undone, so an allowed port shows up in the list.
+- The change flow says what each button does: "Apply" only shows what would
+  change, "Confirm" carries it out.
 
 - Allowing a port did nothing on Fedora Workstation, whose firewall zone
   already allows 1025-65535: firewalld refused to add the port, the check

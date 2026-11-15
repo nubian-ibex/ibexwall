@@ -28,7 +28,7 @@ write_paths = ["/etc/ibexwall/firewall"]
 firewall_backends = ["firewalld", "ufw"]
 # Turning on an installed firewalld that is off (ADR-0046).
 units = ["firewalld.service"]
-unit_actions = ["enable"]
+unit_actions = ["enable", "disable"]
 nft_prefix = "net_firewall"
 
 [sandbox]

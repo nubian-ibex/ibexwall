@@ -675,17 +675,20 @@ pub fn apply_snapshot_inverses_for(
                 let Some(backend) = ibexwall_firewall::Backend::from_name(backend) else {
                     continue;
                 };
-                // A reload leaves a just-enabled ufw on: when the restored
-                // configuration says it was off, turn it off (ADR-0046).
-                let was_off = backend == ibexwall_firewall::Backend::Ufw
-                    && sys
-                        .fs
+                // A reload neither turns a just-enabled ufw off nor a
+                // just-disabled one on: follow the restored configuration
+                // (ADR-0046).
+                let ufw_was = if backend == ibexwall_firewall::Backend::Ufw {
+                    sys.fs
                         .read(Path::new("/etc/ufw/ufw.conf"))
                         .ok()
                         .and_then(|bytes| {
                             ibexwall_firewall::parse::ufw_enabled(&String::from_utf8_lossy(&bytes))
                         })
-                        == Some(false);
+                } else {
+                    None
+                };
+                let was_off = ufw_was == Some(false);
                 // A firewalld this rollback stops (the transaction started
                 // it) reads the restored files when it starts again;
                 // asking it to reload fails.
@@ -705,7 +708,24 @@ pub fn apply_snapshot_inverses_for(
                     ibexwall_firewall::reload_argv(backend)
                 };
                 if let Some(argv) = argv {
-                    attempt!(format!("restore {backend:?}"), sys.runner.run(&argv));
+                    // A running ufw re-reads the restored rules; one that
+                    // is off refuses a reload, which is fine: the enable
+                    // below reads them.
+                    if ufw_was == Some(true) {
+                        let _ = sys.runner.run(&argv);
+                    } else {
+                        attempt!(format!("restore {backend:?}"), sys.runner.run(&argv));
+                    }
+                }
+                if ufw_was == Some(true) {
+                    attempt!(
+                        "turn ufw on again".to_string(),
+                        sys.runner.run(&[
+                            ibexwall_firewall::action::UFW.to_string(),
+                            "--force".into(),
+                            "enable".into(),
+                        ])
+                    );
                 }
             }
             _ => {}
@@ -834,7 +854,8 @@ mod tests {
         // It was off before the transaction turned it on: turn it off.
         fs.seed(Path::new("/etc/ufw/ufw.conf"), b"ENABLED=no\n");
         apply_snapshot_inverses(&sys, Path::new("/nonexistent"), &manifest).unwrap();
-        // It was on: re-read the restored rules.
+        // It was on: re-read the rules, then turn it on (a reload alone
+        // would not, after a disable).
         fs.seed(Path::new("/etc/ufw/ufw.conf"), b"ENABLED=yes\n");
         apply_snapshot_inverses(&sys, Path::new("/nonexistent"), &manifest).unwrap();
         assert_eq!(
@@ -842,6 +863,11 @@ mod tests {
             vec![
                 vec!["/usr/sbin/ufw".to_string(), "disable".into()],
                 vec!["/usr/sbin/ufw".to_string(), "reload".into()],
+                vec![
+                    "/usr/sbin/ufw".to_string(),
+                    "--force".into(),
+                    "enable".into()
+                ],
             ]
         );
     }

@@ -77,6 +77,8 @@ struct Config {
     /// Turn on the firewall manager the distribution installed, when it
     /// is off (ADR-0046).
     enable_manager: bool,
+    /// Turn that manager off again, when it is on.
+    disable_manager: bool,
     /// When enabling basic protection, keep the TCP services that are
     /// listening now reachable, so an SSH session is not lost.
     allow_listening: bool,
@@ -96,6 +98,7 @@ impl Default for Config {
             remove_service: vec![],
             enable_basic: false,
             enable_manager: false,
+            disable_manager: false,
             allow_listening: true,
             mdns: false,
             profile: None,
@@ -204,6 +207,21 @@ fn plan(sandbox: &Sandbox, config: Config) -> Result<Vec<Op>, PluginError> {
     let (backend, active) = detect::detect(&reader);
     match backend {
         Backend::Firewalld | Backend::Ufw => {
+            if config.disable_manager {
+                if config.enable_manager {
+                    return Err(PluginError::invalid(
+                        "disable_manager",
+                        "turn the firewall on or off, not both in one plan".to_string(),
+                    ));
+                }
+                if active != Some(true) {
+                    return Err(PluginError::invalid(
+                        "disable_manager",
+                        format!("{} is already off", backend.name()),
+                    ));
+                }
+                return plan_turn_off(backend);
+            }
             if active != Some(true) {
                 if !config.enable_manager {
                     return Err(PluginError::invalid(
@@ -377,6 +395,25 @@ fn plan_turn_on(
 }
 
 const FIREWALLD_UNIT: &str = "firewalld.service";
+
+/// Turns the running manager off (the inverse of `plan_turn_on`): through
+/// its own tool for ufw, as a unit for firewalld. Undoing the change puts
+/// back what was on before.
+fn plan_turn_off(backend: Backend) -> Result<Vec<Op>, PluginError> {
+    match backend {
+        Backend::Ufw => Ok(vec![adapter_op(backend, &FirewallAction::Disable)?]),
+        Backend::Firewalld => Ok(vec![Op::SystemdUnit {
+            unit: FIREWALLD_UNIT.into(),
+            action: ibexwall_proto::UnitAction::Disable,
+            now: Some(true),
+        }]),
+        Backend::Nftables => Err(PluginError::invalid(
+            "disable_manager",
+            "IbexWall's own protection is turned off by undoing the change that turned it on"
+                .to_string(),
+        )),
+    }
+}
 
 /// Traffic from these interfaces is container, VM or VPN plumbing, not
 /// other computers on the network; the basic protection leaves it alone.
@@ -658,6 +695,42 @@ mod tests {
                 other => panic!("{other:?}"),
             })
             .collect()
+    }
+
+    #[test]
+    fn a_running_manager_can_be_turned_off_and_only_then() {
+        let (root, sandbox) = tree(&[
+            ("/usr/sbin/ufw", ""),
+            ("/etc/ufw/ufw.conf", "ENABLED=yes\n"),
+        ]);
+        let off = plan(
+            &sandbox,
+            config(serde_json::json!({"disable_manager": true})),
+        )
+        .unwrap();
+        assert_eq!(shape(&off), ["ufw disable null"]);
+        let both = serde_json::json!({"disable_manager": true, "enable_manager": true});
+        assert!(plan(&sandbox, config(both)).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+
+        let (root, sandbox) = tree(&[FIREWALLD]);
+        let off = plan(
+            &sandbox,
+            config(serde_json::json!({"disable_manager": true})),
+        )
+        .unwrap();
+        assert_eq!(shape(&off), ["firewalld.service Disable Some(true)"]);
+        std::fs::remove_dir_all(root).unwrap();
+
+        // Already off: there is nothing to turn off.
+        let (root, sandbox) = tree(&[("/usr/sbin/ufw", ""), ("/etc/ufw/ufw.conf", "ENABLED=no\n")]);
+        let error = plan(
+            &sandbox,
+            config(serde_json::json!({"disable_manager": true})),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("already off"), "{error}");
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

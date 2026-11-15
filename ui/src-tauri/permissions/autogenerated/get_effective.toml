@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-effective"
+description = "Enables the get_effective command without any pre-configured scope."
+commands.allow = ["get_effective"]
+
+[[permission]]
+identifier = "deny-get-effective"
+description = "Denies the get_effective command without any pre-configured scope."
+commands.deny = ["get_effective"]

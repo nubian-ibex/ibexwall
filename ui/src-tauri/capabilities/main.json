@@ -2,6 +2,40 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
   "description": "The IbexWall window: local app commands only. No shell, no opener, no http.",
-  "windows": ["main", "prompt"],
-  "permissions": ["core:default"]
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "allow-get-info",
+    "allow-get-posture",
+    "allow-get-dns-status",
+    "allow-list-apps",
+    "allow-get-firewall",
+    "allow-get-app-destinations",
+    "allow-set-app-mode",
+    "allow-set-default-mode",
+    "allow-list-prompts",
+    "allow-answer-prompt",
+    "allow-finish-prompt",
+    "allow-list-plugins",
+    "allow-list-compliance-profiles",
+    "allow-get-compliance",
+    "allow-get-effective",
+    "allow-list-findings",
+    "allow-run-checks",
+    "allow-history",
+    "allow-list-proposals",
+    "allow-decide-proposal",
+    "allow-set-plugin-enabled",
+    "allow-set-monitor-enabled",
+    "allow-get-config",
+    "allow-get-app-info",
+    "allow-get-manifest",
+    "allow-plan-change",
+    "allow-apply",
+    "allow-confirm",
+    "allow-rollback",
+    "allow-make-assistant-token"
+  ]
 }

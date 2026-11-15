@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-plan-change"
+description = "Enables the plan_change command without any pre-configured scope."
+commands.allow = ["plan_change"]
+
+[[permission]]
+identifier = "deny-plan-change"
+description = "Denies the plan_change command without any pre-configured scope."
+commands.deny = ["plan_change"]

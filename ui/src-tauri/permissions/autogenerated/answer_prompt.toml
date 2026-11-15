@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-answer-prompt"
+description = "Enables the answer_prompt command without any pre-configured scope."
+commands.allow = ["answer_prompt"]
+
+[[permission]]
+identifier = "deny-answer-prompt"
+description = "Denies the answer_prompt command without any pre-configured scope."
+commands.deny = ["answer_prompt"]

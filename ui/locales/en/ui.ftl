@@ -315,6 +315,7 @@ firewall-status-inactive = The firewall is off
 firewall-status-unknown = The state of the firewall is unknown
 firewall-switch-on = The firewall is on: switch it off
 firewall-switch-off = The firewall is off: switch it on
+firewall-cancel = Cancel
 firewall-own-off-hint = This is IbexWall's own protection. To turn it off, undo the change that turned it on, in History.
 firewall-zone = Zone: { $zone }
 firewall-inactive-body = Nothing is filtering connections that come in from other computers.

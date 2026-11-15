@@ -315,6 +315,7 @@ firewall-status-inactive = Le pare-feu est désactivé
 firewall-status-unknown = L'état du pare-feu est inconnu
 firewall-switch-on = Le pare-feu est activé : le désactiver
 firewall-switch-off = Le pare-feu est désactivé : l’activer
+firewall-cancel = Annuler
 firewall-own-off-hint = C'est la protection propre d'IbexWall. Pour la désactiver, annulez dans l'Historique la modification qui l'a activée.
 firewall-zone = Zone : { $zone }
 firewall-inactive-body = Rien ne filtre les connexions qui arrivent d'autres ordinateurs.

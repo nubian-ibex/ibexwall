@@ -228,4 +228,16 @@ describe('Firewall screen', () => {
     await fireEvent.click(await screen.findByRole('switch', { name: /the firewall is on/i }));
     expect(await screen.findByText(/Nothing changes yet/)).toBeVisible();
   });
+
+  it('the switch moves to where it was asked to go, and Cancel puts it back', async () => {
+    await openWith('ufw', false);
+    const toggle = await screen.findByRole('switch', { name: /the firewall is off/i });
+    await fireEvent.click(toggle);
+    const moved = await screen.findByRole('switch', { name: /the firewall is on/i });
+    expect(moved).toHaveAttribute('aria-checked', 'true');
+    await fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+    const back = await screen.findByRole('switch', { name: /the firewall is off/i });
+    expect(back).toHaveAttribute('aria-checked', 'false');
+    expect(back).toBeEnabled();
+  });
 });

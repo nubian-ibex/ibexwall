@@ -315,6 +315,7 @@ firewall-status-inactive = El cortafuegos está desactivado
 firewall-status-unknown = Se desconoce el estado del cortafuegos
 firewall-switch-on = El cortafuegos está activado: desactivarlo
 firewall-switch-off = El cortafuegos está desactivado: activarlo
+firewall-cancel = Cancelar
 firewall-own-off-hint = Esta es la protección propia de IbexWall. Para desactivarla, deshaz en el Historial el cambio que la activó.
 firewall-zone = Zona: { $zone }
 firewall-inactive-body = Nada filtra las conexiones que llegan desde otros equipos.

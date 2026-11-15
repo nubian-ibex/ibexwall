@@ -31,6 +31,8 @@
   let load = $state<Load>({ status: 'loading' });
   let busy = $state(false);
   let pending = $state<Record<string, unknown> | null>(null);
+  /** Where the switch was asked to go, while that change is under review. */
+  let target = $state<boolean | null>(null);
   let reviewEl = $state<HTMLElement | null>(null);
 
   // The review sits under the switch, but a change asked for further down
@@ -91,7 +93,10 @@
       busy = true;
       try {
         await app.change(() => app.transport.setPluginEnabled(plugin.id, true));
-        if (app.notice) return;
+        if (app.notice) {
+          target = null;
+          return;
+        }
         await app.refresh();
       } finally {
         busy = false;
@@ -103,6 +108,7 @@
   /** The switch asks for the change; it only moves when the firewall does. */
   function flip(on: boolean) {
     if (!fw) return;
+    target = on;
     if (on) {
       void propose(
         fw.backend === 'nftables'
@@ -112,6 +118,17 @@
     } else {
       void propose({ disable_manager: true });
     }
+  }
+
+  function cancel() {
+    pending = null;
+    target = null;
+  }
+
+  /** The machine changed: show it as it is now. */
+  async function done() {
+    await refresh();
+    target = null;
   }
 
   function addPort() {
@@ -172,8 +189,8 @@
       {/if}
     </div>
     <Switch
-      checked={isOn}
-      label={t(isOn ? 'firewall-switch-on' : 'firewall-switch-off')}
+      checked={target ?? isOn}
+      label={t((target ?? isOn) ? 'firewall-switch-on' : 'firewall-switch-off')}
       disabled={!canFlip}
       onchange={flip}
     />
@@ -183,7 +200,8 @@
     <section class="card review" aria-labelledby="fw-review" bind:this={reviewEl}>
       <h2 id="fw-review">{t('firewall-review-note')}</h2>
       {#key JSON.stringify(pending)}
-        <ChangeFlow plugin={PLUGIN} patch={pending} ondone={refresh} />
+        <ChangeFlow plugin={PLUGIN} patch={pending} ondone={done} />
+        <button type="button" class="link" onclick={cancel}>{t('firewall-cancel')}</button>
       {/key}
     </section>
   {/if}
@@ -408,6 +426,14 @@
   }
   .review {
     border-color: var(--primary-strong);
+  }
+  .link {
+    background: none;
+    border: 0;
+    color: var(--accent);
+    cursor: pointer;
+    text-decoration: underline;
+    min-height: var(--target);
   }
   .card {
     display: grid;

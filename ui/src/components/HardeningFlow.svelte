@@ -75,25 +75,33 @@
     }
   }
 
+  // Each transaction's state is updated as soon as its own call succeeds,
+  // so a failure part-way leaves an accurate list and a retry only repeats
+  // what is still open.
+  function mark(id: string, state: Transaction['state']) {
+    applied = applied.map((a) => (a.id === id ? { ...a, state } : a));
+    pending = pending.filter((p) => p.id !== id);
+  }
+
   async function keepAll() {
     try {
-      for (const tx of pending) await app.waiting(() => app.transport.confirm(tx.id));
+      for (const tx of [...pending]) {
+        await app.waiting(() => app.transport.confirm(tx.id));
+        mark(tx.id, 'committed');
+      }
     } catch (error) {
       failure = describe(error);
-      return;
     }
-    applied = applied.map((a) =>
-      pending.some((p) => p.id === a.id) ? { ...a, state: 'committed' } : a,
-    );
-    pending = [];
   }
 
   async function undoAll() {
     busy = true;
+    failure = null;
     try {
       for (const tx of [...applied].reverse()) {
         if (tx.state === 'committed' || tx.state === 'pending_confirm') {
           await app.waiting(() => app.transport.rollback(tx.id));
+          mark(tx.id, 'rolled_back');
         }
       }
       undone = true;

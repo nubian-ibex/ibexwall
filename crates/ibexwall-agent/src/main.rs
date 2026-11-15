@@ -53,7 +53,10 @@ pub mod ibexwall_agent {
             .await?;
         while let Some(event) = stream.next_reply().await? {
             if let Some(finding) = finding_from(&event) {
-                notify(&finding).await?;
+                // A missing notification daemon must not end the watch.
+                if let Err(error) = notify(&finding).await {
+                    tracing::warn!(%error, "finding notification failed");
+                }
             }
             if let Some((summary, body)) = ask_notification_for(&session_language(), &event) {
                 // The notification waits for a click on its own task; a failed
@@ -65,7 +68,9 @@ pub mod ibexwall_agent {
                 });
             }
         }
-        Ok(())
+        // A core restart ends the stream; exit non-zero so the service
+        // manager restarts the agent instead of leaving it deaf.
+        anyhow::bail!("the core closed the event stream")
     }
 
     /// Extracts a notifiable finding summary from an event, if it is one.
@@ -280,9 +285,11 @@ pub mod ibexwall_agent {
             .await
             .unwrap_or(false)
         {
-            std::process::Command::new("ibexwall")
+            let mut child = std::process::Command::new("ibexwall")
                 .arg("--prompt")
                 .spawn()?;
+            // Reap the child so it does not linger as a zombie.
+            tokio::task::spawn_blocking(move || child.wait()).await??;
         }
         Ok(())
     }

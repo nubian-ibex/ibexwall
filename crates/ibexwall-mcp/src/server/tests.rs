@@ -680,3 +680,18 @@ fn hostile_arguments_are_rejected_before_they_reach_the_core() {
         "only explain_finding may read: {seen:?}"
     );
 }
+
+#[test]
+fn explain_finding_hides_findings_of_denied_plugins() {
+    let (mut s, _, _) = server();
+    let denied = call(&mut s, "explain_finding", json!({ "id": "f2" }));
+    assert!(is_error(&denied));
+    assert!(text(&denied).contains("no such finding"));
+    let missing = call(&mut s, "explain_finding", json!({ "id": "nope" }));
+    assert_eq!(text(&denied), text(&missing));
+    assert!(!is_error(&call(
+        &mut s,
+        "explain_finding",
+        json!({ "id": "f1" })
+    )));
+}

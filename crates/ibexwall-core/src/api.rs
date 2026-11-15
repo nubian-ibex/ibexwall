@@ -298,7 +298,11 @@ async fn dispatch(
             let plugin = str_field(&parameters, "plugin")?;
             let patch = parameters.get("patch").cloned().unwrap_or(Value::Null);
             let justification = str_field(&parameters, "justification")?;
-            let client = opt_str_field(&parameters, "client")?.unwrap_or_else(|| "unknown".into());
+            // The label is the caller's own word; the quota and the audit
+            // identity come from the peer's uid.
+            let label = opt_str_field(&parameters, "client")?.unwrap_or_else(|| "unknown".into());
+            let client = crate::proposals::clean(&format!("{actor}/{label}"), 60);
+            core.check_proposal_quota(&client).map_err(proposal_error)?;
             let (plan, ops) = build_plan(core, plugin, patch.clone(), &actor).await?;
             let digest = crate::audit::ops_digest(&ops);
             let proposal = core
@@ -310,64 +314,69 @@ async fn dispatch(
             let id = str_field(&parameters, "id")?;
             let decision = str_field(&parameters, "decision")?;
             let (proposal, digest) = core.pending_proposal(&id).map_err(proposal_error)?;
-            // One decision per proposal: the first caller to flip it from
-            // pending wins, the rest get "already decided".
             let final_status = match decision.as_str() {
                 "reject" => "rejected",
                 "approve" => "approved",
                 _ => return Err(invalid_argument("decision", "approve or reject".into())),
             };
-            if !core
-                .state
-                .claim_proposal(&id, final_status)
-                .map_err(internal)?
-            {
-                return Err(proposal_error(crate::proposals::Error::Decided));
-            }
-            match decision.as_str() {
-                "reject" => {
-                    core.audit(&actor, &proposal.plugin, None, &digest, "proposal-rejected");
-                    core.publish_proposal_event("proposals.decided", &proposal);
-                    Ok(Reply::result(json!({ "transaction": null })))
+            if decision == "approve" {
+                // Plan again from what the client asked for first, so a
+                // plugin failure or a changed plan leaves the proposal
+                // pending instead of stuck approved.
+                let (plan, ops) = build_plan(
+                    core,
+                    proposal.plugin.clone(),
+                    proposal.patch.clone(),
+                    &actor,
+                )
+                .await?;
+                if crate::audit::ops_digest(&ops) != digest {
+                    return Err(err("ProposalStale", json!({ "id": id })));
                 }
-                "approve" => {
-                    // Plan again from what the client asked for, and apply
-                    // only if the operations are the ones that were reviewed.
-                    let (plan, ops) = build_plan(
-                        core,
-                        proposal.plugin.clone(),
-                        proposal.patch.clone(),
-                        &actor,
-                    )
-                    .await?;
-                    if crate::audit::ops_digest(&ops) != digest {
-                        return Err(err("ProposalStale", json!({ "id": id })));
-                    }
-                    let reply = apply(core, &json!({ "plan_id": plan.id }), &actor).await;
-                    match &reply {
-                        Ok(_) => {
-                            core.audit(
-                                &actor,
-                                &proposal.plugin,
-                                None,
-                                &digest,
-                                "proposal-approved",
-                            );
-                            core.publish_proposal_event("proposals.decided", &proposal);
-                        }
-                        Err(_) => {
-                            core.audit(
-                                &actor,
-                                &proposal.plugin,
-                                None,
-                                &digest,
-                                "proposal-approval-failed",
-                            );
-                        }
-                    }
-                    reply
+                // One decision per proposal: the first caller to flip it
+                // from pending wins, the rest get "already decided".
+                if !core
+                    .state
+                    .claim_proposal(&id, final_status)
+                    .map_err(internal)?
+                {
+                    return Err(proposal_error(crate::proposals::Error::Decided));
                 }
-                _ => unreachable!("the decision was validated above"),
+                // Deciding is applying: holding `proposals.decide` and
+                // approving a reviewed plan is the authorization to run it
+                // (no second `apply` call), and only the reviewed
+                // operations are applied.
+                let reply = apply(core, &json!({ "plan_id": plan.id }), &actor).await;
+                match &reply {
+                    Ok(_) => {
+                        core.audit(&actor, &proposal.plugin, None, &digest, "proposal-approved");
+                        core.publish_proposal_event("proposals.decided", &proposal);
+                    }
+                    Err(_) => {
+                        if let Err(error) = core.reopen_proposal(&id) {
+                            tracing::error!(%error, "could not reopen a proposal whose apply failed");
+                        }
+                        core.audit(
+                            &actor,
+                            &proposal.plugin,
+                            None,
+                            &digest,
+                            "proposal-approval-failed",
+                        );
+                    }
+                }
+                reply
+            } else {
+                if !core
+                    .state
+                    .claim_proposal(&id, final_status)
+                    .map_err(internal)?
+                {
+                    return Err(proposal_error(crate::proposals::Error::Decided));
+                }
+                core.audit(&actor, &proposal.plugin, None, &digest, "proposal-rejected");
+                core.publish_proposal_event("proposals.decided", &proposal);
+                Ok(Reply::result(json!({ "transaction": null })))
             }
         }
         "SetDefaultMode" => {
@@ -1189,6 +1198,7 @@ async fn build_plan(
         expires_at: expires_at.clone(),
         created_at: now,
     };
+    core.prune_expired_plans();
     core.state.save_plan(&persisted).map_err(internal)?;
 
     let plan = Plan {

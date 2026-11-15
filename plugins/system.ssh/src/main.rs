@@ -59,28 +59,66 @@ impl Plugin for Ssh {
             .map_err(|e| PluginError::invalid("config", e.to_string()))?;
         plan(&Sandbox::system(), &config)
     }
+
+    async fn verify(&self, _transaction: &str, ops: &[Op]) -> bool {
+        verify(&Sandbox::system(), ops)
+    }
+}
+
+/// Re-reads what sshd would use and checks it matches every directive the
+/// drop-in wrote: a drop-in that exists but loses to an earlier setting
+/// would otherwise pass as applied.
+pub fn verify(sandbox: &Sandbox, ops: &[Op]) -> bool {
+    let Some(settings) = effective(sandbox) else {
+        return false;
+    };
+    ops.iter().all(|op| match op {
+        Op::FileWrite { path, content, .. } if path == DROP_IN => content
+            .lines()
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .all(|l| {
+                let Some((key, want)) = l.split_once(' ') else {
+                    return true;
+                };
+                settings
+                    .get(&key.to_ascii_lowercase())
+                    .is_some_and(|got| got.eq_ignore_ascii_case(want))
+            }),
+        _ => true,
+    })
 }
 
 /// The directives of the global scope in the order sshd reads them,
 /// following `Include`. Keywords are case-insensitive; the result keeps the
-/// first value of each, as sshd does.
+/// first value of each, as sshd does. `None` when the main file is missing
+/// or an `Include` uses a pattern this reader cannot expand (guessing would
+/// judge a configuration it did not read).
 pub fn effective(sandbox: &Sandbox) -> Option<BTreeMap<String, String>> {
     let mut out = BTreeMap::new();
-    let mut stopped = false;
-    read_file(sandbox, "/etc/ssh/sshd_config", &mut out, &mut stopped, 0)?;
-    Some(out)
+    let mut unsupported = false;
+    read_file(
+        sandbox,
+        "/etc/ssh/sshd_config",
+        &mut out,
+        &mut unsupported,
+        0,
+    )?;
+    (!unsupported).then_some(out)
 }
 
 fn read_file(
     sandbox: &Sandbox,
     path: &str,
     out: &mut BTreeMap<String, String>,
-    stopped: &mut bool,
+    unsupported: &mut bool,
     depth: u8,
 ) -> Option<()> {
     let text = sandbox.read(path)?;
+    // A Match line ends the global scope of this file only: an included
+    // file's Match does not stop the includer's later settings.
+    let mut stopped = false;
     for line in text.lines() {
-        if *stopped {
+        if stopped {
             break;
         }
         let line = line.trim();
@@ -98,11 +136,16 @@ fn read_file(
             .unwrap_or((line.to_ascii_lowercase(), String::new()));
         match keyword.as_str() {
             // Settings after a Match line are conditional: not global.
-            "match" => *stopped = true,
+            "match" => stopped = true,
             "include" if depth < 4 => {
                 for pattern in value.split_whitespace() {
-                    for file in expand(sandbox, pattern) {
-                        read_file(sandbox, &file, out, stopped, depth + 1);
+                    match expand(sandbox, pattern) {
+                        Some(files) => {
+                            for file in files {
+                                read_file(sandbox, &file, out, unsupported, depth + 1);
+                            }
+                        }
+                        None => *unsupported = true,
                     }
                 }
             }
@@ -114,28 +157,77 @@ fn read_file(
     Some(())
 }
 
-/// `Include` with a relative path is under `/etc/ssh`; only the forms the
-/// distributions ship are supported: a file, or `dir/*.conf` (or `dir/*`).
-fn expand(sandbox: &Sandbox, pattern: &str) -> Vec<String> {
+/// `Include` with a relative path is under `/etc/ssh`. The file name may use
+/// `*`, `?` and `[...]` (sorted, as sshd's glob returns them); a wildcard in
+/// a directory part is not supported and gives `None`.
+fn expand(sandbox: &Sandbox, pattern: &str) -> Option<Vec<String>> {
     let absolute = if pattern.starts_with('/') {
         pattern.to_string()
     } else {
         format!("/etc/ssh/{pattern}")
     };
-    match absolute.rsplit_once('/') {
-        Some((dir, "*.conf")) => sandbox
-            .list(dir)
-            .into_iter()
-            .filter(|name| name.ends_with(".conf"))
-            .map(|name| format!("{dir}/{name}"))
-            .collect(),
-        Some((dir, "*")) => sandbox
-            .list(dir)
-            .into_iter()
-            .map(|name| format!("{dir}/{name}"))
-            .collect(),
-        _ => vec![absolute],
+    let (dir, name) = absolute.rsplit_once('/')?;
+    if dir.contains(['*', '?', '[']) {
+        return None;
     }
+    if !name.contains(['*', '?', '[']) {
+        return Some(vec![absolute]);
+    }
+    Some(
+        sandbox
+            .list(dir)
+            .into_iter()
+            .filter(|entry| glob_match(name.as_bytes(), entry.as_bytes()))
+            .map(|entry| format!("{dir}/{entry}"))
+            .collect(),
+    )
+}
+
+/// fnmatch subset: `*`, `?`, `[abc]`, `[a-z]` and `[!x]`.
+fn glob_match(pattern: &[u8], text: &[u8]) -> bool {
+    match pattern.first() {
+        None => text.is_empty(),
+        Some(b'*') => (0..=text.len()).any(|i| glob_match(&pattern[1..], &text[i..])),
+        Some(b'?') => !text.is_empty() && glob_match(&pattern[1..], &text[1..]),
+        Some(b'[') => {
+            let Some(end) = pattern
+                .iter()
+                .skip(2)
+                .position(|&c| c == b']')
+                .map(|i| i + 2)
+            else {
+                return !text.is_empty()
+                    && text[0] == b'['
+                    && glob_match(&pattern[1..], &text[1..]);
+            };
+            let Some(&c) = text.first() else {
+                return false;
+            };
+            let set = &pattern[1..end];
+            let (negate, set) = match set.first() {
+                Some(b'!' | b'^') => (true, &set[1..]),
+                _ => (false, set),
+            };
+            let mut hit = false;
+            let mut i = 0;
+            while i < set.len() {
+                if i + 2 < set.len() && set[i + 1] == b'-' {
+                    hit |= (set[i]..=set[i + 2]).contains(&c);
+                    i += 3;
+                } else {
+                    hit |= set[i] == c;
+                    i += 1;
+                }
+            }
+            hit != negate && glob_match(&pattern[end + 1..], &text[1..])
+        }
+        Some(&p) => !text.is_empty() && text[0] == p && glob_match(&pattern[1..], &text[1..]),
+    }
+}
+
+/// Whether a setting equals `want`, ignoring case (sshd does).
+fn is(settings: &BTreeMap<String, String>, key: &str, default: &str, want: &str) -> bool {
+    value(settings, key, default).eq_ignore_ascii_case(want)
 }
 
 fn value<'a>(settings: &'a BTreeMap<String, String>, key: &str, default: &'a str) -> &'a str {
@@ -150,18 +242,18 @@ pub fn survey(settings: Option<&BTreeMap<String, String>>, at: &str) -> Finding 
         None => "absent",
         Some(settings) => {
             let root = value(settings, "permitrootlogin", "prohibit-password");
-            let empty = value(settings, "permitemptypasswords", "no") == "yes";
-            let x11 = value(settings, "x11forwarding", "no") == "yes";
+            let empty = is(settings, "permitemptypasswords", "no", "yes");
+            let x11 = is(settings, "x11forwarding", "no", "yes");
             let password = value(settings, "passwordauthentication", "yes");
             args.insert("root".into(), root.to_string());
             args.insert("password".into(), password.to_string());
             args.insert("port".into(), value(settings, "port", "22").to_string());
-            if root == "yes" || empty || x11 {
+            if root.eq_ignore_ascii_case("yes") || empty || x11 {
                 // The default plan closes root login, empty passwords and X11
                 // forwarding; it keeps password sign-in, which needs a key first.
                 patch = Some(serde_json::json!({}));
                 "weak"
-            } else if password == "yes" {
+            } else if password.eq_ignore_ascii_case("yes") {
                 "hardened-password"
             } else {
                 "hardened"
@@ -200,9 +292,10 @@ fn evaluate_settings(
         };
     };
     let root = value(settings, "permitrootlogin", "prohibit-password");
-    let empty = value(settings, "permitemptypasswords", "no") == "yes";
-    let x11 = value(settings, "x11forwarding", "no") == "yes";
-    let any_scored = root == "yes" || empty || x11;
+    let root_yes = root.eq_ignore_ascii_case("yes");
+    let empty = is(settings, "permitemptypasswords", "no", "yes");
+    let x11 = is(settings, "x11forwarding", "no", "yes");
+    let any_scored = root_yes || empty || x11;
     let mut findings = Vec::new();
     let mut add =
         |id: &str, severity, args: BTreeMap<String, String>, template: bool, may: &[&str]| {
@@ -222,7 +315,7 @@ fn evaluate_settings(
                 detected_at: detected_at.into(),
             });
         };
-    if root == "yes" {
+    if root_yes {
         let mut args = BTreeMap::new();
         args.insert("value".to_string(), root.to_string());
         add("root", Severity::High, args, true, &["ssh-may-affect-root"]);
@@ -235,7 +328,7 @@ fn evaluate_settings(
     }
     // Password sign-in is informational: turning it off needs a key, so the
     // finding offers the plan but does not count against the score.
-    if value(settings, "passwordauthentication", "yes") == "yes" {
+    if is(settings, "passwordauthentication", "yes", "yes") {
         add(
             "password",
             Severity::Info,
@@ -256,6 +349,58 @@ fn evaluate_settings(
         }],
         findings,
     }
+}
+
+/// Whether some account that can log in has at least one key in its
+/// authorized-keys file(s), honoring `AuthorizedKeysFile`. A configured
+/// `AuthorizedKeysCommand` counts as usable (its output cannot be read here).
+fn has_authorized_key(sandbox: &Sandbox, settings: &BTreeMap<String, String>) -> bool {
+    let command = value(settings, "authorizedkeyscommand", "none");
+    if !command.eq_ignore_ascii_case("none") && !command.is_empty() {
+        return true;
+    }
+    let files = value(
+        settings,
+        "authorizedkeysfile",
+        ".ssh/authorized_keys .ssh/authorized_keys2",
+    );
+    if files.eq_ignore_ascii_case("none") {
+        return false;
+    }
+    let root_allowed = !is(settings, "permitrootlogin", "prohibit-password", "no");
+    let Some(passwd) = sandbox.read("/etc/passwd") else {
+        return false;
+    };
+    passwd.lines().any(|line| {
+        let f: Vec<&str> = line.split(':').collect();
+        let [name, _, uid, _, _, home, shell, ..] = f[..] else {
+            return false;
+        };
+        let Ok(uid) = uid.parse::<u32>() else {
+            return false;
+        };
+        let can_log_in = !shell.ends_with("/nologin") && !shell.ends_with("/false");
+        if !can_log_in || !(uid >= 1000 || uid == 0 && root_allowed) {
+            return false;
+        }
+        files.split_whitespace().any(|template| {
+            let expanded = template
+                .replace("%%", "\u{0}")
+                .replace("%h", home)
+                .replace("%u", name)
+                .replace('\u{0}', "%");
+            let path = if expanded.starts_with('/') {
+                expanded
+            } else {
+                format!("{home}/{expanded}")
+            };
+            sandbox.read(&path).is_some_and(|text| {
+                text.lines()
+                    .map(str::trim)
+                    .any(|l| !l.is_empty() && !l.starts_with('#'))
+            })
+        })
+    })
 }
 
 pub fn plan(sandbox: &Sandbox, config: &Config) -> Result<Vec<Op>, PluginError> {
@@ -292,19 +437,34 @@ pub fn plan(sandbox: &Sandbox, config: &Config) -> Result<Vec<Op>, PluginError> 
             "sshd_config does not read /etc/ssh/sshd_config.d before its own settings, so a drop-in could not take effect".to_string(),
         ));
     }
-    let current = effective(sandbox).unwrap_or_default();
+    let current = effective(sandbox).ok_or_else(|| {
+        PluginError::invalid(
+            "config",
+            "the sshd configuration uses an Include pattern that cannot be read".to_string(),
+        )
+    })?;
     let mut lines = vec!["# Managed by IbexWall (system.ssh).".to_string()];
-    if value(&current, "permitrootlogin", "prohibit-password") == "yes" {
+    if is(&current, "permitrootlogin", "prohibit-password", "yes") {
         lines.push("PermitRootLogin prohibit-password".into());
     }
-    if value(&current, "permitemptypasswords", "no") == "yes" {
+    if is(&current, "permitemptypasswords", "no", "yes") {
         lines.push("PermitEmptyPasswords no".into());
     }
-    if value(&current, "x11forwarding", "no") == "yes" {
+    if is(&current, "x11forwarding", "no", "yes") {
         lines.push("X11Forwarding no".into());
     }
     if config.password_auth == Some(false) {
+        // Without a key that can sign in, turning passwords off locks the
+        // person out of new logins (a password-only VPS, for instance).
+        if !has_authorized_key(sandbox, &current) {
+            return Err(PluginError::invalid(
+                "password_auth",
+                "no account has a usable authorized key, so turning passwords off would lock out new logins; add a key first".to_string(),
+            ));
+        }
         lines.push("PasswordAuthentication no".into());
+        // Keyboard-interactive would still ask for the account password.
+        lines.push("KbdInteractiveAuthentication no".into());
     }
     if lines.len() == 1 {
         return Err(PluginError::invalid(
@@ -445,6 +605,8 @@ mod tests {
             ("/etc/ssh/sshd_config", INCLUDE_FIRST),
             ("/usr/lib/systemd/system/sshd.service", ""),
             ("/run/sshd.pid", "1\n"),
+            ("/etc/passwd", "alice:x:1000:1000::/home/alice:/bin/bash\n"),
+            ("/home/alice/.ssh/authorized_keys", "ssh-ed25519 AAAA a\n"),
         ]);
         let ops = plan(&sandbox, &Config::default()).unwrap();
         let Op::FileWrite {
@@ -478,6 +640,134 @@ mod tests {
             panic!()
         };
         assert!(content.contains("PasswordAuthentication no"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn values_are_compared_ignoring_case() {
+        let (root, sandbox) = tree(&[(
+            "/etc/ssh/sshd_config",
+            "Include /etc/ssh/sshd_config.d/*.conf\nPermitRootLogin Yes\nX11Forwarding YES\n",
+        )]);
+        let report = evaluate(&sandbox, "now");
+        assert_eq!(report.results[0].outcome, CheckOutcome::Fail);
+        let ids: Vec<&str> = report.findings.iter().map(|f| f.id.as_str()).collect();
+        assert!(ids.contains(&"ssh.root") && ids.contains(&"ssh.x11"));
+        let Op::FileWrite { content, .. } = &plan(&sandbox, &Config::default()).unwrap()[0] else {
+            panic!()
+        };
+        assert!(content.contains("PermitRootLogin prohibit-password"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_match_in_an_included_file_does_not_hide_the_main_files_settings() {
+        let (root, sandbox) = tree(&[
+            (
+                "/etc/ssh/sshd_config",
+                "Include /etc/ssh/sshd_config.d/*.conf\nPermitRootLogin yes\n",
+            ),
+            (
+                "/etc/ssh/sshd_config.d/10-a.conf",
+                "Match User bob\n  X11Forwarding yes\n",
+            ),
+        ]);
+        assert_eq!(effective(&sandbox).unwrap()["permitrootlogin"], "yes");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn include_globs_with_classes_are_expanded_and_directory_wildcards_refused() {
+        let (root, sandbox) = tree(&[
+            ("/etc/ssh/sshd_config", "Include conf.d/[0-9]*.conf\n"),
+            ("/etc/ssh/conf.d/10-a.conf", "PermitRootLogin yes\n"),
+            ("/etc/ssh/conf.d/zz.conf", "X11Forwarding yes\n"),
+        ]);
+        let settings = effective(&sandbox).unwrap();
+        assert_eq!(settings["permitrootlogin"], "yes");
+        assert!(!settings.contains_key("x11forwarding"));
+        std::fs::remove_dir_all(root).unwrap();
+        let (root, sandbox) = tree(&[("/etc/ssh/sshd_config", "Include /etc/*/ssh.conf\n")]);
+        assert!(
+            effective(&sandbox).is_none(),
+            "unreadable config is not judged"
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn turning_passwords_off_needs_a_key_and_also_closes_keyboard_interactive() {
+        let config = Config {
+            password_auth: Some(false),
+        };
+        let base = [
+            (
+                "/etc/ssh/sshd_config",
+                "Include /etc/ssh/sshd_config.d/*.conf\nPermitRootLogin yes\n",
+            ),
+            (
+                "/etc/passwd",
+                "root:x:0:0::/root:/bin/bash\nalice:x:1000:1000::/home/alice:/bin/bash\nbot:x:1001:1001::/home/bot:/usr/sbin/nologin\n",
+            ),
+        ];
+        // No keys anywhere: refused.
+        let (root, sandbox) = tree(&base);
+        let error = plan(&sandbox, &config).unwrap_err();
+        assert!(error.to_string().contains("authorized key"));
+        std::fs::remove_dir_all(root).unwrap();
+        // A key only for a nologin account does not count; a comment neither.
+        let mut files = base.to_vec();
+        files.push(("/home/bot/.ssh/authorized_keys", "ssh-ed25519 AAAA bot\n"));
+        files.push(("/home/alice/.ssh/authorized_keys", "# nothing yet\n"));
+        let (root, sandbox) = tree(&files);
+        assert!(plan(&sandbox, &config).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+        // A real key for a login account: allowed, with both directives.
+        let mut files = base.to_vec();
+        files.push((
+            "/home/alice/.ssh/authorized_keys",
+            "ssh-ed25519 AAAA alice\n",
+        ));
+        let (root, sandbox) = tree(&files);
+        let ops = plan(&sandbox, &config).unwrap();
+        let Op::FileWrite { content, .. } = &ops[0] else {
+            panic!()
+        };
+        assert!(content.contains("PasswordAuthentication no"));
+        assert!(content.contains("KbdInteractiveAuthentication no"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn verify_rereads_the_effective_configuration() {
+        let drop_in = |content: &str| {
+            vec![Op::FileWrite {
+                path: DROP_IN.into(),
+                content: content.into(),
+                mode: "0600".into(),
+                owner: "root".into(),
+                group: "root".into(),
+            }]
+        };
+        let ops = drop_in("# Managed\nPermitRootLogin prohibit-password\n");
+        let (root, applied) = tree(&[
+            (
+                "/etc/ssh/sshd_config",
+                "Include /etc/ssh/sshd_config.d/*.conf\nPermitRootLogin yes\n",
+            ),
+            (DROP_IN, "PermitRootLogin prohibit-password\n"),
+        ]);
+        assert!(verify(&applied, &ops));
+        std::fs::remove_dir_all(root).unwrap();
+        // The file exists but an earlier setting wins: not applied.
+        let (root, shadowed) = tree(&[
+            (
+                "/etc/ssh/sshd_config",
+                "PermitRootLogin yes\nInclude /etc/ssh/sshd_config.d/*.conf\n",
+            ),
+            (DROP_IN, "PermitRootLogin prohibit-password\n"),
+        ]);
+        assert!(!verify(&shadowed, &ops));
         std::fs::remove_dir_all(root).unwrap();
     }
 

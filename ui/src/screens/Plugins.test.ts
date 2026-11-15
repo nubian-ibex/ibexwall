@@ -35,7 +35,7 @@ describe('Plugins', () => {
     await show();
     // system.ports fixture is read-only; open its detail: no change flow.
     await fireEvent.click(screen.getAllByRole('button', { name: /detail/i })[0]!);
-    expect(screen.queryByRole('button', { name: /simulate/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^apply$/i })).toBeNull();
   });
 
   it('speaks Portuguese', async () => {

@@ -36,13 +36,6 @@ describe('Firewall screen', () => {
     expect(screen.getByText(/rich rule/)).toBeVisible();
   });
 
-  it('keeps the controls off until the plugin is on, but still shows the state', async () => {
-    await open();
-    expect(await screen.findByText('The firewall controls are off')).toBeVisible();
-    expect(screen.getByRole('button', { name: /allow this port/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Remove 8080/tcp' })).toBeDisabled();
-  });
-
   it('plans exactly the port that was typed', async () => {
     const transport = await open();
     await turnOn(transport);
@@ -50,7 +43,7 @@ describe('Firewall screen', () => {
     await fireEvent.input(await screen.findByLabelText('Port'), { target: { value: '9000' } });
     await fireEvent.change(screen.getByLabelText('Protocol'), { target: { value: 'udp' } });
     await fireEvent.click(screen.getByRole('button', { name: /allow this port/i }));
-    await fireEvent.click(await screen.findByRole('button', { name: /simulate/i }));
+    await fireEvent.click(await screen.findByRole('button', { name: /^apply$/i }));
     expect(plan).toHaveBeenCalledWith('net.firewall', { allow: '9000/udp' });
   });
 
@@ -70,10 +63,10 @@ describe('Firewall screen', () => {
     await turnOn(transport);
     const plan = vi.spyOn(transport, 'planChange');
     await fireEvent.click(await screen.findByRole('button', { name: 'Remove 8080/tcp' }));
-    await fireEvent.click(await screen.findByRole('button', { name: /simulate/i }));
+    await fireEvent.click(await screen.findByRole('button', { name: /^apply$/i }));
     expect(plan).toHaveBeenLastCalledWith('net.firewall', { remove: '8080/tcp' });
     await fireEvent.click(screen.getByRole('button', { name: 'Remove ssh' }));
-    await fireEvent.click(await screen.findByRole('button', { name: /simulate/i }));
+    await fireEvent.click(await screen.findByRole('button', { name: /^apply$/i }));
     expect(plan).toHaveBeenLastCalledWith('net.firewall', { remove_service: 'ssh' });
   });
 
@@ -93,46 +86,8 @@ describe('Firewall screen', () => {
     const plan = vi.spyOn(transport, 'planChange');
     await fireEvent.click(await screen.findByRole('radio', { name: /home/i }));
     await fireEvent.click(screen.getByRole('button', { name: /switch to home/i }));
-    await fireEvent.click(await screen.findByRole('button', { name: /simulate/i }));
+    await fireEvent.click(await screen.findByRole('button', { name: /^apply$/i }));
     expect(plan).toHaveBeenCalledWith('net.firewall', { profile: 'home' });
-  });
-
-  it('offers IbexWall protection only when nothing else manages the firewall', async () => {
-    const transport = await open('empty');
-    await turnOn(transport);
-    expect(await screen.findByRole('heading', { name: 'The firewall is off' })).toBeVisible();
-    expect(screen.getByText(/Profiles need firewalld/)).toBeVisible();
-    const plan = vi.spyOn(transport, 'planChange');
-    await fireEvent.click(screen.getByRole('button', { name: /turn on basic protection/i }));
-    await fireEvent.click(await screen.findByRole('button', { name: /simulate/i }));
-    expect(plan).toHaveBeenCalledWith('net.firewall', {
-      enable_basic: true,
-      allow_listening: true,
-    });
-  });
-
-  it('offers to turn on an installed ufw that is off, keeping what listens', async () => {
-    const transport = new FixtureTransport('attention');
-    const state = await transport.getFirewall();
-    vi.spyOn(transport, 'getFirewall').mockResolvedValue({
-      ...state,
-      backend: 'ufw',
-      active: false,
-      zone: null,
-      services: [],
-    });
-    app.useTransport(transport);
-    render(Firewall);
-    await turnOn(transport);
-    expect(await screen.findByRole('heading', { name: 'The firewall is off' })).toBeVisible();
-    expect(screen.queryByRole('button', { name: /turn on basic protection/i })).toBeNull();
-    const plan = vi.spyOn(transport, 'planChange');
-    await fireEvent.click(screen.getByRole('button', { name: 'Turn on the firewall' }));
-    await fireEvent.click(await screen.findByRole('button', { name: /simulate/i }));
-    expect(plan).toHaveBeenCalledWith('net.firewall', {
-      enable_manager: true,
-      allow_listening: true,
-    });
   });
 
   it('renders in Portuguese', async () => {
@@ -183,20 +138,94 @@ describe('Firewall screen', () => {
     expect(screen.getByRole('button', { name: /allow this port/i })).toBeEnabled();
   });
 
-  it('asks to turn the firewall on first when its manager is off', async () => {
+  /** A firewall state the fixtures do not have: the manager and whether it runs. */
+  async function openWith(
+    backend: 'firewalld' | 'ufw' | 'nftables',
+    active: boolean,
+    pluginOn = true,
+  ) {
     const transport = new FixtureTransport('attention');
     const state = await transport.getFirewall();
     vi.spyOn(transport, 'getFirewall').mockResolvedValue({
       ...state,
-      backend: 'ufw',
-      active: false,
-      zone: null,
-      services: [],
+      backend,
+      active,
+      zone: backend === 'firewalld' ? state.zone : null,
+      services: backend === 'firewalld' ? state.services : [],
+      ports: active ? state.ports : [],
     });
     app.useTransport(transport);
     render(Firewall);
+    if (pluginOn) await turnOn(transport);
+    else await app.refresh();
+    return transport;
+  }
+
+  it('the switch is the firewall, not the plugin: on when it runs, whatever the plugin says', async () => {
+    await open();
+    const toggle = await screen.findByRole('switch', { name: /the firewall is on/i });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('shows no port, service or profile controls while the firewall is off', async () => {
+    await openWith('ufw', false);
+    const toggle = await screen.findByRole('switch', { name: /the firewall is off/i });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    expect(screen.queryByRole('heading', { name: 'Allowed ports' })).toBeNull();
+    expect(screen.queryByLabelText('Port')).toBeNull();
+    expect(screen.queryByRole('button', { name: /allow this port/i })).toBeNull();
+    expect(screen.queryByText(/network profiles/i)).toBeNull();
+  });
+
+  it('turning the switch on plans the manager, keeping what listens, and turns the plugin on first', async () => {
+    const transport = await openWith('ufw', false, false);
+    const enable = vi.spyOn(transport, 'setPluginEnabled');
+    const plan = vi.spyOn(transport, 'planChange');
+    await fireEvent.click(await screen.findByRole('switch', { name: /the firewall is off/i }));
+    await fireEvent.click(await screen.findByRole('button', { name: /^apply$/i }));
+    expect(enable).toHaveBeenCalledWith('net.firewall', true);
+    expect(plan).toHaveBeenCalledWith('net.firewall', {
+      enable_manager: true,
+      allow_listening: true,
+    });
+    // After the preview, the button that carries it out is named Confirm.
+    expect(await screen.findByRole('button', { name: /^confirm$/i })).toBeVisible();
+  });
+
+  it("IbexWall's own protection is planned with enable_basic, and cannot be switched off here", async () => {
+    const transport = await openWith('nftables', false);
+    const plan = vi.spyOn(transport, 'planChange');
+    await fireEvent.click(await screen.findByRole('switch', { name: /the firewall is off/i }));
+    await fireEvent.click(await screen.findByRole('button', { name: /^apply$/i }));
+    expect(plan).toHaveBeenCalledWith('net.firewall', {
+      enable_basic: true,
+      allow_listening: true,
+    });
+  });
+
+  it('turning a running firewall off plans disable_manager', async () => {
+    const transport = await open();
     await turnOn(transport);
-    expect(await screen.findByText(/Turn the firewall on first/)).toBeVisible();
-    expect(screen.getByRole('button', { name: /allow this port/i })).toBeDisabled();
+    const plan = vi.spyOn(transport, 'planChange');
+    await fireEvent.click(await screen.findByRole('switch', { name: /the firewall is on/i }));
+    await fireEvent.click(await screen.findByRole('button', { name: /^apply$/i }));
+    expect(plan).toHaveBeenCalledWith('net.firewall', { disable_manager: true });
+  });
+
+  it('after an applied change the screen reads the firewall again, so the port shows', async () => {
+    const transport = await open();
+    await turnOn(transport);
+    const read = vi.spyOn(transport, 'getFirewall');
+    await fireEvent.input(await screen.findByLabelText('Port'), { target: { value: '171' } });
+    await fireEvent.click(screen.getByRole('button', { name: /allow this port/i }));
+    await fireEvent.click(await screen.findByRole('button', { name: /^apply$/i }));
+    await fireEvent.click(await screen.findByRole('button', { name: /^confirm$/i }));
+    await vi.waitFor(() => expect(read).toHaveBeenCalled());
+  });
+
+  it('says in plain words that nothing changes before the confirmation', async () => {
+    await open();
+    await fireEvent.click(await screen.findByRole('switch', { name: /the firewall is on/i }));
+    expect(await screen.findByText(/Nothing changes yet/)).toBeVisible();
   });
 });

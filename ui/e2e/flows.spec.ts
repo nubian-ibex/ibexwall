@@ -76,12 +76,16 @@ test('firewall: state, a reviewed port change and a profile', async ({ page }) =
   await page.getByRole('button', { name: /^firewall$/i }).click();
   await expect(page.getByRole('heading', { name: 'The firewall is on' })).toBeVisible();
   await expect(page.getByText('8080/tcp', { exact: true })).toBeVisible();
-  // With the plugin off, the controls are visibly inert and say why.
-  await expect(page.getByText('The firewall controls are off')).toBeVisible();
-  await expect(page.getByRole('button', { name: /allow this port/i })).toBeDisabled();
-  // Profiles are offered (firewalld) but their switch is inert too.
+  // The switch is the firewall itself, and the controls work whatever the
+  // plugin was set to: asking for a change turns the plugin on.
+  await expect(page.getByRole('switch', { name: /the firewall is on/i })).toBeVisible();
+  await page.getByLabel('Port', { exact: true }).fill('171');
+  await page.getByRole('button', { name: /allow this port/i }).click();
+  await expect(page.getByText(/nothing changes yet/i)).toBeVisible();
+  await page.getByRole('button', { name: /^apply$/i }).click();
+  // The preview is followed by the button that carries the change out.
+  await expect(page.getByRole('button', { name: /^confirm$/i })).toBeVisible();
   await page.getByRole('radio', { name: /travel/i }).check();
-  await expect(page.getByRole('button', { name: /switch to travel/i })).toBeDisabled();
   // The choice spells out what it means, before anyone commits to it.
   await expect(page.getByText(/nothing comes in unasked/i)).toBeVisible();
 });

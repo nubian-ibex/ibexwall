@@ -107,7 +107,7 @@ describe('Assistant: connect an AI', () => {
     expect([...select.options].map((o) => o.value)).toEqual(['read', 'plan', 'propose']);
     await fireEvent.change(select, { target: { value: 'propose' } });
     expect(screen.getByText(/leave a suggestion here/i)).toBeVisible();
-    await fireEvent.click(screen.getAllByRole('button', { name: /simulate/i })[0]!);
+    await fireEvent.click(screen.getAllByRole('button', { name: /^apply$/i })[0]!);
     expect(plan).toHaveBeenCalledWith('system.assistant', {
       action: 'client',
       client: 'claude-code',
@@ -125,7 +125,7 @@ describe('Assistant: connect an AI', () => {
     await fireEvent.click(screen.getByRole('button', { name: /make the key/i }));
     expect(await screen.findByText(/copy this key now/i)).toBeVisible();
     expect(screen.getByText(/ibx_fix01_/)).toBeVisible();
-    await fireEvent.click(screen.getAllByRole('button', { name: /simulate/i }).at(-1)!);
+    await fireEvent.click(screen.getAllByRole('button', { name: /^apply$/i }).at(-1)!);
     const patch = plan.mock.calls.at(-1)![1] as Record<string, string>;
     expect(patch['action']).toBe('token_add');
     expect(patch['hash']).toMatch(/^\$argon2id\$/);
@@ -137,7 +137,7 @@ describe('Assistant: connect an AI', () => {
     const plan = vi.spyOn(transport, 'planChange');
     await open(transport);
     await fireEvent.click(await screen.findByRole('button', { name: /^remove$/i }));
-    await fireEvent.click(screen.getAllByRole('button', { name: /simulate/i }).at(-1)!);
+    await fireEvent.click(screen.getAllByRole('button', { name: /^apply$/i }).at(-1)!);
     expect(plan).toHaveBeenLastCalledWith('system.assistant', {
       action: 'token_revoke',
       id: 'k1x',
@@ -163,7 +163,7 @@ describe('Assistant: connect an AI', () => {
     });
     await fireEvent.click(screen.getByRole('button', { name: /replace the certificate/i }));
     expect(screen.getByText(/never shown/i)).toBeVisible();
-    await fireEvent.click(screen.getAllByRole('button', { name: /simulate/i }).at(-1)!);
+    await fireEvent.click(screen.getAllByRole('button', { name: /^apply$/i }).at(-1)!);
     expect(plan).toHaveBeenLastCalledWith('system.assistant', {
       action: 'tls',
       hosts: ['mcp.home.example', '192.168.1.20'],

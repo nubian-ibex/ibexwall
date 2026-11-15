@@ -35,7 +35,7 @@ describe('Dns screen', () => {
       target: { value: 'hagezi-pro' },
     });
     await fireEvent.click(screen.getByRole('checkbox', { name: /refuse unencrypted dns/i }));
-    await fireEvent.click(screen.getByRole('button', { name: /simulate/i }));
+    await fireEvent.click(screen.getByRole('button', { name: /^apply$/i }));
     expect(plan).toHaveBeenCalledWith('net.dns', {
       provider: 'cloudflare',
       transport: 'https',
@@ -92,7 +92,7 @@ describe('Dns screen', () => {
     app.useTransport(transport);
     render(Dns);
     await app.refresh();
-    await fireEvent.click(await screen.findByRole('button', { name: /simulate/i }));
+    await fireEvent.click(await screen.findByRole('button', { name: /^apply$/i }));
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('could not proceed');
     expect(alert).toHaveTextContent('backend');

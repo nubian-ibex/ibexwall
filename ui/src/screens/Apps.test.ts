@@ -96,7 +96,7 @@ describe('Apps screen', () => {
     await fireEvent.click(await screen.findByRole('button', { name: /details for telegram/i }));
     expect(screen.getByText(/cannot be changed from here/i)).toBeVisible();
     await fireEvent.click(screen.getByRole('button', { name: /block network access/i }));
-    await fireEvent.click(await screen.findByRole('button', { name: /simulate/i }));
+    await fireEvent.click(await screen.findByRole('button', { name: /^apply$/i }));
     expect(enable).toHaveBeenCalledWith('apps.flatpak-network', true);
     expect(plan).toHaveBeenCalledWith('apps.flatpak-network', { app: 'org.telegram.desktop' });
   });

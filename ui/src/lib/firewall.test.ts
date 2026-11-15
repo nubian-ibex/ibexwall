@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { FirewallState } from '../gen/contracts';
 import {
-  canEnableBasic,
   canSwitchProfile,
   format,
   hasServices,
@@ -58,9 +57,6 @@ describe('state helpers', () => {
     expect(canSwitchProfile(state({ backend: 'ufw' }))).toBe(false);
     expect(hasServices(state({}))).toBe(true);
     expect(hasServices(state({ backend: 'ufw' }))).toBe(false);
-    expect(canEnableBasic(state({ backend: 'nftables', active: false }))).toBe(true);
-    expect(canEnableBasic(state({ backend: 'nftables', active: true }))).toBe(false);
-    expect(canEnableBasic(state({ backend: 'ufw', active: false }))).toBe(false);
   });
 
   it('falls back to public for a profile it does not know', () => {

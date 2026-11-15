@@ -46,11 +46,6 @@ export function profileOf(name: string): ProfileId {
   return (PROFILES as readonly string[]).includes(name) ? (name as ProfileId) : 'public';
 }
 
-/** Turning on IbexWall's own protection: only when nothing else manages it. */
-export function canEnableBasic(state: FirewallState): boolean {
-  return state.backend === 'nftables' && state.active !== true;
-}
-
 /** The rule, as the firewall shows it, that already lets `port/proto` in
  * through a range (Fedora Workstation allows 1025-65535, for one). Mirrors
  * the plugin, which refuses to add a port such a rule covers. */
@@ -87,9 +82,4 @@ export function coveringRange(state: FirewallState, spec: string): string | null
     }
   }
   return null;
-}
-
-/** firewalld or ufw is installed but off: IbexWall can turn it on (ADR-0046). */
-export function canTurnOnManager(state: FirewallState): boolean {
-  return (state.backend === 'firewalld' || state.backend === 'ufw') && state.active === false;
 }

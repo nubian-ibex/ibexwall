@@ -5,8 +5,6 @@
   import {
     PROFILES,
     PROTOCOLS,
-    canEnableBasic,
-    canTurnOnManager,
     coveringRange,
     canSwitchProfile,
     format,
@@ -33,6 +31,13 @@
   let load = $state<Load>({ status: 'loading' });
   let busy = $state(false);
   let pending = $state<Record<string, unknown> | null>(null);
+  let reviewEl = $state<HTMLElement | null>(null);
+
+  // The review sits under the switch, but a change asked for further down
+  // the page must not leave the person looking at nothing.
+  $effect(() => {
+    if (pending && reviewEl) reviewEl.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  });
   let port = $state('');
   let proto = $state<(typeof PROTOCOLS)[number]>('tcp');
   let service = $state('');
@@ -60,12 +65,16 @@
   const plugin = $derived(
     app.plugins.status === 'ready' ? app.plugins.data.find((p) => p.id === PLUGIN) : undefined,
   );
-  const controls = $derived(plugin?.enabled === true);
+  /** Whether the app may plan changes: the plugin is on, or can be turned on. */
+  const canAct = $derived(plugin ? plugin.enabled || !plugin.locked : false);
+  /** What the firewall is doing now, not what the plugin is set to. */
+  const isOn = $derived(fw?.active === true);
+  /** IbexWall's own protection is undone from History, not switched off. */
+  const ownProtection = $derived(fw?.backend === 'nftables' && isOn);
+  const canFlip = $derived(canAct && !ownProtection && pending === null && !busy);
   const portValue = $derived(portSpec(port, proto));
   /** The range that already lets this port in, when there is one. */
   const covered = $derived(fw && portValue ? coveringRange(fw, portValue) : null);
-  /** The manager is installed but off: nothing can be allowed until it is on. */
-  const managerOff = $derived(fw ? canTurnOnManager(fw) : false);
   const serviceValid = $derived(/^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$/.test(service.trim()));
   const unnamed = $derived(fw ? unnamedListening(fw) : []);
 
@@ -74,19 +83,35 @@
     if (fw?.zone) profile = profileOf(fw.zone);
   });
 
-  async function toggle(value: boolean) {
-    if (!plugin) return;
-    busy = true;
-    try {
-      await app.change(() => app.transport.setPluginEnabled(plugin.id, value));
-      await app.refresh();
-    } finally {
-      busy = false;
+  /** The plugin may be off, or may have been turned off on the Plugins
+   * screen: planning needs it on, so asking for a change turns it on first
+   * (the plugin only plans; nothing on the machine changes yet). */
+  async function propose(patch: Record<string, unknown>) {
+    if (plugin && !plugin.enabled) {
+      busy = true;
+      try {
+        await app.change(() => app.transport.setPluginEnabled(plugin.id, true));
+        if (app.notice) return;
+        await app.refresh();
+      } finally {
+        busy = false;
+      }
     }
+    pending = patch;
   }
 
-  function propose(patch: Record<string, unknown>) {
-    pending = patch;
+  /** The switch asks for the change; it only moves when the firewall does. */
+  function flip(on: boolean) {
+    if (!fw) return;
+    if (on) {
+      void propose(
+        fw.backend === 'nftables'
+          ? { enable_basic: true, allow_listening: keepListening }
+          : { enable_manager: true, allow_listening: keepListening },
+      );
+    } else {
+      void propose({ disable_manager: true });
+    }
   }
 
   function addPort() {
@@ -131,262 +156,220 @@
         {t('firewall-manager', { manager: t(`firewall-manager-${fw.backend}`) })}
         {#if fw.zone}· {t('firewall-zone', { zone: fw.zone })}{/if}
       </p>
-      {#if fw.active !== true}
+      {#if !isOn}
         <p class="muted">{t('firewall-inactive-body')}</p>
+        <p>
+          {t(fw.backend === 'nftables' ? 'firewall-enable-body' : 'firewall-turn-on-body', {
+            manager: t(`firewall-manager-${fw.backend}`),
+          })}
+        </p>
+        <label class="check">
+          <input type="checkbox" bind:checked={keepListening} disabled={!canFlip} />
+          <span>{t('firewall-enable-keep')}</span>
+        </label>
+      {:else if ownProtection}
+        <p class="muted">{t('firewall-own-off-hint')}</p>
       {/if}
     </div>
-    {#if plugin}
-      <Switch
-        checked={controls}
-        label={t(controls ? 'plugins-enabled' : 'plugins-disabled')}
-        disabled={busy || plugin.locked}
-        onchange={toggle}
-      />
-    {/if}
+    <Switch
+      checked={isOn}
+      label={t(isOn ? 'firewall-switch-on' : 'firewall-switch-off')}
+      disabled={!canFlip}
+      onchange={flip}
+    />
   </section>
 
-  {#if !controls}
-    <section class="card notice" role="status">
-      <h2>{t('firewall-plugin-off-title')}</h2>
-      <p class="muted">{t('firewall-plugin-off-body')}</p>
+  {#if pending}
+    <section class="card review" aria-labelledby="fw-review" bind:this={reviewEl}>
+      <h2 id="fw-review">{t('firewall-review-note')}</h2>
+      {#key JSON.stringify(pending)}
+        <ChangeFlow plugin={PLUGIN} patch={pending} ondone={refresh} />
+      {/key}
     </section>
   {/if}
 
-  {#if canTurnOnManager(fw)}
-    <section class="card" aria-labelledby="fw-turn-on">
-      <h2 id="fw-turn-on">{t('firewall-turn-on-title')}</h2>
-      <p>
-        {t('firewall-turn-on-body', { manager: t(`firewall-manager-${fw.backend}`) })}
-      </p>
-      <label class="check">
-        <input type="checkbox" bind:checked={keepListening} />
-        <span>{t('firewall-enable-keep')}</span>
-      </label>
-      <div>
-        <button
-          type="button"
-          class="action"
-          disabled={!controls}
-          onclick={() => propose({ enable_manager: true, allow_listening: keepListening })}
-        >
-          {t('firewall-turn-on-title')}
-        </button>
-      </div>
-    </section>
-  {/if}
-
-  {#if canEnableBasic(fw)}
-    <section class="card" aria-labelledby="fw-enable">
-      <h2 id="fw-enable">{t('firewall-enable-title')}</h2>
-      <p>{t('firewall-enable-body')}</p>
-      <label class="check">
-        <input type="checkbox" bind:checked={keepListening} />
-        <span>{t('firewall-enable-keep')}</span>
-      </label>
-      <div>
-        <button
-          type="button"
-          class="action"
-          disabled={!controls}
-          onclick={() => propose({ enable_basic: true, allow_listening: keepListening })}
-        >
-          {t('firewall-enable-title')}
-        </button>
-      </div>
-    </section>
-  {/if}
-
-  <section class="card" aria-labelledby="fw-ports">
-    <h2 id="fw-ports">{t('firewall-allowed-ports')}</h2>
-    {#if fw.ports.length === 0}
-      <p class="muted">{t('firewall-none')}</p>
-    {:else}
-      <ul class="rows">
-        {#each fw.ports as rule (format(rule))}
-          <li>
-            <span class="mono">{format(rule)}</span>
-            <button
-              type="button"
-              class="link"
-              disabled={!controls}
-              aria-label={t('firewall-remove', { what: format(rule) })}
-              onclick={() => propose({ remove: format(rule) })}
-            >
-              {t('firewall-remove', { what: format(rule) })}
-            </button>
-          </li>
-        {/each}
-      </ul>
-    {/if}
-
-    <h3>{t('firewall-add-title')}</h3>
-    <div class="form">
-      <label class="field">
-        <span>{t('firewall-port')}</span>
-        <input
-          type="text"
-          inputmode="numeric"
-          bind:value={port}
-          aria-invalid={portTouched && !portValue}
-          aria-describedby={portTouched && !portValue ? 'port-error' : undefined}
-        />
-      </label>
-      <label class="field">
-        <span>{t('firewall-protocol')}</span>
-        <select bind:value={proto}>
-          {#each PROTOCOLS as value (value)}
-            <option {value}>{value.toUpperCase()}</option>
-          {/each}
-        </select>
-      </label>
-      <button
-        type="button"
-        class="action"
-        disabled={!controls || managerOff || covered !== null}
-        onclick={addPort}
-      >
-        {t('firewall-allow')}
-      </button>
-    </div>
-    {#if managerOff}
-      <p class="muted" role="status">{t('firewall-forms-off')}</p>
-    {:else if covered}
-      <p class="muted" role="status">
-        {t('firewall-port-covered', { port: portValue ?? '', rule: covered })}
-      </p>
-    {/if}
-    {#if portTouched && !portValue}
-      <p id="port-error" class="error" role="alert">{t('firewall-port-invalid')}</p>
-    {/if}
-  </section>
-
-  {#if hasServices(fw)}
-    <section class="card" aria-labelledby="fw-services">
-      <h2 id="fw-services">{t('firewall-allowed-services')}</h2>
-      {#if fw.services.length === 0}
+  {#if isOn}
+    <section class="card" aria-labelledby="fw-ports">
+      <h2 id="fw-ports">{t('firewall-allowed-ports')}</h2>
+      {#if fw.ports.length === 0}
         <p class="muted">{t('firewall-none')}</p>
       {:else}
         <ul class="rows">
-          {#each fw.services as name (name)}
+          {#each fw.ports as rule (format(rule))}
             <li>
-              <span class="mono">{name}</span>
+              <span class="mono">{format(rule)}</span>
               <button
                 type="button"
                 class="link"
-                disabled={!controls}
-                aria-label={t('firewall-remove', { what: name })}
-                onclick={() => propose({ remove_service: name })}
+                disabled={!canAct}
+                aria-label={t('firewall-remove', { what: format(rule) })}
+                onclick={() => propose({ remove: format(rule) })}
               >
-                {t('firewall-remove', { what: name })}
+                {t('firewall-remove', { what: format(rule) })}
               </button>
             </li>
           {/each}
         </ul>
       {/if}
-      <h3>{t('firewall-service-title')}</h3>
+
+      <h3>{t('firewall-add-title')}</h3>
       <div class="form">
         <label class="field">
-          <span>{t('firewall-service-name')}</span>
+          <span>{t('firewall-port')}</span>
           <input
             type="text"
-            bind:value={service}
-            aria-invalid={serviceTouched && !serviceValid}
-            aria-describedby={serviceTouched && !serviceValid ? 'service-error' : undefined}
+            inputmode="numeric"
+            bind:value={port}
+            aria-invalid={portTouched && !portValue}
+            aria-describedby={portTouched && !portValue ? 'port-error' : undefined}
           />
         </label>
-        <button type="button" class="action" disabled={!controls} onclick={addService}>
-          {t('firewall-service-allow')}
-        </button>
-      </div>
-      {#if serviceTouched && !serviceValid}
-        <p id="service-error" class="error" role="alert">{t('firewall-service-invalid')}</p>
-      {/if}
-    </section>
-  {/if}
-
-  <section class="card" aria-labelledby="fw-profiles">
-    <h2 id="fw-profiles">{t('firewall-profiles-title')}</h2>
-    <p class="muted">{t('firewall-profiles-body')}</p>
-    {#if canSwitchProfile(fw)}
-      <fieldset>
-        <legend class="visually-hidden">{t('firewall-profiles-title')}</legend>
-        {#each PROFILES as option (option)}
-          <label class="option">
-            <input type="radio" name="fw-profile" value={option} bind:group={profile} />
-            <span>
-              <strong>{t(`firewall-profile-${option}`)}</strong>
-              <span class="muted">{t(`firewall-profile-${option}-body`)}</span>
-            </span>
-          </label>
-        {/each}
-      </fieldset>
-      <div>
+        <label class="field">
+          <span>{t('firewall-protocol')}</span>
+          <select bind:value={proto}>
+            {#each PROTOCOLS as value (value)}
+              <option {value}>{value.toUpperCase()}</option>
+            {/each}
+          </select>
+        </label>
         <button
           type="button"
           class="action"
-          disabled={!controls}
-          onclick={() => propose({ profile })}
+          disabled={!canAct || covered !== null}
+          onclick={addPort}
         >
-          {t('firewall-profile-apply', { profile: t(`firewall-profile-${profile}`) })}
+          {t('firewall-allow')}
         </button>
       </div>
-    {:else}
-      <p class="muted">{t('firewall-profile-unavailable')}</p>
+      {#if covered}
+        <p class="muted" role="status">
+          {t('firewall-port-covered', { port: portValue ?? '', rule: covered })}
+        </p>
+      {/if}
+      {#if portTouched && !portValue}
+        <p id="port-error" class="error" role="alert">{t('firewall-port-invalid')}</p>
+      {/if}
+    </section>
+
+    {#if hasServices(fw)}
+      <section class="card" aria-labelledby="fw-services">
+        <h2 id="fw-services">{t('firewall-allowed-services')}</h2>
+        {#if fw.services.length === 0}
+          <p class="muted">{t('firewall-none')}</p>
+        {:else}
+          <ul class="rows">
+            {#each fw.services as name (name)}
+              <li>
+                <span class="mono">{name}</span>
+                <button
+                  type="button"
+                  class="link"
+                  disabled={!canAct}
+                  aria-label={t('firewall-remove', { what: name })}
+                  onclick={() => propose({ remove_service: name })}
+                >
+                  {t('firewall-remove', { what: name })}
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+        <h3>{t('firewall-service-title')}</h3>
+        <div class="form">
+          <label class="field">
+            <span>{t('firewall-service-name')}</span>
+            <input
+              type="text"
+              bind:value={service}
+              aria-invalid={serviceTouched && !serviceValid}
+              aria-describedby={serviceTouched && !serviceValid ? 'service-error' : undefined}
+            />
+          </label>
+          <button type="button" class="action" disabled={!canAct} onclick={addService}>
+            {t('firewall-service-allow')}
+          </button>
+        </div>
+        {#if serviceTouched && !serviceValid}
+          <p id="service-error" class="error" role="alert">{t('firewall-service-invalid')}</p>
+        {/if}
+      </section>
     {/if}
 
-    {#if fw.networks.length > 0}
-      <h3>{t('firewall-networks-title')}</h3>
-      <ul class="rows networks">
-        {#each fw.networks as network (network.name + network.kind)}
-          <li>
-            <div>
-              <strong>{network.name}</strong>
-              <span class="badge">{t(`firewall-kind-${network.kind}`)}</span>
-              <div class="muted small">
-                {t('firewall-network-suggestion', {
-                  profile: t(`firewall-profile-${profileOf(network.recommended)}`),
-                })}
+    <section class="card" aria-labelledby="fw-profiles">
+      <h2 id="fw-profiles">{t('firewall-profiles-title')}</h2>
+      <p class="muted">{t('firewall-profiles-body')}</p>
+      {#if canSwitchProfile(fw)}
+        <fieldset>
+          <legend class="visually-hidden">{t('firewall-profiles-title')}</legend>
+          {#each PROFILES as option (option)}
+            <label class="option">
+              <input type="radio" name="fw-profile" value={option} bind:group={profile} />
+              <span>
+                <strong>{t(`firewall-profile-${option}`)}</strong>
+                <span class="muted">{t(`firewall-profile-${option}-body`)}</span>
+              </span>
+            </label>
+          {/each}
+        </fieldset>
+        <div>
+          <button
+            type="button"
+            class="action"
+            disabled={!canAct}
+            onclick={() => propose({ profile })}
+          >
+            {t('firewall-profile-apply', { profile: t(`firewall-profile-${profile}`) })}
+          </button>
+        </div>
+      {:else}
+        <p class="muted">{t('firewall-profile-unavailable')}</p>
+      {/if}
+
+      {#if fw.networks.length > 0}
+        <h3>{t('firewall-networks-title')}</h3>
+        <ul class="rows networks">
+          {#each fw.networks as network (network.name + network.kind)}
+            <li>
+              <div>
+                <strong>{network.name}</strong>
+                <span class="badge">{t(`firewall-kind-${network.kind}`)}</span>
+                <div class="muted small">
+                  {t('firewall-network-suggestion', {
+                    profile: t(`firewall-profile-${profileOf(network.recommended)}`),
+                  })}
+                </div>
+                {#if network.warning}
+                  <p class="warning" role="note">{t(network.warning)}</p>
+                {/if}
               </div>
-              {#if network.warning}
-                <p class="warning" role="note">{t(network.warning)}</p>
-              {/if}
-            </div>
-          </li>
-        {/each}
-      </ul>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </section>
+
+    {#if unnamed.length > 0}
+      <section class="card" aria-labelledby="fw-listening">
+        <h2 id="fw-listening">{t('firewall-listening-title')}</h2>
+        <p class="muted">{t('firewall-listening-body')}</p>
+        <ul class="chips">
+          {#each unnamed as rule (format(rule))}
+            <li class="mono">{format(rule)}</li>
+          {/each}
+        </ul>
+      </section>
     {/if}
-  </section>
 
-  {#if unnamed.length > 0}
-    <section class="card" aria-labelledby="fw-listening">
-      <h2 id="fw-listening">{t('firewall-listening-title')}</h2>
-      <p class="muted">{t('firewall-listening-body')}</p>
-      <ul class="chips">
-        {#each unnamed as rule (format(rule))}
-          <li class="mono">{format(rule)}</li>
-        {/each}
-      </ul>
-    </section>
-  {/if}
-
-  {#if fw.other.length > 0}
-    <section class="card" aria-labelledby="fw-other">
-      <h2 id="fw-other">{t('firewall-other-title')}</h2>
-      <ul class="rows">
-        {#each fw.other as line (line)}
-          <li class="mono">{line}</li>
-        {/each}
-      </ul>
-    </section>
-  {/if}
-
-  {#if pending}
-    <section class="card" aria-labelledby="fw-review">
-      <h2 id="fw-review">{t('firewall-review-note')}</h2>
-      {#key JSON.stringify(pending)}
-        <ChangeFlow plugin={PLUGIN} patch={pending} />
-      {/key}
-    </section>
+    {#if fw.other.length > 0}
+      <section class="card" aria-labelledby="fw-other">
+        <h2 id="fw-other">{t('firewall-other-title')}</h2>
+        <ul class="rows">
+          {#each fw.other as line (line)}
+            <li class="mono">{line}</li>
+          {/each}
+        </ul>
+      </section>
+    {/if}
   {/if}
 {/if}
 
@@ -423,6 +406,9 @@
     clip-path: inset(50%);
     white-space: nowrap;
   }
+  .review {
+    border-color: var(--primary-strong);
+  }
   .card {
     display: grid;
     gap: var(--space-3);
@@ -439,10 +425,6 @@
   .status {
     grid-template-columns: 1fr auto;
     align-items: center;
-  }
-  .notice {
-    background: var(--warning-soft);
-    border-color: var(--warning-border);
   }
   .rows {
     list-style: none;

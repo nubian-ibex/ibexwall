@@ -124,6 +124,29 @@ sudo ibexctl rollback "$TX" --json >/dev/null
 echo "METRIC: a port inside an allowed range is reported as already allowed"
 "#;
 
+/// The switch in the app turns a running manager off through
+/// `disable_manager`; undoing that must turn it back on, which a reload
+/// alone does not do for ufw.
+const TURN_OFF: &str = r#"
+apply_keep() {
+  OUT=$(sudo ibexctl apply "$1" --confirm-timeout 300 --json 2>&1 || true)
+  T=$(echo "$OUT" | id_of); case "$T" in tx-*) ;; *) echo "APPLY FAILED: $OUT"; exit 1 ;; esac
+  if echo "$OUT" | grep -q pending_confirm; then sudo ibexctl confirm "$T" >/dev/null; fi
+  echo "$T"
+}
+P=$(plan_on); case "$P" in plan-*) ;; *) echo "PLAN FAILED"; cat /tmp/plan.out; exit 1 ;; esac
+ON_TX=$(apply_keep "$P")
+is_on || { echo "NOT ON"; exit 1; }
+P=$(sudo ibexctl plan net.firewall --set disable_manager=true --json 2>&1 | id_of)
+case "$P" in plan-*) ;; *) echo "TURN-OFF PLAN FAILED"; exit 1 ;; esac
+OFF_TX=$(apply_keep "$P")
+if is_on; then echo "STILL ON AFTER disable_manager"; exit 1; fi
+sudo ibexctl rollback "$OFF_TX" --json >/dev/null 2>&1 || { echo "ROLLBACK OF THE TURN-OFF FAILED"; exit 1; }
+is_on || { echo "THE ROLLBACK DID NOT TURN IT BACK ON"; exit 1; }
+sudo ibexctl rollback "$ON_TX" --json >/dev/null
+echo "METRIC: $MGR turned off through IbexWall, and the undo turned it back on"
+"#;
+
 pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     println!("== firewall-on: stage ==");
     let input = stage_and_pack(workspace)?;
@@ -148,6 +171,7 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     scenario!("w5 a rollback turns it off again", ROLL_BACK);
     scenario!("w6 a change nobody keeps undoes itself", TIMEOUT);
     scenario!("w7 a port a range already allows", RANGE);
+    scenario!("w8 turning it off, and the undo", TURN_OFF);
 
     if failures == 0 {
         println!("PASS: firewall-on suite (all scenarios)");

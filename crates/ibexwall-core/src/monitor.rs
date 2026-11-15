@@ -399,16 +399,20 @@ impl Monitor {
 }
 
 /// Binds the datagram socket the resolver reports answers to and feeds
-/// the correlator until the task is dropped. The directory belongs to the
-/// resolver's user (0750), so the world-writable socket inside is only
-/// reachable by it and root.
+/// the correlator until the task is dropped. The runtime directory is shared
+/// with the API socket, so the socket itself is the gate: group-only under
+/// the real root, and never created open to everyone there.
 pub async fn listen_answers(core: Arc<Core>, path: PathBuf) -> Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
     let _ = std::fs::remove_file(&path);
     let socket = tokio::net::UnixDatagram::bind(&path)?;
-    open_to_the_resolver(&path)?;
+    open_to_the_resolver(
+        &path,
+        core.root == Path::new("/"),
+        ibexwall_sys::group_id(ibexwall_proto::names::DNS_USER),
+    )?;
     // One DNS answer is far below this; a longer datagram is not ours.
     let mut buffer = [0u8; 1024];
     loop {
@@ -419,18 +423,23 @@ pub async fn listen_answers(core: Arc<Core>, path: PathBuf) -> Result<()> {
 }
 
 /// Lets the resolver's group, and no one else, send answers: a local user
-/// who could would name other people's connections. Where the group does
-/// not exist or cannot be given (a sandbox run as a person), the socket is
-/// open to everyone, as a development tree has no one to protect from.
-fn open_to_the_resolver(path: &Path) -> std::io::Result<()> {
-    if let Some(gid) = ibexwall_sys::group_id(ibexwall_proto::names::DNS_USER) {
-        match std::os::unix::fs::lchown(path, None, Some(gid)) {
+/// who could would name other people's connections. Under the real root a
+/// missing group or a failed chown is an error (the channel stays off). In
+/// a sandbox run as a person there is no one to protect from, so the
+/// socket is opened to everyone.
+fn open_to_the_resolver(path: &Path, real_root: bool, gid: Option<u32>) -> std::io::Result<()> {
+    let denied = match gid {
+        Some(gid) => match std::os::unix::fs::lchown(path, None, Some(gid)) {
             Ok(()) => return chmod_socket_no_symlink(path, 0o660),
-            Err(error) => {
-                tracing::warn!(%error, "the answers socket stays open to all users");
-            }
-        }
+            Err(error) => error,
+        },
+        None => std::io::Error::other("the resolver's group does not exist"),
+    };
+    if real_root {
+        let _ = std::fs::remove_file(path);
+        return Err(denied);
     }
+    tracing::warn!(error = %denied, "the answers socket stays open to all users");
     chmod_socket_no_symlink(path, 0o666)
 }
 
@@ -590,6 +599,32 @@ pub async fn serve_monitor(core: Arc<Core>, path: PathBuf) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_answers_socket_is_never_world_writable_under_the_real_root() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        let dir = std::env::temp_dir().join(format!("ibx-answers-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("answers.sock");
+        std::os::unix::net::UnixDatagram::bind(&path).unwrap();
+        // No resolver group: the real root refuses and leaves no socket.
+        assert!(open_to_the_resolver(&path, true, None).is_err());
+        assert!(!path.exists());
+        // A sandbox keeps the open development socket.
+        std::os::unix::net::UnixDatagram::bind(&path).unwrap();
+        open_to_the_resolver(&path, false, None).unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o666);
+        std::fs::remove_file(&path).unwrap();
+        // With a group it is group-only.
+        std::os::unix::net::UnixDatagram::bind(&path).unwrap();
+        let gid = std::fs::metadata(&dir).unwrap().gid();
+        open_to_the_resolver(&path, true, Some(gid)).unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o660);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn chmod_refuses_a_swapped_symlink() {

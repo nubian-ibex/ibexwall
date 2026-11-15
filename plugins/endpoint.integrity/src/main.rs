@@ -177,17 +177,26 @@ pub fn parse_rpm(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// `dpkg --verify`: `??5??????c /etc/...` (a trailing `c` is a conffile).
+/// `dpkg --verify`: a 9-character flag field (`??5??????`, the third is the
+/// digest), an optional attribute (`c` marks a conffile), then the path.
+/// Only the flag field says the digest changed: a `5` inside the path does
+/// not.
 pub fn parse_dpkg(text: &str) -> Vec<String> {
     text.lines()
         .filter_map(|line| {
-            let path = line.split_whitespace().last()?;
-            // dpkg's line is the changed checks then the path; a `5` is a
-            // changed digest. A trailing `c` marks a conffile.
-            if path.starts_with("??") || path.len() < 2 || !line.contains('5') {
+            let flags = line.get(0..9)?;
+            let rest = line[9..].trim_start();
+            let (conffile, path) = match rest.strip_prefix('/') {
+                Some(_) => (false, rest),
+                None => {
+                    let (attr, path) = rest.split_once(char::is_whitespace)?;
+                    (attr == "c", path.trim())
+                }
+            };
+            if flags.as_bytes()[2] != b'5' || !path.starts_with('/') {
                 return None;
             }
-            if line.contains(&format!("c {path}")) || !is_system_file(path) {
+            if conffile || !is_system_file(path) {
                 return None;
             }
             Some(path.to_string())
@@ -204,9 +213,13 @@ pub fn parse_pacman(text: &str) -> Vec<String> {
             let (_, rest) = line.split_once(": ")?;
             let path = rest.split_whitespace().next()?;
             let reason = rest.split_once('(').map(|(_, r)| r).unwrap_or("");
-            // Time and metadata mismatches are routine; content and size are
-            // not, and a file pacman cannot read is not a change here.
-            let weak = reason.contains("time") || reason.contains("Metadata");
+            // Time, permission and ownership mismatches are routine; content
+            // and size are not, and a file pacman cannot read is not a change
+            // here.
+            let reason = reason.to_ascii_lowercase();
+            let weak = ["time", "metadata", "permission", "uid", "gid"]
+                .iter()
+                .any(|w| reason.contains(w));
             if weak || !path.starts_with('/') || !is_system_file(path) {
                 return None;
             }
@@ -390,10 +403,13 @@ S.5....T.    /usr/lib/modules/6.19/vmlinuz\n";
     #[test]
     fn dpkg_reports_program_files_and_skips_conffiles() {
         let text = "\
-??5??????c /etc/apt/apt.conf.d/01autoremove\n\
-??5?????? /usr/bin/hostid\n\
-??5?????? /etc/hosts\n";
-        assert_eq!(parse_dpkg(text), ["/usr/bin/hostid"]);
+??5?????? c /etc/apt/apt.conf.d/01autoremove\n\
+??5??????   /usr/bin/hostid\n\
+??5??????   /etc/hosts\n\
+??????????  /usr/lib/libx5.so\n\
+??5??????   /usr/bin/ls5\n";
+        // A `5` in the path is not a changed digest; the flag field is.
+        assert_eq!(parse_dpkg(text), ["/usr/bin/hostid", "/usr/bin/ls5"]);
     }
 
     #[test]
@@ -401,7 +417,10 @@ S.5....T.    /usr/lib/modules/6.19/vmlinuz\n";
         let text = "\
 warning: coreutils: /usr/bin/hostid (size mismatch)\n\
 coreutils: 2381 total files, 1 altered file\n\
-warning: bash: /etc/skel/.bashrc (modification time mismatch)";
+warning: bash: /etc/skel/.bashrc (modification time mismatch)\n\
+warning: sudo: /usr/bin/sudo (Permissions mismatch)\n\
+warning: sudo: /usr/lib/sudo/sudoers.so (UID mismatch)\n\
+warning: sudo: /usr/lib/sudo/sudo_noexec.so (GID mismatch)";
         assert_eq!(parse_pacman(text), ["/usr/bin/hostid"]);
     }
 

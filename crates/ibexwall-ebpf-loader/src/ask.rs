@@ -203,9 +203,13 @@ pub fn start(
         loop {
             let packets = match serving.queue.recv(Duration::from_millis(250)) {
                 Ok(packets) => packets,
+                // Only an error that cannot heal gets here (the nfq crate
+                // rides out EINTR and ENOBUFS). Without this thread the
+                // queue fails open silently, so end the process loudly and
+                // let systemd restart it.
                 Err(error) => {
-                    eprintln!("ibexwall-ebpf-loader: ask queue stopped: {error}");
-                    return;
+                    eprintln!("ibexwall-ebpf-loader: ask queue failed, exiting: {error}");
+                    std::process::exit(1);
                 }
             };
             for packet in packets {

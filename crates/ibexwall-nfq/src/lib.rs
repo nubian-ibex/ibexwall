@@ -224,6 +224,24 @@ fn parse_packet(body: &[u8]) -> Option<Packet> {
     })
 }
 
+/// Errors a receive loop must ride out: a signal (EINTR), a retry hint
+/// (EAGAIN) and ENOBUFS, which netlink raises when a burst overran the
+/// socket buffer. The kernel already accepted what it could not queue
+/// (fail open), and the socket keeps working afterwards.
+pub fn is_transient(error: &io::Error) -> bool {
+    matches!(
+        error.raw_os_error(),
+        Some(libc_errno::EINTR | libc_errno::EAGAIN | libc_errno::ENOBUFS)
+    ) || error.kind() == io::ErrorKind::Interrupted
+}
+
+/// Linux errno values, spelled out because the crate has no libc.
+mod libc_errno {
+    pub const EINTR: i32 = 4;
+    pub const EAGAIN: i32 = 11;
+    pub const ENOBUFS: i32 = 105;
+}
+
 /// A bound queue.
 pub struct Queue {
     fd: OwnedFd,
@@ -260,8 +278,16 @@ impl Queue {
         Ok(queue)
     }
 
-    /// Waits up to `timeout` for packets; empty when nothing came.
+    /// Waits up to `timeout` for packets; empty when nothing came or the
+    /// wait was interrupted. Only errors that cannot heal are returned.
     pub fn recv(&self, timeout: Duration) -> io::Result<Vec<Packet>> {
+        match self.recv_once(timeout) {
+            Err(error) if is_transient(&error) => Ok(vec![]),
+            other => other,
+        }
+    }
+
+    fn recv_once(&self, timeout: Duration) -> io::Result<Vec<Packet>> {
         let mut poller = [PollFd::new(&self.fd, PollFlags::IN)];
         let wait = Timespec {
             tv_sec: timeout.as_secs() as i64,
@@ -414,6 +440,23 @@ mod tests {
         let mut ack = m.clone();
         ack[16..20].copy_from_slice(&0i32.to_ne_bytes());
         assert_eq!(parse(&ack).error, None);
+    }
+
+    #[test]
+    fn signals_and_buffer_overruns_are_not_fatal() {
+        for errno in [4, 11, 105] {
+            assert!(
+                is_transient(&io::Error::from_raw_os_error(errno)),
+                "{errno}"
+            );
+        }
+        // A closed or invalid socket will never recover.
+        for errno in [9, 1, 22] {
+            assert!(
+                !is_transient(&io::Error::from_raw_os_error(errno)),
+                "{errno}"
+            );
+        }
     }
 
     #[test]

@@ -159,7 +159,38 @@ impl RequestHandler for Handler {
         let policy = self.policy();
         let builder = MessageResponseBuilder::from_message_request(request);
 
-        let result = match policy.decide(&name) {
+        let mut verdict = policy.decide(&name);
+        let lookup = if verdict == Verdict::Forward {
+            Some(
+                tokio::time::timeout(
+                    UPSTREAM_DEADLINE,
+                    self.resolver_for(&name).lookup(name.clone(), query_type),
+                )
+                .await
+                .unwrap_or_else(|_| Err(NetError::Timeout)),
+            )
+        } else {
+            None
+        };
+        // A tracker hidden behind an innocent name (CNAME cloaking) is
+        // blocked by what the answer points to.
+        if let Some(Ok(found)) = &lookup
+            && !policy.is_allowed(&name)
+            && let Some(category) = found
+                .answers()
+                .iter()
+                .find_map(|record| match &record.data {
+                    RData::CNAME(target) => match policy.decide(&target.0.to_string()) {
+                        Verdict::Block(category) => Some(category),
+                        Verdict::Forward => None,
+                    },
+                    _ => None,
+                })
+        {
+            verdict = Verdict::Block(category);
+        }
+
+        let result = match verdict {
             Verdict::Block(category) => {
                 self.counters.count_block(category);
                 let metadata = Metadata::response_from_request(&request.metadata);
@@ -179,13 +210,7 @@ impl RequestHandler for Handler {
                     }
                 }
             }
-            Verdict::Forward => match tokio::time::timeout(
-                UPSTREAM_DEADLINE,
-                self.resolver_for(&name).lookup(name.clone(), query_type),
-            )
-            .await
-            .unwrap_or_else(|_| Err(NetError::Timeout))
-            {
+            Verdict::Forward => match lookup.unwrap_or(Err(NetError::Timeout)) {
                 Ok(lookup) => {
                     self.counters.forwarded.fetch_add(1, Ordering::Relaxed);
                     if let Some(sink) = &self.sink {

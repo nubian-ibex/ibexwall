@@ -662,10 +662,11 @@ fn amain() -> Result<()> {
             }
         }
     });
-    let reader = sink.lock().expect("lock poisoned").reader();
-    if let Some(reader) = reader {
+    if sink.lock().expect("lock poisoned").reader().is_some() {
+        let link = std::sync::Arc::clone(&sink);
         let handle = std::sync::Arc::clone(&ask_handle);
-        std::thread::spawn(move || read_core(reader, policies, handle));
+        let reason = degraded.clone();
+        std::thread::spawn(move || serve_core(link, policies, handle, reason));
     }
     if let Some(reason) = degraded {
         sink.lock()
@@ -717,12 +718,14 @@ fn describe(sighting: &Sighting, enricher: &mut Enricher) -> serde_json::Value {
 
 /// Reads what the core pushes: `{"policy": {...}}` and
 /// `{"answer": {"id": N, "decision": "allow"|"block"}}`. A line that does
-/// not parse is ignored; the previous policy stays in force.
+/// not parse is ignored; the previous policy stays in force. Returns when
+/// the connection ends: `true` if the policy channel is still open (so the
+/// caller should reconnect), `false` if the enforcer is gone.
 fn read_core(
     stream: std::os::unix::net::UnixStream,
-    policies: std::sync::mpsc::Sender<Policy>,
-    ask_handle: std::sync::Arc<std::sync::OnceLock<std::sync::Arc<ask::Ask>>>,
-) {
+    policies: &std::sync::mpsc::Sender<Policy>,
+    ask_handle: &std::sync::OnceLock<std::sync::Arc<ask::Ask>>,
+) -> bool {
     use std::io::BufRead as _;
     #[derive(serde::Deserialize)]
     struct Answer {
@@ -754,7 +757,7 @@ fn read_core(
                 ask.configure(std::time::Duration::from_secs(timeout), fallback);
             }
             if policies.send(policy).is_err() {
-                break;
+                return false;
             }
         }
         if let (Some(answer), Some(ask)) = (message.answer, ask_handle.get())
@@ -763,17 +766,63 @@ fn read_core(
             ask.answer(answer.id, decision);
         }
     }
-    // The core is gone. Exiting detaches the programs and closes the queue,
-    // so the network opens now instead of when the next write fails; systemd
-    // brings the unit back and the core's policy returns with it.
     eprintln!("ibexwall-ebpf-loader: lost the core: connection closed");
-    std::process::exit(1);
+    true
+}
+
+/// How long to wait before reconnect attempt `attempt` (0 based): doubling
+/// from half a second up to 30 s, so a restarting core is found quickly and
+/// a long outage costs next to nothing.
+fn backoff(attempt: u32) -> std::time::Duration {
+    std::time::Duration::from_millis(500u64 << attempt.min(6))
+        .min(std::time::Duration::from_secs(30))
+}
+
+/// Keeps the link to the core alive. Losing the core must not end the
+/// loader: exiting would detach the cgroup programs and drop every rule
+/// the core pushed, right when the core restarts to bring them back. The
+/// programs and maps stay as they were; events are dropped while the core
+/// is away and held Ask flows fall back after their timeout.
+fn serve_core(
+    sink: std::sync::Arc<std::sync::Mutex<Sink>>,
+    policies: std::sync::mpsc::Sender<Policy>,
+    ask_handle: std::sync::Arc<std::sync::OnceLock<std::sync::Arc<ask::Ask>>>,
+    degraded: Option<String>,
+) {
+    loop {
+        let reader = sink.lock().expect("lock poisoned").reader();
+        if let Some(reader) = reader
+            && !read_core(reader, &policies, &ask_handle)
+        {
+            return;
+        }
+        sink.lock().expect("lock poisoned").disconnect();
+        let mut attempt = 0;
+        loop {
+            std::thread::sleep(backoff(attempt));
+            attempt = attempt.saturating_add(1);
+            let mut guard = sink.lock().expect("lock poisoned");
+            if guard.reconnect() {
+                eprintln!("ibexwall-ebpf-loader: reconnected to the core");
+                if let Some(reason) = &degraded {
+                    guard.send(
+                        &serde_json::json!({ "meta": "degraded", "reason": reason }).to_string(),
+                    );
+                }
+                break;
+            }
+        }
+    }
 }
 
 /// Where the JSON lines go: stdout, or the core's monitor socket.
 enum Sink {
     Stdout,
-    Socket(std::os::unix::net::UnixStream),
+    Socket {
+        path: PathBuf,
+        /// `None` while the core is away.
+        stream: Option<std::os::unix::net::UnixStream>,
+    },
 }
 
 impl Sink {
@@ -801,12 +850,12 @@ impl Sink {
         // The core may still be starting: wait for it, a while.
         let mut last = None;
         for _ in 0..60 {
-            match std::os::unix::net::UnixStream::connect(path) {
+            match Self::connect(Path::new(path)) {
                 Ok(stream) => {
-                    // A core that stops reading must not wedge us:
-                    // the write fails, we exit, systemd restarts us.
-                    stream.set_write_timeout(Some(std::time::Duration::from_secs(5)))?;
-                    return Ok(Self::Socket(stream));
+                    return Ok(Self::Socket {
+                        path: path.into(),
+                        stream: Some(stream),
+                    });
                 }
                 Err(error) => last = Some(error),
             }
@@ -818,25 +867,60 @@ impl Sink {
         )
     }
 
+    fn connect(path: &Path) -> std::io::Result<std::os::unix::net::UnixStream> {
+        let stream = std::os::unix::net::UnixStream::connect(path)?;
+        // A core that stops reading must not wedge us: the write fails and
+        // the link is dropped and re-established.
+        stream.set_write_timeout(Some(std::time::Duration::from_secs(5)))?;
+        Ok(stream)
+    }
+
     /// A second handle on the core's socket, to read what it pushes.
     fn reader(&self) -> Option<std::os::unix::net::UnixStream> {
         match self {
             Self::Stdout => None,
-            Self::Socket(stream) => stream.try_clone().ok(),
+            Self::Socket { stream, .. } => stream.as_ref().and_then(|s| s.try_clone().ok()),
+        }
+    }
+
+    /// Drops the link (both halves, so a blocked reader wakes up).
+    fn disconnect(&mut self) {
+        if let Self::Socket { stream, .. } = self
+            && let Some(stream) = stream.take()
+        {
+            let _ = stream.shutdown(std::net::Shutdown::Both);
+        }
+    }
+
+    /// One attempt to restore the link; true when connected afterwards.
+    fn reconnect(&mut self) -> bool {
+        match self {
+            Self::Stdout => true,
+            Self::Socket { path, stream } => {
+                if stream.is_none() {
+                    *stream = Self::connect(path).ok();
+                }
+                stream.is_some()
+            }
         }
     }
 
     fn send(&mut self, line: &str) {
         match self {
             Self::Stdout => println!("{line}"),
-            Self::Socket(stream) => {
+            Self::Socket { stream, .. } => {
                 use std::io::Write as _;
+                let Some(open) = stream.as_mut() else {
+                    // The core is away: the event is lost, not queued.
+                    return;
+                };
                 let mut bytes = Vec::with_capacity(line.len() + 1);
                 bytes.extend_from_slice(line.as_bytes());
                 bytes.push(b'\n');
-                if let Err(error) = stream.write_all(&bytes) {
+                if let Err(error) = open.write_all(&bytes) {
                     eprintln!("ibexwall-ebpf-loader: lost the core: {error}");
-                    std::process::exit(1);
+                    // Shutting it down wakes the reader, which reconnects.
+                    self.disconnect();
                 }
             }
         }
@@ -929,5 +1013,48 @@ mod tests {
         let exe = sighting.exe.unwrap_or_default().replace('-', "_");
         assert!(exe.contains("ibexwall_ebpf_loader"), "{exe}");
         assert!(sighting.cgroup.is_some());
+    }
+
+    #[test]
+    fn backoff_doubles_up_to_a_ceiling() {
+        use std::time::Duration;
+        assert_eq!(backoff(0), Duration::from_millis(500));
+        assert_eq!(backoff(1), Duration::from_secs(1));
+        assert_eq!(backoff(5), Duration::from_secs(16));
+        assert_eq!(backoff(6), Duration::from_secs(30));
+        assert_eq!(backoff(u32::MAX), Duration::from_secs(30));
+    }
+
+    #[test]
+    fn losing_the_core_does_not_end_the_process_and_it_can_come_back() {
+        use std::io::Read as _;
+        let dir = std::env::temp_dir().join(format!("ibexwall-sink-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("core.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        let mut sink = Sink::Socket {
+            path: path.clone(),
+            stream: Some(Sink::connect(&path).unwrap()),
+        };
+        let (mut peer, _) = listener.accept().unwrap();
+        sink.send("one");
+        let mut got = [0u8; 4];
+        peer.read_exact(&mut got).unwrap();
+        assert_eq!(&got, b"one\n");
+
+        // The core goes away: sending must neither exit nor panic.
+        drop(peer);
+        sink.send("two");
+        sink.send("three");
+        assert!(sink.reader().is_none());
+
+        // And it returns: the link is restored and carries lines again.
+        assert!(sink.reconnect());
+        let (mut peer, _) = listener.accept().unwrap();
+        sink.send("four");
+        let mut got = [0u8; 5];
+        peer.read_exact(&mut got).unwrap();
+        assert_eq!(&got, b"four\n");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

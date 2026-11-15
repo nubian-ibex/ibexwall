@@ -45,7 +45,9 @@ impl Check {
 
 pub fn evaluate(sandbox: &Sandbox, detected_at: &str) -> CheckReport {
     let root_encryption = root_encryption(sandbox);
-    let mounts = sandbox.read("/proc/self/mounts");
+    // The plugin's own mount table is distorted by its sandbox (private
+    // /tmp and /dev), so the options are read from the host's.
+    let mounts = sandbox.host_mounts();
     let checks = vec![
         secure_boot(sandbox),
         lockdown(sandbox),

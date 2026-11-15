@@ -252,6 +252,31 @@ impl Sandbox {
         path.is_dir() && std::fs::read_dir(path).is_err()
     }
 
+    /// The host's mount table in `/proc/mounts` layout (`source point type
+    /// options 0 0`), taken from PID 1's mount namespace. A plugin's own
+    /// `/proc/self/mounts` is distorted by its sandbox (private `/tmp` and
+    /// `/dev`, `ProtectHome` tmpfs, read-only remounts), so judging the
+    /// host's mount options from it gives wrong verdicts. `None` when PID 1's
+    /// table cannot be read: callers must say "cannot tell", not guess.
+    pub fn host_mounts(&self) -> Option<String> {
+        let text = self.read("/proc/1/mountinfo")?;
+        let mut out = String::new();
+        for line in text.lines() {
+            // id parent maj:min root point options [optional...] - type source super
+            let (head, tail) = line.split_once(" - ")?;
+            let head: Vec<&str> = head.split_whitespace().collect();
+            let tail: Vec<&str> = tail.split_whitespace().collect();
+            if head.len() < 6 || tail.len() < 2 {
+                return None;
+            }
+            out.push_str(&format!(
+                "{} {} {} {} 0 0\n",
+                tail[1], head[4], tail[0], head[5]
+            ));
+        }
+        Some(out)
+    }
+
     /// Mode (low 12 bits), uid and gid of a file; `None` when it cannot
     /// be read ("cannot tell", never a pass).
     pub fn metadata(&self, path: &str) -> Option<(u32, u32, u32)> {
@@ -369,6 +394,27 @@ mod tests {
             .unwrap_err();
         assert_eq!(err.name, ibexwall_varlink::service_errors::METHOD_NOT_FOUND);
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn host_mounts_come_from_pid_one_in_proc_mounts_layout() {
+        let root = std::env::temp_dir().join(format!("ibx-mnt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("proc/1")).unwrap();
+        std::fs::write(
+            root.join("proc/1/mountinfo"),
+            "25 1 0:22 / /tmp rw,nosuid,nodev shared:5 - tmpfs tmpfs rw,size=1k\n\
+             30 1 8:1 / / rw,relatime - ext4 /dev/sda1 rw\n",
+        )
+        .unwrap();
+        let sandbox = Sandbox::at(&root);
+        assert_eq!(
+            sandbox.host_mounts().as_deref(),
+            Some("tmpfs /tmp tmpfs rw,nosuid,nodev 0 0\n/dev/sda1 / ext4 rw,relatime 0 0\n")
+        );
+        std::fs::remove_file(root.join("proc/1/mountinfo")).unwrap();
+        assert_eq!(sandbox.host_mounts(), None);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

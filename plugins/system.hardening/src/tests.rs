@@ -247,18 +247,22 @@ fn a_mount_option_counts_only_on_that_mount_point() {
         option: "noexec".into(),
     };
     let (r1, on) = tree(&[(
-        "/proc/mounts",
-        "tmpfs /tmp tmpfs rw,nosuid,nodev,noexec 0 0\n",
+        "/proc/1/mountinfo",
+        "25 1 0:22 / /tmp rw,nosuid,nodev,noexec - tmpfs tmpfs rw\n",
     )]);
     assert_eq!(status(&on, &probe), Status::Applied);
     let (r2, off) = tree(&[(
-        "/proc/mounts",
-        "tmpfs /tmp tmpfs rw,nosuid 0 0\n/dev/sda1 / ext4 rw,noexec 0 0\n",
+        "/proc/1/mountinfo",
+        "25 1 0:22 / /tmp rw,nosuid - tmpfs tmpfs rw\n30 1 8:1 / / rw,noexec - ext4 /dev/sda1 rw\n",
     )]);
     assert_eq!(status(&off, &probe), Status::Open);
-    let (r3, nomount) = tree(&[("/proc/mounts", "/dev/sda1 / ext4 rw 0 0\n")]);
+    let (r3, nomount) = tree(&[("/proc/1/mountinfo", "30 1 8:1 / / rw - ext4 /dev/sda1 rw\n")]);
     assert_eq!(status(&nomount, &probe), Status::Open);
-    for r in [r1, r2, r3] {
+    // PID 1's table unreadable (the plugin's own is distorted by its
+    // sandbox): cannot tell, never a verdict.
+    let (r4, unreadable) = tree(&[("/proc/mounts", "tmpfs /tmp tmpfs rw,noexec 0 0\n")]);
+    assert_eq!(status(&unreadable, &probe), Status::Unknown);
+    for r in [r1, r2, r3, r4] {
         std::fs::remove_dir_all(r).unwrap();
     }
 }

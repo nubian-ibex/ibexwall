@@ -28,7 +28,7 @@ de = "Zeigt, welche der empfohlenen Härtungseinstellungen dieser Rechner bereit
 [sandbox]
 user = "dynamic"
 capabilities = []
-read_paths = ["/proc/sys", "/proc/mounts", "/etc/modprobe.d", "/usr/lib/modprobe.d"]
+read_paths = ["/proc/sys", "/proc/1/mountinfo", "/etc/modprobe.d", "/usr/lib/modprobe.d"]
 network = false
 
 [risk]

@@ -93,13 +93,19 @@ pub struct Sighting {
 /// monitor observes, it never keeps processes alive.
 pub fn resolve(event: ConnectEvent, cgroups: &mut CgroupIndex) -> Sighting {
     let base = Path::new("/proc").join(event.pid.to_string());
-    // /proc is authoritative while the process lives (it resolves symlinks
-    // and relative exec paths); the kernel's copy covers the ones that
-    // exited before we looked.
-    let exe = std::fs::read_link(base.join("exe"))
-        .ok()
-        .map(|path| path.to_string_lossy().into_owned())
-        .or_else(|| event.exe_str().map(str::to_owned));
+    // The kernel recorded the exec path at connect time, so it names the
+    // right binary even when the process exec'd again or the pid was
+    // reused before we looked. /proc is the fallback, and also covers a
+    // relative exec path, which says nothing on its own.
+    let exe = event
+        .exe_str()
+        .filter(|path| path.starts_with('/'))
+        .map(str::to_owned)
+        .or_else(|| {
+            std::fs::read_link(base.join("exe"))
+                .ok()
+                .map(|path| path.to_string_lossy().into_owned())
+        });
     // The index answers from memory; /proc costs a syscall per event, so
     // it is only the fallback for a cgroup the index has not seen yet.
     let cgroup = cgroups.lookup(event.cgroup_id).or_else(|| {
@@ -547,8 +553,8 @@ fn amain() -> Result<()> {
     // VM spike and manual runs).
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut enforcer = Enforcer::take(&mut ebpf)?;
-    if let Some(at) = args.iter().position(|a| a == "--rules") {
-        enforcer.set(Policy::load(Path::new(&args[at + 1]))?)?;
+    if let Some(path) = rules_path(&args)? {
+        enforcer.set(Policy::load(Path::new(path))?)?;
     }
     let value_of = |flag: &str| {
         args.iter()
@@ -670,6 +676,17 @@ fn amain() -> Result<()> {
         let line = describe(&sighting, &mut enricher).to_string();
         sink.lock().expect("lock poisoned").send(&line);
     })
+}
+
+/// The `--rules FILE` argument; a missing FILE is an error, not a panic.
+fn rules_path(args: &[String]) -> Result<Option<&String>> {
+    match args.iter().position(|a| a == "--rules") {
+        None => Ok(None),
+        Some(at) => args
+            .get(at + 1)
+            .map(Some)
+            .context("--rules needs a file argument"),
+    }
 }
 
 /// The JSON the core reads for a connection (and for an Ask request).
@@ -873,6 +890,35 @@ mod tests {
         assert_eq!(sighting.exe, None);
         assert_eq!(sighting.cgroup, None);
         assert_eq!(sighting.event.comm_str(), "gone");
+    }
+
+    #[test]
+    fn rules_as_the_last_argument_is_an_error_not_a_panic() {
+        let args = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(rules_path(&args(&["--socket", "/s", "--rules"])).is_err());
+        assert_eq!(
+            rules_path(&args(&["--rules", "r.json"])).unwrap().unwrap(),
+            "r.json"
+        );
+        assert!(rules_path(&args(&["--socket", "/s"])).unwrap().is_none());
+    }
+
+    #[test]
+    fn resolve_prefers_the_kernel_path_over_proc() {
+        // A pid reused or re-exec'd after connect() would make /proc name
+        // the wrong binary; the exec path captured by the kernel wins.
+        let mut cgroups = CgroupIndex::new(PathBuf::from("/nonexistent"));
+        let mut ev = event(std::process::id(), "self", 4);
+        let path = b"/usr/bin/captured";
+        ev.exe[..path.len()].copy_from_slice(path);
+        let sighting = resolve(ev, &mut cgroups);
+        assert_eq!(sighting.exe.as_deref(), Some("/usr/bin/captured"));
+
+        // A relative kernel path is not an identity: /proc resolves it.
+        let mut ev = event(std::process::id(), "self", 4);
+        ev.exe[..5].copy_from_slice(b"./foo");
+        let exe = resolve(ev, &mut cgroups).exe.unwrap_or_default();
+        assert!(exe.starts_with('/') && !exe.ends_with("foo"), "{exe}");
     }
 
     #[test]

@@ -445,8 +445,9 @@ impl Enricher {
             return known.clone();
         }
         let path = Path::new(exe);
+        let small = std::fs::metadata(path).is_ok_and(|meta| meta.len() <= MAX_HASHED_BYTES);
         let facts = ExeFacts {
-            hash: hash_file(path).ok(),
+            hash: small.then(|| hash_file(path).ok()).flatten(),
             package: self
                 .manager
                 .and_then(|manager| package_owner(manager, path, &run_argv)),
@@ -460,19 +461,87 @@ impl Enricher {
     }
 }
 
+/// A package query that takes longer than this is abandoned: a locked rpm
+/// or dpkg database must not stall the one thread that enriches events.
+const QUERY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// Executables larger than this are not hashed; reading them would hold the
+/// enrichment worker for seconds and delay every prompt behind it.
+const MAX_HASHED_BYTES: u64 = 256 * 1024 * 1024;
+
 /// Runs an allowlisted binary with an argv (never a shell) and returns
-/// stdout when it exits successfully.
+/// stdout when it exits successfully within `QUERY_TIMEOUT`.
 fn run_argv(binary: &str, args: &[String]) -> Option<String> {
-    let output = std::process::Command::new(binary)
+    run_argv_within(binary, args, QUERY_TIMEOUT)
+}
+
+fn run_argv_within(binary: &str, args: &[String], limit: std::time::Duration) -> Option<String> {
+    use std::io::Read as _;
+    let mut child = std::process::Command::new(binary)
         .args(args)
         .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
-        .output()
+        .spawn()
         .ok()?;
-    output
-        .status
-        .success()
-        .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+    let deadline = std::time::Instant::now() + limit;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    };
+    let mut out = String::new();
+    child.stdout.take()?.read_to_string(&mut out).ok()?;
+    status.success().then_some(out)
+}
+
+/// Work for the enrichment thread. Hashing and package queries are slow, so
+/// neither the ring buffer reader nor the Ask thread does them.
+enum Job {
+    Event(Sighting),
+    Ask(u16, Sighting),
+}
+
+/// Queued jobs beyond this are dropped: a burst of connections must not
+/// grow memory, and an Ask flow that was not described times out into the
+/// configured fallback.
+const JOB_QUEUE: usize = 1024;
+
+fn queue_job(
+    jobs: &std::sync::mpsc::SyncSender<Job>,
+    job: Job,
+    dropped: &std::sync::atomic::AtomicU64,
+) {
+    if jobs.try_send(job).is_err() {
+        let total = dropped.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        if total % 1000 == 1 {
+            eprintln!("ibexwall-ebpf-loader: enrichment is behind, {total} events dropped so far");
+        }
+    }
+}
+
+/// Describes each job and sends it to the core, one at a time.
+fn enrich_loop(jobs: std::sync::mpsc::Receiver<Job>, sink: std::sync::Arc<std::sync::Mutex<Sink>>) {
+    let mut enricher = Enricher::default();
+    for job in jobs {
+        let line = match job {
+            Job::Event(sighting) => describe(&sighting, &mut enricher).to_string(),
+            Job::Ask(id, sighting) => {
+                let mut line = describe(&sighting, &mut enricher);
+                line["ask_id"] = id.into();
+                serde_json::json!({ "ask": line }).to_string()
+            }
+        };
+        sink.lock().expect("lock poisoned").send(&line);
+    }
 }
 
 /// Runs until `stop`, printing one JSON object per event on stdout.
@@ -547,7 +616,6 @@ fn amain() -> Result<()> {
         "ibexwall-ebpf-loader: monitoring connect() (elf: {})",
         elf.display()
     );
-    let mut enricher = Enricher::default();
     let mut cgroups = CgroupIndex::new(PathBuf::from("/sys/fs/cgroup"));
     // With --socket the lines go to the core; without it, to stdout (the
     // VM spike and manual runs).
@@ -575,6 +643,12 @@ fn amain() -> Result<()> {
     });
     let disable_ask = args.iter().any(|a| a == "--ask-disabled");
     let sink = std::sync::Arc::new(std::sync::Mutex::new(Sink::open(args)?));
+    let (jobs, queued) = std::sync::mpsc::sync_channel::<Job>(JOB_QUEUE);
+    let dropped = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    {
+        let to_core = std::sync::Arc::clone(&sink);
+        std::thread::spawn(move || enrich_loop(queued, to_core));
+    }
     // The handle the answers come back through; set once the queue is up.
     let ask_handle: std::sync::Arc<std::sync::OnceLock<std::sync::Arc<ask::Ask>>> =
         std::sync::Arc::default();
@@ -583,12 +657,10 @@ fn amain() -> Result<()> {
             .take_map(ASK_FLOWS_MAP)
             .with_context(|| format!("map {ASK_FLOWS_MAP} not found"))?;
         let flows = aya::maps::HashMap::try_from(map)?;
-        let to_core = std::sync::Arc::clone(&sink);
+        let ask_jobs = jobs.clone();
+        let ask_dropped = std::sync::Arc::clone(&dropped);
         let handle = std::sync::Arc::clone(&ask_handle);
-        let describer = std::sync::Mutex::new((
-            Enricher::default(),
-            CgroupIndex::new(PathBuf::from("/sys/fs/cgroup")),
-        ));
+        let describer = std::sync::Mutex::new(CgroupIndex::new(PathBuf::from("/sys/fs/cgroup")));
         let started = ask::start(flows, move |id, flow, destination| {
             if let Some((decision, delay)) = local_answer {
                 let handle = std::sync::Arc::clone(&handle);
@@ -625,13 +697,10 @@ fn amain() -> Result<()> {
                 ip6,
                 exe: [0; ibexwall_net_common::EXE_LEN],
             };
-            let mut guard = describer.lock().expect("lock poisoned");
-            let (enricher, cgroups) = &mut *guard;
-            let sighting = resolve(event, cgroups);
-            let mut line = describe(&sighting, enricher);
-            line["ask_id"] = id.into();
-            let message = serde_json::json!({ "ask": line }).to_string();
-            to_core.lock().expect("lock poisoned").send(&message);
+            // Only the cheap /proc read happens here, while the process is
+            // still alive; hashing and the package query run on the worker.
+            let sighting = resolve(event, &mut describer.lock().expect("lock poisoned"));
+            queue_job(&ask_jobs, Job::Ask(id, sighting), &ask_dropped);
         });
         match started {
             Ok(ask) => {
@@ -674,8 +743,7 @@ fn amain() -> Result<()> {
             .send(&serde_json::json!({ "meta": "degraded", "reason": reason }).to_string());
     }
     run(ebpf, &mut cgroups, &mut |sighting| {
-        let line = describe(&sighting, &mut enricher).to_string();
-        sink.lock().expect("lock poisoned").send(&line);
+        queue_job(&jobs, Job::Event(sighting), &dropped);
     })
 }
 
@@ -1056,5 +1124,34 @@ mod tests {
         peer.read_exact(&mut got).unwrap();
         assert_eq!(&got, b"four\n");
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_slow_package_query_is_abandoned() {
+        use std::time::{Duration, Instant};
+        let started = Instant::now();
+        let out = run_argv_within("sleep", &["5".into()], Duration::from_millis(200));
+        assert_eq!(out, None);
+        assert!(started.elapsed() < Duration::from_secs(2));
+        let out = run_argv_within("echo", &["hi".into()], Duration::from_secs(2));
+        assert_eq!(out.as_deref(), Some("hi\n"));
+        assert_eq!(run_argv_within("false", &[], Duration::from_secs(2)), None);
+    }
+
+    #[test]
+    fn a_full_job_queue_drops_instead_of_blocking() {
+        let (jobs, _held) = std::sync::mpsc::sync_channel::<Job>(1);
+        let dropped = std::sync::atomic::AtomicU64::new(0);
+        let make = || {
+            Job::Event(Sighting {
+                event: event(1, "x", 4),
+                exe: None,
+                cgroup: None,
+            })
+        };
+        queue_job(&jobs, make(), &dropped);
+        queue_job(&jobs, make(), &dropped);
+        queue_job(&jobs, make(), &dropped);
+        assert_eq!(dropped.load(std::sync::atomic::Ordering::Relaxed), 2);
     }
 }

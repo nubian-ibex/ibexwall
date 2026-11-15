@@ -38,3 +38,11 @@ override_dh_installsystemd:
 override_dh_installsystemduser:
 override_dh_auto_clean:
 	rm -rf stage
+
+# The postrm of a purge cannot source package-scripts.sh (it is already
+# removed), so it carries a copy of purge_data from the one shared source.
+override_dh_installdeb:
+	dh_installdeb
+	awk '/^purge_data\(\) \{/,/^\}/' $(STAGE)/root/usr/lib/ibexwall/package-scripts.sh > debian/purge_data.tmp
+	sed -i -e '/^#PURGE_DATA#$$/{r debian/purge_data.tmp' -e 'd}' debian/ibexwall/DEBIAN/postrm
+	rm -f debian/purge_data.tmp

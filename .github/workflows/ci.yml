@@ -91,6 +91,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm lint
+      - run: node ../scripts/check-locales.mjs
       - run: pnpm test
       - run: pnpm build
       # The flows and the accessibility checks run on the built app; the

@@ -108,7 +108,8 @@ jobs:
   rpm:
     needs: build
     runs-on: ubuntu-latest
-    container: fedora:latest
+    # fedora:latest as of 2026-11-02; bump the digest on purpose.
+    container: fedora@sha256:a7d72ba2745b100a3351087472e5ee7b2450af7cf331e7673007e3817612839c
     permissions:
       contents: read
     steps:
@@ -137,7 +138,8 @@ jobs:
   arch:
     needs: build
     runs-on: ubuntu-latest
-    container: archlinux:latest
+    # archlinux:latest as of 2026-11-09; bump the digest on purpose.
+    container: archlinux@sha256:d4594bb2300cba11f41c2f27923eb56f63d9988909c402f9c95517d1e362c899
     permissions:
       contents: read
     steps:
@@ -156,6 +158,8 @@ jobs:
           mkdir -p /tmp/pkg /tmp/out
           cp packaging/arch/PKGBUILD packaging/arch/ibexwall.install /tmp/pkg/
           chown -R builder /tmp/pkg /tmp/out /tmp/s
+          # --skipinteg is a no-op today: the PKGBUILD has no source=() to check,
+          # the files come from the staged tree whose checksums the release signs.
           su builder -c 'cd /tmp/pkg && IBEXWALL_STAGE=/tmp/s/stage PKGDEST=/tmp/out makepkg -f --nodeps --skipinteg --nocheck'
           mkdir -p out && cp /tmp/out/*.pkg.tar.zst out/
           ls -la out

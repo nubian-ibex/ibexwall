@@ -51,6 +51,9 @@ pub enum Category {
 pub struct Policy {
     blocked: HashSet<String>,
     allowed: HashSet<String>,
+    /// `@@` exceptions from downloaded lists: they can only undo a block
+    /// from a list, never the canary or a DoH endpoint.
+    list_allowed: HashSet<String>,
     doh_endpoints: HashSet<String>,
     pub response: BlockResponse,
     /// When false the canary and DoH endpoints are not intercepted.
@@ -76,6 +79,11 @@ impl Policy {
             .extend(names.into_iter().filter_map(|n| normalize(&n)));
     }
 
+    pub fn allow_from_list<I: IntoIterator<Item = String>>(&mut self, names: I) {
+        self.list_allowed
+            .extend(names.into_iter().filter_map(|n| normalize(&n)));
+    }
+
     pub fn doh_endpoints<I: IntoIterator<Item = String>>(&mut self, names: I) {
         self.doh_endpoints
             .extend(names.into_iter().filter_map(|n| normalize(&n)));
@@ -86,15 +94,21 @@ impl Policy {
         self.blocked.len()
     }
 
-    /// Decides one query name. The allowlist always wins over blocks, so a
+    /// True when the user or a list explicitly allows `name`.
+    pub fn is_allowed(&self, name: &str) -> bool {
+        normalize(name).is_some_and(|name| {
+            matches_suffix(&self.allowed, &name) || matches_suffix(&self.list_allowed, &name)
+        })
+    }
+
+    /// Decides one query name. The allowlist wins over list blocks, so a
     /// user can repair a false positive without editing lists.
     pub fn decide(&self, name: &str) -> Verdict {
         let Some(name) = normalize(name) else {
             return Verdict::Forward;
         };
-        if matches_suffix(&self.allowed, &name) {
-            return Verdict::Forward;
-        }
+        // The canary and DoH checks come first: a downloaded list is not
+        // trusted to switch them off.
         if self.block_doh {
             if name == DOH_CANARY {
                 return Verdict::Block(Category::Canary);
@@ -102,6 +116,9 @@ impl Policy {
             if matches_suffix(&self.doh_endpoints, &name) {
                 return Verdict::Block(Category::DohEndpoint);
             }
+        }
+        if self.is_allowed(&name) {
+            return Verdict::Forward;
         }
         if matches_suffix(&self.blocked, &name) {
             return Verdict::Block(Category::List);
@@ -192,6 +209,26 @@ mod tests {
         );
         let off = Policy::new(BlockResponse::NxDomain, false);
         assert_eq!(off.decide("use-application-dns.net"), Verdict::Forward);
+    }
+
+    #[test]
+    fn allow_entries_never_lift_the_canary_or_doh_blocks() {
+        let mut policy = policy();
+        policy.allow_from_list([
+            "use-application-dns.net".to_string(),
+            "bad-doh.example".to_string(),
+        ]);
+        policy.allow(["dns.bad-doh.example".to_string()]);
+        assert_eq!(
+            policy.decide("use-application-dns.net"),
+            Verdict::Block(Category::Canary)
+        );
+        assert_eq!(
+            policy.decide("dns.bad-doh.example"),
+            Verdict::Block(Category::DohEndpoint)
+        );
+        policy.allow_from_list(["other.ads.example".to_string()]);
+        assert_eq!(policy.decide("other.ads.example"), Verdict::Forward);
     }
 
     #[test]

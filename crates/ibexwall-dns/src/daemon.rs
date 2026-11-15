@@ -17,9 +17,14 @@ use crate::policy::Policy;
 pub fn build_policy(settings: &Settings, store: &Store) -> Policy {
     let mut policy = settings.policy();
     for list in &settings.lists {
-        if let Some(parsed) = store.load(&list.id) {
-            policy.block(parsed.block);
-            policy.allow(parsed.allow);
+        match store.load(&list.id) {
+            Some(parsed) => {
+                policy.block(parsed.block);
+                policy.allow_from_list(parsed.allow);
+            }
+            // Never fetched is normal on a first boot; a stored file that
+            // no longer parses is worth a line in the journal.
+            None => tracing::warn!(list = %list.id, "list missing or unreadable; skipped"),
         }
     }
     if settings.block_doh
@@ -71,7 +76,8 @@ pub fn spawn_updater(
         return;
     }
     tokio::spawn(async move {
-        let interval = Duration::from_secs(settings.update_interval_hours.max(1) * 3600);
+        let interval =
+            Duration::from_secs(settings.update_interval_hours.max(1).saturating_mul(3600));
         let mut delay = Duration::from_secs(30);
         loop {
             tokio::time::sleep(delay).await;
@@ -176,6 +182,26 @@ mod tests {
         assert_eq!(policy.decide("fine.ads.example"), Forward);
         assert_eq!(policy.decide("ok.example"), Forward);
         assert_eq!(policy.decide("doh1.example"), Block(DohEndpoint));
+    }
+
+    #[tokio::test]
+    async fn a_list_allow_entry_cannot_lift_the_canary() {
+        let settings = settings(&[("a", "https://x.example/a")]);
+        let store = temp_store("canary");
+        lists::update(
+            &store,
+            &Counting(0.into(), "ads.example\n@@||use-application-dns.net^\n"),
+            &ListRef {
+                id: "a".into(),
+                url: Some("https://x.example/a".into()),
+            },
+        )
+        .unwrap();
+        let policy = build_policy(&settings, &store);
+        assert_eq!(
+            policy.decide("use-application-dns.net"),
+            crate::policy::Verdict::Block(crate::policy::Category::Canary)
+        );
     }
 
     #[tokio::test]

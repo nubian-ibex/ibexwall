@@ -152,9 +152,16 @@ pub struct ServeLimits {
     /// Concurrent connections kept open; extras are closed at accept.
     pub max_connections: usize,
     /// How long a connection may stay silent before its first complete
-    /// frame. After the first frame there is no timeout: subscriptions
-    /// are meant to stay open for as long as they are wanted.
+    /// frame.
     pub first_frame: std::time::Duration,
+    /// How long an open connection may sit between requests. Long-lived
+    /// subscriptions are inside a call, so they are not affected.
+    pub idle: std::time::Duration,
+    /// Concurrent connections one uid may hold, so a single local user
+    /// cannot take every slot.
+    pub max_per_uid: usize,
+    /// Largest request frame accepted; replies are not limited by this.
+    pub max_request_bytes: usize,
 }
 
 impl Default for ServeLimits {
@@ -162,6 +169,9 @@ impl Default for ServeLimits {
         Self {
             max_connections: 64,
             first_frame: std::time::Duration::from_secs(120),
+            idle: std::time::Duration::from_secs(600),
+            max_per_uid: 16,
+            max_request_bytes: 1024 * 1024,
         }
     }
 }
@@ -187,6 +197,7 @@ pub async fn serve_limited(
     limits: ServeLimits,
 ) -> anyhow::Result<()> {
     let active = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let per_uid = Arc::new(std::sync::Mutex::new(HashMap::<u32, usize>::new()));
     loop {
         let (stream, _addr) = match listener.accept().await {
             Ok(accepted) => accepted,
@@ -214,9 +225,25 @@ pub async fn serve_limited(
             tracing::warn!("connection cap reached; closing an extra connection");
             continue;
         }
+        // Unreadable credentials get no slot: `connection` refuses them too.
+        let uid = rustix::net::sockopt::socket_peercred(&stream)
+            .map(|cred| cred.uid.as_raw())
+            .ok();
+        if let Some(uid) = uid {
+            let mut held = per_uid.lock().unwrap_or_else(|e| e.into_inner());
+            let count = held.entry(uid).or_insert(0);
+            if *count >= limits.max_per_uid {
+                drop(held);
+                active.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+                tracing::warn!(uid, "per-user connection cap reached; closing");
+                continue;
+            }
+            *count += 1;
+        }
         let limits_for_task = limits.clone();
         let guard = ConnectionGuard {
             active: Arc::clone(&active),
+            per_uid: uid.map(|uid| (uid, Arc::clone(&per_uid))),
         };
         let info = info.clone();
         let handler = Arc::clone(&handler);
@@ -229,15 +256,28 @@ pub async fn serve_limited(
     }
 }
 
+/// Open connections per uid.
+type UidSlots = Arc<std::sync::Mutex<HashMap<u32, usize>>>;
+
 /// Returns the slot when the connection task ends.
 struct ConnectionGuard {
     active: Arc<std::sync::atomic::AtomicUsize>,
+    per_uid: Option<(u32, UidSlots)>,
 }
 
 impl Drop for ConnectionGuard {
     fn drop(&mut self) {
         self.active
             .fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+        if let Some((uid, held)) = &self.per_uid {
+            let mut held = held.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(count) = held.get_mut(uid) {
+                *count = count.saturating_sub(1);
+                if *count == 0 {
+                    held.remove(uid);
+                }
+            }
+        }
     }
 }
 
@@ -272,12 +312,15 @@ async fn connection(
         .map_err(|error| anyhow::anyhow!("reading the peer credentials: {error}"))?;
     let (mut reader, mut writer) = stream.into_split();
     // One read may deliver several frames; the framer buffers the rest.
-    let mut framer = wire::Framer::new();
+    let mut framer = wire::Framer::with_limit(limits.max_request_bytes);
     let mut got_first = false;
     loop {
         let read = framer.read_message(&mut reader);
         let raw = if got_first {
-            read.await
+            match tokio::time::timeout(limits.idle, read).await {
+                Ok(outcome) => outcome,
+                Err(_elapsed) => return Ok(()),
+            }
         } else {
             // A connection that never completes a first frame only holds
             // a slot and buffer; past this deadline it is closed quietly.
@@ -727,6 +770,7 @@ mod tests {
         let limits = ServeLimits {
             max_connections: 8,
             first_frame: Duration::from_millis(150),
+            ..ServeLimits::default()
         };
         tokio::spawn(serve_limited(listener, info, Arc::new(Echo), limits));
         use tokio::io::AsyncReadExt as _;
@@ -767,6 +811,7 @@ mod tests {
         let limits = ServeLimits {
             max_connections: 1,
             first_frame: Duration::from_secs(60),
+            ..ServeLimits::default()
         };
         tokio::spawn(serve_limited(listener, info, Arc::new(Echo), limits));
 
@@ -793,6 +838,86 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(value["n"], 3);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn one_uid_cannot_take_more_than_its_share_of_slots() {
+        let path = tmp_socket().with_extension("uid");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+        let limits = ServeLimits {
+            max_per_uid: 1,
+            ..ServeLimits::default()
+        };
+        tokio::spawn(serve_limited(listener, test_info(), Arc::new(Echo), limits));
+
+        let mut first = client::Client::connect(&path).await.unwrap();
+        first
+            .call("com.test.Echo", serde_json::json!({"n": 1}))
+            .await
+            .unwrap();
+        let mut extra = client::Client::connect(&path).await.unwrap();
+        assert!(
+            extra
+                .call("com.test.Echo", serde_json::json!({"n": 2}))
+                .await
+                .is_err(),
+            "a second connection from the same uid must be refused"
+        );
+        drop(first);
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let mut again = client::Client::connect(&path).await.unwrap();
+        again
+            .call("com.test.Echo", serde_json::json!({"n": 3}))
+            .await
+            .unwrap();
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn a_connection_idle_between_requests_is_closed() {
+        let path = tmp_socket().with_extension("idle2");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+        let limits = ServeLimits {
+            idle: Duration::from_millis(150),
+            ..ServeLimits::default()
+        };
+        tokio::spawn(serve_limited(listener, test_info(), Arc::new(Echo), limits));
+
+        let mut conn = client::Client::connect(&path).await.unwrap();
+        conn.call("com.test.Echo", serde_json::json!({"n": 1}))
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(600)).await;
+        assert!(
+            conn.call("com.test.Echo", serde_json::json!({"n": 2}))
+                .await
+                .is_err(),
+            "the idle connection should have been closed"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn a_request_above_the_request_limit_is_refused() {
+        let path = tmp_socket().with_extension("reqmax");
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+        let limits = ServeLimits {
+            max_request_bytes: 1024,
+            ..ServeLimits::default()
+        };
+        tokio::spawn(serve_limited(listener, test_info(), Arc::new(Echo), limits));
+
+        let mut conn = client::Client::connect(&path).await.unwrap();
+        let big = "x".repeat(4096);
+        assert!(
+            conn.call("com.test.Echo", serde_json::json!({ "blob": big }))
+                .await
+                .is_err()
+        );
         let _ = std::fs::remove_file(&path);
     }
 

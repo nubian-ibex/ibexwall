@@ -111,6 +111,8 @@ pub struct Framer {
     buf: Vec<u8>,
     pos: usize,
     pending: usize,
+    /// Per-message cap; zero means [`MAX_MESSAGE_BYTES`].
+    max: usize,
 }
 
 impl Framer {
@@ -118,17 +120,31 @@ impl Framer {
         Self::default()
     }
 
+    /// A framer that rejects messages above `max` bytes (the server uses a
+    /// smaller cap than replies need, since requests are tiny).
+    pub fn with_limit(max: usize) -> Self {
+        Self {
+            max,
+            ..Self::default()
+        }
+    }
+
     /// Reads one complete message (bytes without the NUL terminator).
     pub async fn read_message<R: AsyncReadExt + Unpin>(
         &mut self,
         reader: &mut R,
     ) -> Result<Vec<u8>, TransportError> {
+        let max = if self.max == 0 {
+            MAX_MESSAGE_BYTES
+        } else {
+            self.max.min(MAX_MESSAGE_BYTES)
+        };
         loop {
             let unscanned = self.pos + self.pending;
             if let Some(r) = self.buf[unscanned..].iter().position(|&b| b == 0) {
                 let nul = unscanned + r;
                 let message = self.buf[self.pos..nul].to_vec();
-                if message.len() > MAX_MESSAGE_BYTES {
+                if message.len() > max {
                     return Err(TransportError::TooLarge);
                 }
                 self.pos = nul + 1;
@@ -143,7 +159,7 @@ impl Framer {
                 return Ok(message);
             }
             self.pending = self.buf.len() - self.pos;
-            if self.pending > MAX_MESSAGE_BYTES {
+            if self.pending > max {
                 return Err(TransportError::TooLarge);
             }
             let mut chunk = [0u8; 8192];

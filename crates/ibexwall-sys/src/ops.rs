@@ -604,6 +604,13 @@ pub fn apply_snapshot_inverses_for(
                                 sys.systemd.apply(unit, UnitAction::Stop, false)?;
                                 sys.systemd.apply(unit, UnitAction::Mask, false)?;
                             }
+                            // The unit did not exist before: the file is removed
+                            // later in this pass, and an enablement link left
+                            // behind would dangle. Disable while the file is
+                            // still there.
+                            crate::Enabled::NotFound if now.enabled == crate::Enabled::Enabled => {
+                                sys.systemd.apply(unit, UnitAction::Disable, false)?;
+                            }
                             _ => {}
                         }
                         if now.active != *active {
@@ -688,6 +695,7 @@ pub fn apply_snapshot_inverses_for(
                 } else {
                     None
                 };
+                let mut reload_error: Option<anyhow::Error> = None;
                 let was_off = ufw_was == Some(false);
                 // A firewalld this rollback stops (the transaction started
                 // it) reads the restored files when it starts again;
@@ -712,20 +720,26 @@ pub fn apply_snapshot_inverses_for(
                     // is off refuses a reload, which is fine: the enable
                     // below reads them.
                     if ufw_was == Some(true) {
-                        let _ = sys.runner.run(&argv);
+                        reload_error = sys.runner.run(&argv).err();
                     } else {
                         attempt!(format!("restore {backend:?}"), sys.runner.run(&argv));
                     }
                 }
                 if ufw_was == Some(true) {
-                    attempt!(
-                        "turn ufw on again".to_string(),
-                        sys.runner.run(&[
-                            ibexwall_firewall::action::UFW.to_string(),
-                            "--force".into(),
-                            "enable".into(),
-                        ])
-                    );
+                    // The enable re-reads the rules, so it settles a reload
+                    // that failed only because ufw was off; when it fails
+                    // too, the reload error is part of the story.
+                    let enabled = sys.runner.run(&[
+                        ibexwall_firewall::action::UFW.to_string(),
+                        "--force".into(),
+                        "enable".into(),
+                    ]);
+                    if let Err(err) = enabled {
+                        let before = reload_error
+                            .map(|e| format!(" (reload also failed: {e:#})"))
+                            .unwrap_or_default();
+                        errors.push(format!("turn ufw on again: {err:#}{before}"));
+                    }
                 }
             }
             _ => {}
@@ -991,6 +1005,61 @@ mod tests {
                 .any(|l| l.starts_with("Restart systemd-resolved.service")),
             "{log:?}"
         );
+    }
+
+    #[test]
+    fn a_unit_that_did_not_exist_is_disabled_and_stopped_on_rollback() {
+        let (sys, _) = fake_sys();
+        // The transaction wrote a unit file, enabled it and started it.
+        sys.systemd
+            .apply("new.service", UnitAction::Enable, true)
+            .unwrap();
+        let manifest = SnapshotManifest {
+            tx: "tx1".into(),
+            entries: vec![SnapshotEntry::Unit {
+                op_index: 1,
+                unit: "new.service".into(),
+                enabled: serde_json::to_string(&crate::Enabled::NotFound).unwrap(),
+                active: false,
+                restarted: false,
+            }],
+        };
+        apply_snapshot_inverses(&sys, Path::new("/nonexistent"), &manifest).unwrap();
+        let state = sys.systemd.snapshot("new.service").unwrap();
+        assert_eq!(state.enabled, crate::Enabled::Disabled);
+        assert!(!state.active);
+    }
+
+    #[test]
+    fn a_failed_ufw_enable_reports_the_reload_failure_too() {
+        use std::sync::Arc;
+        let fs = Arc::new(crate::FakeFs::new());
+        let runner = Arc::new(crate::firewall::FakeRunner::new());
+        let sys = crate::SysBundle {
+            fs: fs.clone(),
+            runner: runner.clone(),
+            systemd: Arc::new(crate::FakeSystemd::new()),
+            sysctl: Arc::new(crate::FakeSysctl::new()),
+            clock: Arc::new(crate::FakeClock::new(1_793_534_400)),
+            nft: Arc::new(crate::FakeNft::new()),
+            allow_system_executors: false,
+            use_transient_executor: false,
+            executor_work_dir: None,
+        };
+        fs.seed(Path::new("/etc/ufw/ufw.conf"), b"ENABLED=yes\n");
+        *runner.fail_on.lock().unwrap() = Some("ufw".into());
+        let manifest = SnapshotManifest {
+            tx: "tx1".into(),
+            entries: vec![SnapshotEntry::Firewall {
+                op_index: 0,
+                backend: "ufw".into(),
+            }],
+        };
+        let error = apply_snapshot_inverses(&sys, Path::new("/nonexistent"), &manifest)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("turn ufw on again"), "{error}");
+        assert!(error.contains("reload also failed"), "{error}");
     }
 
     #[test]

@@ -7,17 +7,15 @@ Last updated: 2026-11-07 (F11b fully delivered; all five distros green)
 
 ## Current phase
 
-**Now: v0.2.0, draft rebuilt 2026-11-14, waiting for the maintainer's
-check.** Since the 2026-11-13 draft: a removal with DNS changes applied left
-two undone (start limit, and the removal restarting its own resolver after
-the SELinux module had left); rollbacks reset the unit's failed state and
-an uninstall leaves IbexWall's units stopped. The daemon's watchdog is 3
-minutes (core dumps showed a healthy, idle daemon killed while the VM was
-starved). New `desktop d11` removes the packages with three DNS changes
-applied. The KDE VMs (Fedora 45 .107, Ubuntu 26.10 .110) were purged and
-reinstalled from the draft. CI: all jobs green except the commit check
-(455a072's subject is 74 chars; history not rewritten). Left: the check in
-the app, publish, docs deploy.
+**Now: v0.2.0, draft rebuilt 2026-11-15, waiting for the maintainer's
+check.** Firewall screen reworked after the maintainer's report: the switch
+is the real firewall state, the port, service and profile controls show only
+while it is on, buttons read Apply (preview only) then Confirm, the screen
+re-reads the firewall after each change, and a running ufw or firewalld can
+be turned off (the undo turns it back on; a ufw rollback reloads then
+enables). New VM scenario `firewall-on w8`. CI all green. The KDE VMs
+(Fedora 45 .107, Ubuntu 26.10 .110) were purged and reinstalled from the
+draft. Left: the check in the app, publish, docs deploy.
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

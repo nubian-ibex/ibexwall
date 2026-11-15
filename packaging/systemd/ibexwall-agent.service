@@ -16,6 +16,12 @@ PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=read-only
 RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=
+LockPersonality=yes
+# Not set on purpose: the agent starts the desktop app (--prompt) as a child
+# of this unit, and its WebKit engine needs a JIT (no MemoryDenyWriteExecute),
+# user namespaces for its own sandbox (no RestrictNamespaces) and a wide
+# syscall set (no SystemCallFilter). Those belong on a unit without the UI.
 
 [Install]
 WantedBy=graphical-session.target

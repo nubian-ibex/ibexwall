@@ -121,10 +121,33 @@ fn inactive_set(sandbox: &Sandbox) -> Option<bool> {
     Some(value.trim() != "-1")
 }
 
+/// Numeric gid of the `shadow` group, when the system has one (Debian and
+/// Ubuntu ship `/etc/shadow` as 0640 root:shadow).
+fn shadow_gid(sandbox: &Sandbox) -> Option<u32> {
+    sandbox.read("/etc/group")?.lines().find_map(|line| {
+        let mut fields = line.split(':');
+        (fields.next()? == "shadow")
+            .then(|| fields.nth(1)?.parse().ok())
+            .flatten()
+    })
+}
+
+/// Whether a file's mode grants no bit beyond `max_mode` and its owner is
+/// root (group root, or `extra_gid`). Stricter modes pass: Fedora ships
+/// `/etc/shadow` as 0000, which is tighter than 0600, not a problem.
+fn perms_within(mode: u32, uid: u32, gid: u32, max_mode: u32, extra_gid: Option<u32>) -> bool {
+    mode & !max_mode == 0 && uid == 0 && (gid == 0 || Some(gid) == extra_gid)
+}
+
 /// The mode and owner a sensitive file must have, and whether they hold.
-fn sensitive_perms(sandbox: &Sandbox, path: &str, want_mode: u32) -> Option<bool> {
+fn sensitive_perms(
+    sandbox: &Sandbox,
+    path: &str,
+    max_mode: u32,
+    extra_gid: Option<u32>,
+) -> Option<bool> {
     let (mode, uid, gid) = sandbox.metadata(path)?;
-    Some(mode == want_mode && uid == 0 && gid == 0)
+    Some(perms_within(mode, uid, gid, max_mode, extra_gid))
 }
 
 /// Whether sudo is configured to log what it runs (input, output or a
@@ -319,12 +342,18 @@ pub fn evaluate(sandbox: &Sandbox, detected_at: &str) -> CheckReport {
 
     // Sensitive files are root-owned with the expected mode.
     let file_perms = match [
-        ("/etc/shadow", 0o600),
+        ("/etc/shadow", 0o640),
         ("/etc/passwd", 0o644),
         ("/etc/sudoers", 0o440),
     ]
     .into_iter()
-    .map(|(path, want)| (path, sensitive_perms(sandbox, path, want)))
+    .map(|(path, max)| {
+        // Only shadow may be group-owned by `shadow`.
+        let extra = (path == "/etc/shadow")
+            .then(|| shadow_gid(sandbox))
+            .flatten();
+        (path, sensitive_perms(sandbox, path, max, extra))
+    })
     .collect::<Vec<_>>()
     {
         values if values.iter().any(|(_, ok)| ok.is_none()) => CheckOutcome::NotAssessed,
@@ -597,6 +626,30 @@ mod tests {
             outcome(&report, "accounts.sudo_logging"),
             CheckOutcome::Pass
         );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn shadow_layouts_of_the_major_distros_pass() {
+        // Arch: 0600 root:root. Debian/Ubuntu: 0640 root:shadow (gid 42).
+        // Fedora: 0000 root:root.
+        assert!(perms_within(0o600, 0, 0, 0o640, None));
+        assert!(perms_within(0o640, 0, 42, 0o640, Some(42)));
+        assert!(perms_within(0o000, 0, 0, 0o640, None));
+        // Too open, wrong owner, or an unrelated group still fail.
+        assert!(!perms_within(0o644, 0, 0, 0o640, None));
+        assert!(!perms_within(0o640, 1000, 0, 0o640, None));
+        assert!(!perms_within(0o640, 0, 42, 0o640, None));
+        assert!(!perms_within(0o660, 0, 42, 0o640, Some(42)));
+    }
+
+    #[test]
+    fn the_shadow_group_is_read_from_etc_group() {
+        let (root, sandbox) = tree(&[("/etc/group", "root:x:0:\nshadow:x:42:\n")]);
+        assert_eq!(shadow_gid(&sandbox), Some(42));
+        std::fs::remove_dir_all(root).unwrap();
+        let (root, sandbox) = tree(&[("/etc/group", "root:x:0:\n")]);
+        assert_eq!(shadow_gid(&sandbox), None);
         std::fs::remove_dir_all(root).unwrap();
     }
 

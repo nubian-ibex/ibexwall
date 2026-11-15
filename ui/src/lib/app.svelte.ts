@@ -117,13 +117,17 @@ class AppState {
     ]);
   }
 
-  /** Polls the open questions; failures leave the list as it was. */
-  async refreshPrompts() {
+  /** Polls the open questions; failures leave the list as it was. Says
+   * whether the core answered, so "nothing waiting" is not confused with
+   * "could not ask". */
+  async refreshPrompts(): Promise<boolean> {
     try {
       this.prompts = await this.transport.listPrompts();
+      return true;
     } catch {
       // The core may be starting or the user may lack permission; the
       // other screens already say so.
+      return false;
     }
   }
 

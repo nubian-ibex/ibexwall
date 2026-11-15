@@ -4,12 +4,14 @@
   import { i18n } from '../lib/i18n.svelte';
   import { applyTheme, savedTheme } from '../lib/theme';
   import { insideTauri } from '../lib/tauri-transport';
+  import { t } from '../lib/i18n.svelte';
   import PromptDialog from './PromptDialog.svelte';
 
   // The window `ibexwall --prompt` opens: only the question, and it closes
   // itself once nothing is waiting (answered, or the timeout passed).
   let seen = false;
   let idle = 0;
+  let unreachable = $state(false);
 
   async function finish() {
     if (!insideTauri()) return;
@@ -21,7 +23,10 @@
     document.documentElement.lang = i18n.locale;
     applyTheme(savedTheme());
     const tick = async () => {
-      await app.refreshPrompts();
+      // A failed read says nothing about the queue: closing then would drop
+      // a held connection's question, so keep the window and say why.
+      unreachable = !(await app.refreshPrompts());
+      if (unreachable) return;
       if (app.prompts.length > 0) {
         seen = true;
         idle = 0;
@@ -35,4 +40,18 @@
   });
 </script>
 
+{#if unreachable && app.prompts.length === 0}
+  <p class="unreachable" role="alert">
+    <strong>{t('state-error-title')}</strong>
+    {t('state-error-body')}
+  </p>
+{/if}
 <PromptDialog standalone />
+
+<style>
+  .unreachable {
+    margin: var(--space-4);
+    display: grid;
+    gap: var(--space-1);
+  }
+</style>

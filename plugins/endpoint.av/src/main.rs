@@ -108,7 +108,7 @@ fn safe_path(path: &str) -> bool {
 
 fn service_unit(paths: &[String], database: &str, yara: bool) -> String {
     let mut out = String::from(
-        "# Managed by IbexWall (endpoint.av).\n[Unit]\nDescription=IbexWall antimalware scan\n\n[Service]\nType=oneshot\nStateDirectory=ibexwall/av\nStandardOutput=append:/var/lib/ibexwall/av/yara.log\nNice=10\nIOSchedulingClass=idle\nProtectSystem=strict\nReadWritePaths=-/tmp -/var/tmp /var/lib/clamav\nProtectHome=read-only\nNoNewPrivileges=yes\nPrivateDevices=yes\n",
+        "# Managed by IbexWall (endpoint.av).\n[Unit]\nDescription=IbexWall antimalware scan\n\n[Service]\nType=oneshot\nStateDirectory=ibexwall/av\nStandardOutput=append:/var/lib/ibexwall/av/yara.log\nNice=10\nIOSchedulingClass=idle\nProtectSystem=strict\nReadWritePaths=-/tmp -/var/tmp -/var/lib/clamav\nProtectHome=read-only\nNoNewPrivileges=yes\nPrivateDevices=yes\n",
     );
     // `append:` reopens the file for every ExecStart (truncating would let
     // the second scanner erase the first one's findings), so the log is
@@ -460,7 +460,7 @@ mod tests {
         assert_eq!(path, SERVICE_FILE);
         assert!(content.contains("Type=oneshot") && content.contains("ProtectSystem=strict"));
         // ClamAV makes a temporary directory for every scan.
-        assert!(content.contains("ReadWritePaths=-/tmp -/var/tmp /var/lib/clamav"));
+        assert!(content.contains("ReadWritePaths=-/tmp -/var/tmp -/var/lib/clamav"));
         assert!(content.contains("ExecStart=-/usr/bin/clamscan -r -i --no-summary --log=/var/lib/clamav/ibexwall-av-scan.log -d /var/lib/ibexwall/av/db /home/ana/Downloads"));
         assert!(content.contains(
             "ExecStart=-/usr/bin/yara -r /etc/ibexwall/av/rules.yar /home/ana/Downloads"

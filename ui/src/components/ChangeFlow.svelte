@@ -28,6 +28,9 @@
   let applied = $state<Transaction | null>(null);
   let keepCountdown = $state<Transaction | null>(null);
   let failure = $state<string | null>(null);
+  // Keep and Undo share one in-flight guard, so a double click or a click
+  // on the other button cannot send a second request for the same change.
+  let acting = $state(false);
 
   function describe(error: unknown): string {
     // The core reports a named error with details; anything else is a
@@ -77,21 +80,41 @@
   }
 
   async function keep() {
-    if (!keepCountdown) return;
-    const keepId = keepCountdown.id;
-    const kept = await app.change(() => app.transport.confirm(keepId));
-    if (kept === undefined && app.notice) return;
-    applied = { ...keepCountdown, state: 'committed' };
-    keepCountdown = null;
-    await app.refresh();
-    ondone?.();
+    if (!keepCountdown || acting) return;
+    acting = true;
+    try {
+      const keepId = keepCountdown.id;
+      const kept = await app.change(() => app.transport.confirm(keepId));
+      if (kept === undefined && app.notice) return;
+      applied = { ...keepCountdown, state: 'committed' };
+      keepCountdown = null;
+      await app.refresh();
+      ondone?.();
+    } finally {
+      acting = false;
+    }
   }
 
   async function undo() {
-    if (!applied) return;
-    const id = applied.id;
-    const undone = await app.change(() => app.transport.rollback(id));
-    if (undone === undefined) return;
+    if (!applied || acting) return;
+    acting = true;
+    try {
+      const id = applied.id;
+      const undone = await app.change(() => app.transport.rollback(id));
+      if (undone === undefined) return;
+      applied = { ...applied, state: 'rolled_back' };
+      keepCountdown = null;
+      await app.refresh();
+      ondone?.();
+    } finally {
+      acting = false;
+    }
+  }
+
+  // The deadline passed without an answer: the core undoes the change by
+  // itself, so show that instead of a countdown stuck at zero.
+  async function expire() {
+    if (!applied || !keepCountdown || acting) return;
     applied = { ...applied, state: 'rolled_back' };
     keepCountdown = null;
     await app.refresh();
@@ -128,11 +151,17 @@
     {t(applied.state === 'committed' ? 'applied-committed' : 'applied-rolled-back')}
   </p>
   {#if applied.state === 'committed'}
-    <Button onclick={undo}>{t('undo-changes')}</Button>
+    <Button busy={acting} onclick={undo}>{t('undo-changes')}</Button>
   {/if}
 {/if}
 {#if keepCountdown}
-  <ConfirmCountdown seconds={60} onkeep={keep} oncancel={undo} />
+  <ConfirmCountdown
+    deadline={keepCountdown.confirm_deadline}
+    busy={acting}
+    onkeep={keep}
+    oncancel={undo}
+    onexpire={expire}
+  />
 {/if}
 
 <style>

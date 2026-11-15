@@ -16,7 +16,7 @@ use ibexwall_proto::names;
 use ibexwall_proto::{Op, OpPreview, Plan, PluginInfo, Transaction, TransactionState};
 use ibexwall_sys::{Clock, Decision, Identity, Polkit, RealPolkit};
 use ibexwall_varlink::VarlinkError;
-use ibexwall_varlink::{Call, Handler, Peer, Reply, futures_handle};
+use ibexwall_varlink::{Call, Cancel, Handler, Peer, Reply, futures_handle};
 
 use crate::state::TxStatus;
 use crate::{Core, TxRow};
@@ -153,7 +153,11 @@ impl Handler for Api {
                 }
                 let mut receiver = core.events.subscribe();
                 loop {
-                    match receiver.recv().await {
+                    let next = tokio::select! {
+                        next = receiver.recv() => next,
+                        () = call.cancel.cancelled() => break,
+                    };
+                    match next {
                         Ok(event) => {
                             let frame = Reply::result_continues(
                                 serde_json::to_value(&event).unwrap_or_default(),
@@ -215,7 +219,16 @@ impl Handler for Api {
                 .strip_prefix("com.ibexwall.Core.")
                 .unwrap_or(&call.method)
                 .to_string();
-            let reply = match dispatch(&core, &*polkit, &method, call.parameters, call.peer).await {
+            let reply = match dispatch(
+                &core,
+                &*polkit,
+                &method,
+                call.parameters,
+                call.peer,
+                &call.cancel,
+            )
+            .await
+            {
                 Ok(reply) => reply,
                 Err(e) => Reply::error(e.name, e.parameters),
             };
@@ -230,6 +243,7 @@ async fn dispatch(
     method: &str,
     parameters: Value,
     peer: Peer,
+    cancel: &Cancel,
 ) -> Result<Reply, VarlinkError> {
     let action = polkit_action(method).ok_or_else(|| {
         VarlinkError::new(
@@ -245,10 +259,15 @@ async fn dispatch(
         .get("allowInteractiveAuthentication")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    let decision = polkit
-        .check_with(action.to_string(), identity, interactive)
-        .await
-        .map_err(|e| err("Conflict", json!({"reason": e.to_string()})))?;
+    // Only this wait stops when the client hangs up (the dialog is for
+    // them); once authorized, the call runs to its end (A-01).
+    let decision = tokio::select! {
+        decision = polkit.check_with(action.to_string(), identity, interactive) => decision,
+        () = cancel.cancelled() => {
+            return Err(err("Conflict", json!({"reason": "client disconnected"})));
+        }
+    }
+    .map_err(|e| err("Conflict", json!({"reason": e.to_string()})))?;
     match decision {
         Decision::Authorized => {}
         Decision::NotAuthorized => return Err(permission_denied(action)),

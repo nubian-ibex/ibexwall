@@ -24,6 +24,30 @@ pub struct Call {
     pub parameters: Value,
     pub more: bool,
     pub peer: Peer,
+    /// Fires when the client hangs up or half-closes. A handler must not
+    /// abandon work already under way for it (an Apply stopped halfway
+    /// leaves the transaction `applying`); only waits that exist for the
+    /// person at the other end, like a polkit password dialog, may stop.
+    pub cancel: Cancel,
+}
+
+/// Receiving side of a call's hang-up signal.
+#[derive(Debug, Clone)]
+pub struct Cancel(tokio::sync::watch::Receiver<bool>);
+
+impl Cancel {
+    /// A signal and the sender that fires it.
+    pub fn pair() -> (tokio::sync::watch::Sender<bool>, Self) {
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        (tx, Self(rx))
+    }
+
+    /// Completes once the client is gone.
+    pub async fn cancelled(&self) {
+        let mut rx = self.0.clone();
+        // A dropped sender also means the connection is gone.
+        let _ = rx.wait_for(|gone| *gone).await;
+    }
 }
 
 /// Unix credentials of the connected peer, captured once at accept:
@@ -323,36 +347,36 @@ async fn connection(
         }
 
         let (tx, rx) = mpsc::channel::<Reply>(16);
+        let (hangup, cancel) = Cancel::pair();
         let call = Call {
             method: request.method.clone(),
             parameters: request.parameters.clone(),
             more: request.more,
             peer,
+            cancel,
         };
-        let dispatch = handler.handle(call, tx);
+        // The handler runs detached: a hang-up must not drop it halfway
+        // through an Apply or Rollback. It ends by dropping `tx`.
+        tokio::spawn(handler.handle(call, tx));
         let mut stream = ReceiverStream::new(rx);
-        tokio::pin!(dispatch);
 
-        let mut dispatch_done = false;
         let mut wrote_any = false;
         let mut watch_peer = true;
-        // Drive the handler and the writer concurrently; for oneway
-        // calls the replies are discarded. The `if` guards prevent
-        // polling a completed future or a closed channel again.
+        // For oneway calls the replies are discarded. The `if` guard
+        // prevents polling the peer check again after it fired.
         loop {
             tokio::select! {
-                _ = dispatch.as_mut(), if !dispatch_done => {
-                    dispatch_done = true;
-                }
-                // A client that hangs up mid-call takes the call with it:
-                // dropping the handler cancels what it waits on (a polkit
-                // password dialog, ADR-0045). Data instead of a hang-up is
-                // the next request, left for the framer.
-                closed = peer_closed(&reader), if watch_peer && !dispatch_done => {
-                    if closed {
-                        return Ok(());
-                    }
+                // A client that hangs up (or half-closes) mid-call only
+                // cancels what exists for it, a polkit password dialog
+                // (ADR-0045). The handler keeps running; a half-closed
+                // client may still read the reply, and for a gone one the
+                // write below fails and ends the connection. Data instead
+                // of a hang-up is the next request, left for the framer.
+                closed = peer_closed(&reader), if watch_peer => {
                     watch_peer = false;
+                    if closed {
+                        let _ = hangup.send(true);
+                    }
                 }
                 item = stream.next() => match item {
                     Some(reply) => {
@@ -456,6 +480,8 @@ mod tests {
 
     struct Echo;
 
+    static WORK_FINISHED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
     static WAIT_DROPPED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
     fn test_info() -> ServiceInfo {
@@ -469,7 +495,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_client_that_hangs_up_takes_its_call_with_it() {
+    async fn a_hang_up_cancels_the_dialog_wait_but_not_the_work() {
         let path = tmp_socket();
         let _ = std::fs::remove_file(&path);
         let listener = UnixListener::bind(&path).unwrap();
@@ -489,7 +515,57 @@ mod tests {
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
-        panic!("the call outlived its client");
+        panic!("the dialog wait outlived its client");
+    }
+
+    #[tokio::test]
+    async fn a_hang_up_does_not_stop_a_call_that_is_working() {
+        let path = std::env::temp_dir().join(format!(
+            "ibexwall-varlink-test-work-{}.sock",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+        tokio::spawn(serve(listener, test_info(), Arc::new(Echo)));
+
+        let mut raw = UnixStream::connect(&path).await.unwrap();
+        use tokio::io::AsyncWriteExt;
+        raw.write_all(b"{\"method\":\"com.test.Work\",\"parameters\":{}}\0")
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        drop(raw);
+        for _ in 0..100 {
+            if WORK_FINISHED.load(std::sync::atomic::Ordering::SeqCst) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        panic!("the work was cut short by the hang-up");
+    }
+
+    #[tokio::test]
+    async fn a_half_closed_client_still_gets_its_reply() {
+        let path = std::env::temp_dir().join(format!(
+            "ibexwall-varlink-test-half-{}.sock",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let listener = UnixListener::bind(&path).unwrap();
+        tokio::spawn(serve(listener, test_info(), Arc::new(Echo)));
+
+        let mut raw = UnixStream::connect(&path).await.unwrap();
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        raw.write_all(b"{\"method\":\"com.test.Work\",\"parameters\":{}}\0")
+            .await
+            .unwrap();
+        raw.shutdown().await.unwrap();
+        let mut got = Vec::new();
+        tokio::time::timeout(Duration::from_secs(3), raw.read_to_end(&mut got))
+            .await
+            .expect("reply in time")
+            .unwrap();
+        assert!(String::from_utf8(got).unwrap().contains("done"));
     }
 
     #[tokio::test]
@@ -557,7 +633,16 @@ mod tests {
                             }
                         }
                         let _flag = Flag;
-                        std::future::pending::<()>().await;
+                        // Like the polkit dialog: stops when the client goes.
+                        call.cancel.cancelled().await;
+                    }
+                    "com.test.Work" => {
+                        // Ignores the hang-up signal, like an Apply.
+                        tokio::time::sleep(Duration::from_millis(300)).await;
+                        WORK_FINISHED.store(true, std::sync::atomic::Ordering::SeqCst);
+                        let _ = out
+                            .send(Reply::result(serde_json::json!({ "done": true })))
+                            .await;
                     }
                     "com.test.Fail" => {
                         let _ = out

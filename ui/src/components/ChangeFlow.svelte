@@ -1,6 +1,7 @@
 <script lang="ts">
-  // The reviewed-change flow every control plugin shares: simulate (show
-  // exactly what would change), apply, keep within the deadline or undo.
+  // The reviewed-change flow every control plugin shares. "Apply" prepares
+  // the change and shows exactly what it would do (nothing is changed yet),
+  // "Confirm" carries it out, then keep it within the deadline or undo.
   import { app } from '../lib/app.svelte';
   import { changeErrorKey, TransportError } from '../lib/transport';
   import { t } from '../lib/i18n.svelte';
@@ -10,7 +11,17 @@
   import ConfirmCountdown from './ConfirmCountdown.svelte';
   import DiffViewer from './DiffViewer.svelte';
 
-  let { plugin, patch = {} }: { plugin: string; patch?: Record<string, unknown> } = $props();
+  let {
+    plugin,
+    patch = {},
+    ondone,
+  }: {
+    plugin: string;
+    patch?: Record<string, unknown>;
+    /** Called when the machine changed (applied, kept or undone), so the
+     * screen can read its state again. */
+    ondone?: () => void;
+  } = $props();
 
   let plan = $state<Plan | null>(null);
   let busy = $state(false);
@@ -59,6 +70,7 @@
       if (!applied) return;
       plan = null;
       if (applied.state === 'pending_confirm') keepCountdown = applied;
+      ondone?.();
     } finally {
       busy = false;
     }
@@ -72,6 +84,7 @@
     applied = { ...keepCountdown, state: 'committed' };
     keepCountdown = null;
     await app.refresh();
+    ondone?.();
   }
 
   async function undo() {
@@ -82,6 +95,7 @@
     applied = { ...applied, state: 'rolled_back' };
     keepCountdown = null;
     await app.refresh();
+    ondone?.();
   }
 </script>
 
@@ -92,9 +106,9 @@
   </p>
 {/if}
 <div class="actions">
-  <Button {busy} onclick={simulate}>{t('simulate')}</Button>
-  {#if plan}
-    <Button variant="primary" {busy} onclick={apply}>{t('apply')}</Button>
+  {#if !plan && !keepCountdown && (!applied || applied.state === 'rolled_back')}
+    <Button variant="primary" {busy} onclick={simulate}>{t('change-start')}</Button>
+    <span class="muted hint">{t('change-start-hint')}</span>
   {/if}
 </div>
 {#if plan}
@@ -103,6 +117,10 @@
   {:else}
     <DiffViewer ops={plan.ops} />
     <Callouts keys={plan.may_affect_keys ?? []} restorePoint="snapshots/next" />
+    <div class="actions">
+      <Button variant="primary" {busy} onclick={apply}>{t('change-confirm')}</Button>
+      <span class="muted hint">{t('change-confirm-hint')}</span>
+    </div>
   {/if}
 {/if}
 {#if applied}
@@ -120,7 +138,12 @@
 <style>
   .actions {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     gap: var(--space-3);
+  }
+  .hint {
+    font-size: 14px;
   }
   .muted {
     color: var(--muted);

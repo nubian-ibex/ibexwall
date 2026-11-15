@@ -30,16 +30,21 @@ pub fn remove_dropin(root: &Path) -> io::Result<bool> {
     }
 }
 
-/// Reads the failure mode from the resolver's settings; a missing file or
-/// a parse error means the safe default (`restore`).
+/// Reads the failure mode from the resolver's settings. A missing file
+/// means the default (`restore`); a file that exists but cannot be read or
+/// parsed means `block`, because the person may have chosen it and failing
+/// open would leak clear DNS.
 fn failure_mode(root: &Path) -> crate::config::FailureMode {
+    use crate::config::FailureMode;
     let settings = names::config_dir().join("dns").join("resolver.json");
     let translated = names::path_under(root, settings.to_string_lossy().as_ref());
-    std::fs::read(translated)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<crate::config::Settings>(&bytes).ok())
-        .map(|settings| settings.on_failure)
-        .unwrap_or_default()
+    match std::fs::read(translated) {
+        Ok(bytes) => serde_json::from_slice::<crate::config::Settings>(&bytes)
+            .map(|settings| settings.on_failure)
+            .unwrap_or(FailureMode::Block),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => FailureMode::default(),
+        Err(_) => FailureMode::Block,
+    }
 }
 
 /// The whole failsafe against the real system. Under a sandbox root it
@@ -124,6 +129,16 @@ mod tests {
         // Block mode: run() returns before touching anything.
         let before = dir.join("50-ibexwall.conf");
         assert!(before.exists());
+    }
+
+    #[test]
+    fn an_unparseable_settings_file_fails_closed_and_a_missing_one_restores() {
+        use crate::config::FailureMode;
+        let root = root("corrupt");
+        assert_eq!(failure_mode(&root), FailureMode::Restore);
+        std::fs::create_dir_all(root.join("etc/ibexwall/dns")).unwrap();
+        std::fs::write(root.join("etc/ibexwall/dns/resolver.json"), "{ not json").unwrap();
+        assert_eq!(failure_mode(&root), FailureMode::Block);
     }
 
     #[test]

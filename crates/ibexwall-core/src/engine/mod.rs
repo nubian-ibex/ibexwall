@@ -505,11 +505,15 @@ impl Engine {
                     _ => break Path::new("/"),
                 }
             };
-            // Never widen to the whole root or to /run (a missing lock file
-            // under it would otherwise make every runtime file writable):
-            // name the path itself, with the `-` prefix systemd ignores when
-            // it is absent. A helper that needs it then fails visibly.
-            if found == Path::new("/") || found == Path::new("/run") {
+            // Never widen to the whole root, and to /run only for the
+            // xtables lock: ufw and iptables create it on first use, and
+            // the namespace cannot hold a file that does not exist yet.
+            // Any other missing path is named itself, with the `-` prefix
+            // systemd ignores when it is absent, so a helper that needs it
+            // fails visibly instead of getting a writable /run.
+            if found == Path::new("/run") && dir == "/run/xtables.lock" {
+                resolved.insert("/run".to_string());
+            } else if found == Path::new("/") || found == Path::new("/run") {
                 resolved.insert(format!("-{dir}"));
             } else {
                 resolved.insert(found.to_string_lossy().into_owned());

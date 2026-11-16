@@ -869,7 +869,7 @@ impl ibexwall_sys::systemd::Systemd for RecordingExecutor {
 }
 
 #[test]
-fn a_missing_path_never_widens_read_write_paths_to_run_or_root() {
+fn a_missing_path_widens_read_write_paths_only_for_the_xtables_lock() {
     let fs = Arc::new(FakeFs::new());
     // /run exists; the lock file under it does not. /etc/ufw exists.
     fs.seed(Path::new("/run"), b"");
@@ -892,9 +892,15 @@ fn a_missing_path_never_widens_read_write_paths_to_run_or_root() {
         "/etc/ufw".into(),
         "/run/xtables.lock".into(),
         "/nowhere/at/all".into(),
+        "/run/other.lock".into(),
         "/etc/ufw/new.d".into(),
     ]);
-    assert_eq!(dirs, ["-/nowhere/at/all", "-/run/xtables.lock", "/etc/ufw"]);
+    // The xtables lock is created on first use, so its directory is
+    // writable; any other missing path stays itself, never /run or /.
+    assert_eq!(
+        dirs,
+        ["-/nowhere/at/all", "-/run/other.lock", "/etc/ufw", "/run"]
+    );
     assert!(recorder.dirs.lock().unwrap().is_empty());
 }
 

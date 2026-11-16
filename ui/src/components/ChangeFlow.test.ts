@@ -18,12 +18,13 @@ describe('ChangeFlow', () => {
     app.useTransport(transport);
     let release: () => void = () => {};
     const confirm = vi.fn(() => new Promise<void>((resolve) => (release = resolve)));
-    transport.confirm = confirm;
-    transport.planChange = async () => ({
-      id: 'p1',
-      plugin: 'x',
-      ops: [{ target: '/etc/x', op: 'file_write' }],
-    });
+    transport.confirm = confirm as never;
+    transport.planChange = async () =>
+      ({
+        id: 'p1',
+        plugin: 'x',
+        ops: [{ target: '/etc/x', op: 'file_write' }],
+      }) as never;
     render(ChangeFlow, { plugin: 'x', patch: {} });
     await fireEvent.click(screen.getByRole('button', { name: /^apply$/i }));
     await fireEvent.click(await screen.findByRole('button', { name: /^confirm$/i }));
@@ -47,11 +48,12 @@ describe('ChangeFlow', () => {
 
 async function startChangeWithOps() {
   const transport = new FixtureTransport('attention', 0, false);
-  transport.planChange = async () => ({
-    id: 'p1',
-    plugin: 'x',
-    ops: [{ target: '/etc/x', op: 'file_write' }],
-  });
+  transport.planChange = async () =>
+    ({
+      id: 'p1',
+      plugin: 'x',
+      ops: [{ target: '/etc/x', op: 'file_write' }],
+    }) as never;
   app.useTransport(transport);
   render(ChangeFlow, { plugin: 'x', patch: {} });
   await fireEvent.click(screen.getByRole('button', { name: /^apply$/i }));

@@ -2,9 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "prompt",
   "description": "The ask-prompt window: it may only list, answer and finish prompts.",
-  "windows": [
-    "prompt"
-  ],
+  "windows": ["prompt"],
   "permissions": [
     "core:default",
     "allow-list-prompts",

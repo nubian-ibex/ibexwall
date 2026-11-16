@@ -79,7 +79,7 @@ describe('HardeningFlow', () => {
         throw new TransportError('com.ibexwall.Core.Failed', { reason: 'boom' });
       }
       confirmed.push(id);
-    });
+    }) as never;
     await applied();
     await fireEvent.click(screen.getByRole('button', { name: /keep/i }));
     await screen.findByRole('alert');

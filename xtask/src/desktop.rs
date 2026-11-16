@@ -189,16 +189,20 @@ echo "METRIC: with no agent a change says no dialog could be shown"
 const ADMINS: &str = r#"
 getent group ibexwall-admins >/dev/null || { echo "NO ibexwall-admins GROUP"; exit 1; }
 [ -z "$(getent group ibexwall-admins | cut -d: -f4)" ] || { echo "THE GROUP IS NOT EMPTY"; exit 1; }
+# The rule only frees a member in a local, active session. This test comes
+# in over SSH, which is remote, so a member gets no free pass here: the
+# change needs a password, and there is no agent to ask for one. The local
+# case is the one a person on the desktop has, and is checked by hand.
+grep -q 'subject.local && subject.active' /usr/share/polkit-1/rules.d/49-ibexwall-admins.rules \
+  || { echo "THE RULE DOES NOT REQUIRE A LOCAL ACTIVE SESSION"; exit 1; }
 sudo gpasswd -a ibxuser ibexwall-admins >/dev/null
-out=$(sudo -u ibxuser ibexctl --json plugins disable system.audit 2>&1 </dev/null) || {
-  echo "A MEMBER WAS REFUSED: $out"; sudo gpasswd -d ibxuser ibexwall-admins >/dev/null; exit 1;
-}
-sudo gpasswd -d ibxuser ibexwall-admins >/dev/null
-sudo ibexctl plugins list | grep -Eq '^system\.audit +off' || { echo "THE CHANGE DID NOT HAPPEN"; exit 1; }
-if sudo -u ibxuser ibexctl --json plugins enable system.audit </dev/null >/dev/null 2>&1; then
-  echo "A FORMER MEMBER STILL CHANGES WITHOUT A PASSWORD"; exit 1
+if sudo -u ibxuser ibexctl --json plugins disable system.audit </dev/null >/dev/null 2>&1; then
+  sudo gpasswd -d ibxuser ibexwall-admins >/dev/null
+  echo "A MEMBER OVER SSH CHANGED WITHOUT A PASSWORD"; exit 1
 fi
-echo "METRIC: ibexwall-admins ships empty; a member changes without a password, and no longer once removed"
+sudo gpasswd -d ibxuser ibexwall-admins >/dev/null
+sudo ibexctl plugins list | grep -Eq '^system\.audit +on' || { echo "THE REFUSED CHANGE HAPPENED"; exit 1; }
+echo "METRIC: ibexwall-admins ships empty; a member over SSH is not freed from the password"
 "#;
 
 /// The connection monitor runs after the install, and can be turned off

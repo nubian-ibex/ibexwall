@@ -180,6 +180,21 @@ pub fn evaluate(sandbox: &Sandbox, detected_at: &str) -> CheckReport {
         match sources(sandbox) {
             None => CheckOutcome::NotAssessed,
             Some(list) if list.iter().any(|(_, nts)| *nts) => {
+                // The enable plan keeps the distro's own sources, so NTS
+                // next to plain ones is expected and stays a pass. It is
+                // still worth saying which sources chrony may choose that
+                // are not authenticated: an Info note, not a failure.
+                let plain: Vec<&str> = list
+                    .iter()
+                    .filter(|(_, nts)| !*nts)
+                    .map(|(host, _)| host.as_str())
+                    .collect();
+                if !plain.is_empty() {
+                    let mut mixed = finding("mixed", None);
+                    mixed.severity = Severity::Info;
+                    mixed.args.insert("plain".into(), plain.join(", "));
+                    findings.push(mixed);
+                }
                 // An NTS source only protects the clock if chronyd is
                 // actually running; a stopped or disabled chronyd leaves
                 // the clock to unauthenticated time, so never claim Pass
@@ -457,6 +472,29 @@ mod tests {
             evaluate(&sandbox, "now").results[0].outcome,
             CheckOutcome::Pass
         );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn nts_next_to_plain_sources_passes_but_names_the_plain_ones() {
+        let (root, sandbox) = tree(&[
+            CHRONYD,
+            RUNNING,
+            FEDORA_CONF,
+            (
+                "/etc/chrony.d/50-x.conf",
+                "server time.cloudflare.com iburst nts\n",
+            ),
+        ]);
+        let report = evaluate(&sandbox, "now");
+        assert_eq!(report.results[0].outcome, CheckOutcome::Pass);
+        let mixed = report
+            .findings
+            .iter()
+            .find(|f| f.id == "nts.mixed")
+            .unwrap();
+        assert_eq!(mixed.severity, Severity::Info);
+        assert_eq!(mixed.args["plain"], "2.fedora.pool.ntp.org");
         std::fs::remove_dir_all(root).unwrap();
     }
 

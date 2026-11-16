@@ -135,43 +135,100 @@ fn load(sandbox: &Sandbox) -> Result<DocumentMut, PluginError> {
     }
 }
 
-fn clients(doc: &mut DocumentMut) -> &mut ArrayOfTables {
-    if !doc.contains_key("client") {
-        doc.insert("client", Item::ArrayOfTables(ArrayOfTables::new()));
+/// The `[[key]]` tables of the document. Valid TOML can spell them inline
+/// (`client = [{ name = "x" }]`); that is converted rather than assumed away.
+fn tables<'a>(doc: &'a mut DocumentMut, key: &str) -> Result<&'a mut ArrayOfTables, PluginError> {
+    if !doc.contains_key(key) {
+        doc.insert(key, Item::ArrayOfTables(ArrayOfTables::new()));
     }
-    doc["client"]
-        .as_array_of_tables_mut()
-        .expect("client is an array of tables")
+    let item = &mut doc[key];
+    if item.as_array().is_some_and(|a| a.is_empty()) {
+        *item = Item::ArrayOfTables(ArrayOfTables::new());
+    } else if item.is_array() {
+        let inline = std::mem::take(item);
+        *item = Item::ArrayOfTables(inline.into_array_of_tables().map_err(|_| {
+            PluginError::invalid(
+                "config",
+                format!("`{key}` in mcp.toml is not a list of tables"),
+            )
+        })?);
+    }
+    item.as_array_of_tables_mut().ok_or_else(|| {
+        PluginError::invalid(
+            "config",
+            format!("`{key}` in mcp.toml is not a list of tables"),
+        )
+    })
 }
 
-fn tokens(doc: &mut DocumentMut) -> &mut ArrayOfTables {
-    if !doc.contains_key("token") {
-        doc.insert("token", Item::ArrayOfTables(ArrayOfTables::new()));
-    }
-    doc["token"]
-        .as_array_of_tables_mut()
-        .expect("token is an array of tables")
+fn clients(doc: &mut DocumentMut) -> Result<&mut ArrayOfTables, PluginError> {
+    tables(doc, "client")
 }
 
-fn set_preset(doc: &mut DocumentMut, client: &str, preset: &str) -> Result<(), PluginError> {
+fn tokens(doc: &mut DocumentMut) -> Result<&mut ArrayOfTables, PluginError> {
+    tables(doc, "token")
+}
+
+fn preset_scopes(client: &str, preset: &str) -> Result<&'static [&'static str], PluginError> {
     if !client_ok(client) {
         return Err(PluginError::invalid(
             "client",
             "letters, digits, `-` and `_`, up to 60",
         ));
     }
-    let scopes = PRESETS
+    PRESETS
         .iter()
         .find(|(name, _)| *name == preset)
         .map(|(_, scopes)| *scopes)
         .ok_or_else(|| {
             PluginError::invalid("preset", "the presets are `read`, `plan` and `propose`")
-        })?;
+        })
+}
+
+/// A token's client: created with the preset's scopes when new. An existing
+/// client is never rewritten here (that is the `client` action's job); a token
+/// asking for a different preset than the client has is refused instead of
+/// silently changing what the client's other tokens may do.
+fn ensure_client(doc: &mut DocumentMut, client: &str, preset: &str) -> Result<(), PluginError> {
+    let scopes = preset_scopes(client, preset)?;
+    let list = clients(doc)?;
+    if let Some(existing) = list
+        .iter()
+        .find(|t| t.get("name").and_then(|n| n.as_str()) == Some(client))
+    {
+        let have: Vec<&str> = existing
+            .get("scopes")
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+            .unwrap_or_default();
+        if have != scopes {
+            return Err(PluginError::invalid(
+                "preset",
+                format!(
+                    "client `{client}` already exists with other scopes; change it with the client action first"
+                ),
+            ));
+        }
+        return Ok(());
+    }
     let mut array = Array::new();
     for scope in scopes {
         array.push(*scope);
     }
-    let list = clients(doc);
+    let mut table = Table::new();
+    table.insert("name", value(client));
+    table.insert("scopes", value(array));
+    list.push(table);
+    Ok(())
+}
+
+fn set_preset(doc: &mut DocumentMut, client: &str, preset: &str) -> Result<(), PluginError> {
+    let scopes = preset_scopes(client, preset)?;
+    let mut array = Array::new();
+    for scope in scopes {
+        array.push(*scope);
+    }
+    let list = clients(doc)?;
     if let Some(existing) = list
         .iter_mut()
         .find(|t| t.get("name").and_then(|n| n.as_str()) == Some(client))
@@ -235,7 +292,7 @@ fn plan(sandbox: &Sandbox, config: &Config) -> Result<Vec<Op>, PluginError> {
                 config.listen.parse::<std::net::SocketAddr>().map_err(|_| {
                     PluginError::invalid("listen", "an address and a port, like 127.0.0.1:8765")
                 })?;
-                if tokens(&mut doc).is_empty() {
+                if tokens(&mut doc)?.is_empty() {
                     return Err(PluginError::invalid(
                         "enabled",
                         "create a token first: remote access needs one",
@@ -295,8 +352,8 @@ fn plan(sandbox: &Sandbox, config: &Config) -> Result<Vec<Op>, PluginError> {
             }
             // The token's client is the one the preset names, so the token
             // can never carry more than the person chose.
-            set_preset(&mut doc, &config.client, &config.preset)?;
-            let list = tokens(&mut doc);
+            ensure_client(&mut doc, &config.client, &config.preset)?;
+            let list = tokens(&mut doc)?;
             if list
                 .iter()
                 .any(|t| t.get("id").and_then(|i| i.as_str()) == Some(config.id.as_str()))
@@ -314,7 +371,7 @@ fn plan(sandbox: &Sandbox, config: &Config) -> Result<Vec<Op>, PluginError> {
             list.push(table);
         }
         "token_revoke" => {
-            let list = tokens(&mut doc);
+            let list = tokens(&mut doc)?;
             let before = list.len();
             let keep: Vec<Table> = list
                 .iter()

@@ -7,15 +7,16 @@ Last updated: 2026-11-07 (F11b fully delivered; all five distros green)
 
 ## Current phase
 
-**Now: v0.2.0, draft rebuilt 2026-11-15, waiting for the maintainer's
-check.** Firewall screen reworked after the maintainer's report: the switch
-is the real firewall state, the port, service and profile controls show only
-while it is on, buttons read Apply (preview only) then Confirm, the screen
-re-reads the firewall after each change, and a running ufw or firewalld can
-be turned off (the undo turns it back on; a ufw rollback reloads then
-enables). New VM scenario `firewall-on w8`. CI all green. The KDE VMs
-(Fedora 45 .107, Ubuntu 26.10 .110) were purged and reinstalled from the
-draft. Left: the check in the app, publish, docs deploy.
+**Now: v0.2.0 published 2026-11-16.** It carries the Firewall screen
+rework (the switch is the real firewall state, Apply then Confirm, turn a
+running ufw or firewalld off) and 41 fixes from the 2026-11-15 audit (daemon
+recovery and cancellation, polkit, SSH and firewall lockout guards, DNS, MCP,
+eBPF loader, packaging and signing of the deb, rpm and Arch packages). CI and
+the VM matrix are green (f10 on five distros, desktop, firewall-on, f5, f3).
+The docs were deployed. Open for 0.2.1, from `planning/15-auditoria-*`:
+A-10 (answers directory mode), A-17 (boot with a corrupt org.toml), A-18
+(Ask queue overflow, needs an ADR), A-43 (agent unit hardening), A-46 (mixed
+NTS sources), A-48 (real ufw fixtures), and the VM-only checks listed there.
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

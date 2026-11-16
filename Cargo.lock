@@ -2808,6 +2808,7 @@ dependencies = [
  "ibexwall-proto",
  "ibexwall-varlink",
  "listenfd",
+ "rustix",
  "serde_json",
  "thiserror 2.0.21",
  "tokio",

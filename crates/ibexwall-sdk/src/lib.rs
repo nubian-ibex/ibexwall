@@ -177,6 +177,9 @@ async fn dispatch<P: Plugin>(plugin: &P, method: &str, params: Value) -> Reply {
     }
 }
 
+/// Largest file [`Sandbox::read_bytes`] returns.
+pub const MAX_READ_BYTES: u64 = 8 * 1024 * 1024;
+
 /// Read-only view of a filesystem tree rooted at `root`.
 ///
 /// Checks read through it instead of using absolute paths, so they run
@@ -209,9 +212,26 @@ impl Sandbox {
         std::fs::read_to_string(self.path(path)).ok()
     }
 
-    /// Raw file contents (EFI variables are binary).
+    /// Raw file contents (EFI variables are binary). Only a regular file of
+    /// at most [`MAX_READ_BYTES`]: a user-owned `~/.bashrc` can be a link to
+    /// `/dev/zero` or a FIFO, which would block or exhaust memory. The open
+    /// refuses a final symlink and never waits on a FIFO.
     pub fn read_bytes(&self, path: &str) -> Option<Vec<u8>> {
-        std::fs::read(self.path(path)).ok()
+        use std::io::Read as _;
+        use std::os::unix::fs::OpenOptionsExt as _;
+        let flags = rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK;
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(flags.bits() as i32)
+            .open(self.path(path))
+            .ok()?;
+        let meta = file.metadata().ok()?;
+        if !meta.is_file() || meta.len() > MAX_READ_BYTES {
+            return None;
+        }
+        let mut bytes = Vec::new();
+        file.take(MAX_READ_BYTES + 1).read_to_end(&mut bytes).ok()?;
+        (bytes.len() as u64 <= MAX_READ_BYTES).then_some(bytes)
     }
 
     pub fn exists(&self, path: &str) -> bool {
@@ -414,6 +434,31 @@ mod tests {
         );
         std::fs::remove_file(root.join("proc/1/mountinfo")).unwrap();
         assert_eq!(sandbox.host_mounts(), None);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn read_bytes_takes_only_small_regular_files() {
+        let root = std::env::temp_dir().join(format!("ibx-rb-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("h")).unwrap();
+        std::fs::write(root.join("h/ok"), "x").unwrap();
+        std::fs::write(root.join("h/big"), vec![0u8; MAX_READ_BYTES as usize + 1]).unwrap();
+        std::os::unix::fs::symlink("/dev/zero", root.join("h/zero")).unwrap();
+        std::os::unix::fs::symlink("ok", root.join("h/link")).unwrap();
+        let fifo = root.join("h/fifo");
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg(&fifo)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let sandbox = Sandbox::at(&root);
+        assert_eq!(sandbox.read_bytes("/h/ok"), Some(b"x".to_vec()));
+        for bad in ["/h/big", "/h/zero", "/h/link", "/h/fifo", "/h/none"] {
+            assert_eq!(sandbox.read_bytes(bad), None, "{bad}");
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 

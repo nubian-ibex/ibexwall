@@ -449,6 +449,13 @@ impl<B: Backend, W: Write> Server<B, W> {
                     .and_then(|f| f.iter().find(|f| f["id"] == id.as_str()))
                     .cloned()
                     .ok_or("no such finding")?;
+                // A denied plugin's findings must look like they do not exist.
+                if found["plugin"]
+                    .as_str()
+                    .is_some_and(|p| self.config.denies(p))
+                {
+                    return Err("no such finding".into());
+                }
                 Ok(
                     json!({ "finding": found, "note": "title_key and summary_key are message ids that IbexWall renders for the person" }),
                 )

@@ -184,16 +184,19 @@ pub fn record(conn: &Connection, observation: &Observation) -> Result<Vec<Alert>
                 _ => None,
             };
             if let Some((old, new)) = changed {
-                let explained = observation.package_db_changed.is_some_and(|changed_at| {
-                    let last_seen: i64 = conn
-                        .query_row(
-                            "SELECT last_seen FROM apps WHERE key = ?1",
-                            params![key],
-                            |row| row.get(0),
-                        )
-                        .unwrap_or(0);
-                    changed_at >= last_seen
-                });
+                // Unrelated package activity must not hide a swapped binary:
+                // only a file the package manager owns can be an update.
+                let explained = observation.package.is_some()
+                    && observation.package_db_changed.is_some_and(|changed_at| {
+                        let last_seen: i64 = conn
+                            .query_row(
+                                "SELECT last_seen FROM apps WHERE key = ?1",
+                                params![key],
+                                |row| row.get(0),
+                            )
+                            .unwrap_or(0);
+                        changed_at >= last_seen
+                    });
                 if !explained {
                     alerts.push(Alert::BinaryChanged {
                         app: key.clone(),
@@ -229,8 +232,19 @@ pub fn record(conn: &Connection, observation: &Observation) -> Result<Vec<Alert>
          DO UPDATE SET count = count + 1, last_seen = excluded.last_seen",
         params![key, destination_key(observation), observation.port, now],
     )?;
+    // Random-port or fast-flux traffic would otherwise grow the table
+    // without bound until the idle-app prune, which never fires for a busy app.
+    conn.execute(
+        "DELETE FROM app_destinations WHERE app_key = ?1 AND rowid IN (
+             SELECT rowid FROM app_destinations WHERE app_key = ?1
+             ORDER BY last_seen DESC, rowid DESC LIMIT -1 OFFSET ?2)",
+        params![key, MAX_DESTINATIONS_PER_APP],
+    )?;
     Ok(alerts)
 }
+
+/// Newest destination rows kept per app; older ones age out.
+const MAX_DESTINATIONS_PER_APP: i64 = 500;
 
 /// Apps ordered by most recent activity.
 pub fn list_apps(conn: &Connection) -> Result<Vec<AppSummary>, Error> {
@@ -386,13 +400,39 @@ mod tests {
         record(&conn, &observation(100)).unwrap();
         let mut updated = observation(200);
         updated.exe_hash = Some("bb".into());
+        updated.package = Some("firefox".into());
         updated.package_db_changed = Some(150);
         assert!(record(&conn, &updated).unwrap().is_empty());
         // Package activity from before the app was last seen explains nothing.
         let mut stale = observation(300);
         stale.exe_hash = Some("cc".into());
+        stale.package = Some("firefox".into());
         stale.package_db_changed = Some(50);
         assert_eq!(record(&conn, &stale).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn package_activity_does_not_explain_a_file_no_package_owns() {
+        let conn = db();
+        record(&conn, &observation(100)).unwrap();
+        let mut swapped = observation(200);
+        swapped.exe_hash = Some("bb".into());
+        swapped.package_db_changed = Some(150);
+        assert_eq!(record(&conn, &swapped).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn destinations_per_app_are_capped_keeping_the_newest() {
+        let conn = db();
+        for i in 0..(MAX_DESTINATIONS_PER_APP + 20) {
+            let mut o = observation(100 + i);
+            o.domain = Some(format!("h{i}.example.com"));
+            record(&conn, &o).unwrap();
+        }
+        let list = list_destinations(&conn, "flatpak:org.mozilla.firefox").unwrap();
+        assert_eq!(list.len() as i64, MAX_DESTINATIONS_PER_APP);
+        assert!(list.iter().any(|d| d.destination == "h519.example.com"));
+        assert!(!list.iter().any(|d| d.destination == "h0.example.com"));
     }
 
     #[test]

@@ -183,6 +183,8 @@ fn main() -> Result<()> {
         Ok(text) => Config::parse(&text).map_err(|e| anyhow::anyhow!("{config_path}: {e}"))?,
         Err(_) => Config::default(),
     };
+    // Only a label for the audit log: the client says who it is and nothing
+    // here can verify it.
     let client = flag(&args, "--client").unwrap_or_else(|| "unknown".into());
     let socket = flag(&args, "--socket")
         .map(PathBuf::from)
@@ -204,8 +206,9 @@ fn main() -> Result<()> {
         .append(true)
         .mode(0o600)
         .open(&log_path)?;
+    let audit = Audit::new(log, seq, prev).shared_with(std::fs::File::open(&log_path)?);
     if args.iter().any(|a| a == "--http") {
-        return run_http(config, socket, redactor, Audit::new(log, seq, prev));
+        return run_http(config, socket, redactor, audit);
     }
     let backend = Varlink {
         runtime: tokio::runtime::Builder::new_current_thread()
@@ -214,13 +217,7 @@ fn main() -> Result<()> {
         socket,
         client: None,
     };
-    let mut server = Server::new(
-        config,
-        &client,
-        redactor,
-        Audit::new(log, seq, prev),
-        backend,
-    );
+    let mut server = Server::new(config, &client, redactor, audit, backend);
 
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout().lock();

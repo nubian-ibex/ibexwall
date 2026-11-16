@@ -109,7 +109,12 @@ async fn run() -> Result<()> {
         }
     }
     let store = Arc::new(Store::new(lists::default_dir()));
-    let mut handler = Handler::new(build_policy(&settings, &store), resolver).with_routes(routes);
+    // Reading and parsing every list is blocking work: keep it off the runtime.
+    let policy = {
+        let (settings, store) = (settings.clone(), Arc::clone(&store));
+        tokio::task::spawn_blocking(move || build_policy(&settings, &store)).await?
+    };
+    let mut handler = Handler::new(policy, resolver).with_routes(routes);
     // Optional: without a listening core the sink just drops its datagrams.
     if let Ok(sink) = ibexwall_dns::answers::AnswerSink::new(names::dns_answers_socket()) {
         handler = handler.with_answer_sink(sink);

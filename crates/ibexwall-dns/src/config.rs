@@ -191,6 +191,8 @@ pub enum ConfigError {
         "`listen` must be a loopback address, got `{0}` (a non-loopback listen would make the resolver open)"
     )]
     BadListen(String),
+    #[error("upstream `{0}` is the resolver's own listen address")]
+    UpstreamIsListen(String),
     #[error("could not build the upstream resolver: {0}")]
     Resolver(String),
 }
@@ -236,8 +238,17 @@ impl Settings {
         if self.servers.is_empty() {
             return Err(ConfigError::NoUpstream);
         }
+        // An upstream that is the stub itself would loop every query.
+        let loops = |server: &Server| {
+            server.transport == Transport::Plain
+                && server.ip == self.listen.ip()
+                && self.listen.port() == 53
+        };
         for server in &self.servers {
             server.validate()?;
+            if loops(server) {
+                return Err(ConfigError::UpstreamIsListen(server.ip.to_string()));
+            }
         }
         for route in &self.routes {
             if route.servers.is_empty() {
@@ -250,6 +261,9 @@ impl Settings {
             }
             for server in &route.servers {
                 server.validate()?;
+                if loops(server) {
+                    return Err(ConfigError::UpstreamIsListen(server.ip.to_string()));
+                }
             }
         }
         Ok(())
@@ -294,6 +308,16 @@ mod tests {
             transport: Transport::Tls,
             path: None,
         }
+    }
+
+    #[test]
+    fn an_upstream_equal_to_the_listen_address_is_refused() {
+        let text = r#"{ "listen": "127.0.0.1:53", "servers": [{ "ip": "127.0.0.1", "transport": "plain" }] }"#;
+        let settings: Settings = serde_json::from_str(text).unwrap();
+        assert!(matches!(
+            settings.validate(),
+            Err(ConfigError::UpstreamIsListen(_))
+        ));
     }
 
     #[test]

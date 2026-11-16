@@ -29,7 +29,7 @@ pub(crate) fn info(_core: &Arc<Core>) -> Value {
 }
 
 /// The resolver's published counters; counts only, never query names.
-pub(crate) fn dns_status(core: &Arc<Core>) -> Value {
+pub(crate) async fn dns_status(core: &Arc<Core>) -> Value {
     // `dns_status_file` is already rooted for the sandbox, while the fs
     // translates under its own root; strip once so the two never double
     // up (the resolver itself writes the rooted path).
@@ -56,17 +56,18 @@ pub(crate) fn dns_status(core: &Arc<Core>) -> Value {
     // whether the DNS enforcement guard is present: the net.dns plugin
     // cannot see it from its sandbox, so this is reported here rather
     // than in the plugin's own "secure resolver" check.
-    let enforcement_chain = core
-        .engine
-        .sys
-        .nft
-        .chains()
-        .map(|chains| {
+    // `nft` is a subprocess: off the async threads, or a slow nft stalls
+    // the watchdog heartbeat.
+    let nft = Arc::clone(&core.engine.sys.nft);
+    let enforcement_chain = tokio::task::spawn_blocking(move || nft.chains())
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .is_some_and(|chains| {
             chains
                 .iter()
                 .any(|c| c == ibexwall_proto::names::DNS_NFT_CHAIN)
-        })
-        .unwrap_or(false);
+        });
     json!({ "dns_status": status, "enforcement_chain": enforcement_chain })
 }
 

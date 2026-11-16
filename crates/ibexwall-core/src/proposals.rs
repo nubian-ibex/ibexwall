@@ -110,6 +110,64 @@ impl Core {
         })
     }
 
+    /// Refuses a new proposal from a client that has used up its share.
+    /// The API runs this before planning too, so a flood costs a plugin
+    /// round trip only until the quota is reached. A client name is
+    /// `<actor>/<label>`: the quota belongs to the actor (the peer's uid),
+    /// because the label is whatever the caller says it is.
+    pub fn check_proposal_quota(&self, client: &str) -> Result<(), Error> {
+        let now = ibexwall_sys::RealClock.unix_now();
+        self.expire_proposals(now)
+            .map_err(|e| Error::Other(e.to_string()))?;
+        let pending = self
+            .list_proposals(Some("pending"))
+            .map_err(|e| Error::Other(e.to_string()))?;
+        if pending.len() >= MAX_PENDING {
+            return Err(Error::Full);
+        }
+        let owner = |name: &str| name.split('/').next().unwrap_or_default().to_string();
+        let owner_of_new = owner(client);
+        if pending
+            .iter()
+            .filter(|p| owner(&p.client) == owner_of_new)
+            .count()
+            >= MAX_PENDING_PER_CLIENT
+        {
+            return Err(Error::ClientFull);
+        }
+        Ok(())
+    }
+
+    /// Puts a proposal whose approval failed back in the queue, so the
+    /// human can retry or reject it instead of finding it stuck approved.
+    pub fn reopen_proposal(&self, id: &str) -> Result<()> {
+        self.state.with_conn(|conn| {
+            conn.execute(
+                "UPDATE proposals SET status = 'pending', decided_at = NULL \
+                 WHERE id = ?1 AND status = 'approved'",
+                [id],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// Drops plans nobody can use any more: expired, not referenced by a
+    /// transaction. Cheap enough to run on every planning call, which is
+    /// the only way plans accumulate.
+    pub fn prune_expired_plans(&self) {
+        let now = ibexwall_sys::RealClock.unix_now();
+        let result = self.state.with_conn(|conn| {
+            conn.execute(
+                "DELETE FROM plans WHERE expires_at < ?1 \
+                 AND id NOT IN (SELECT plan_id FROM transactions)",
+                [ibexwall_sys::format_rfc3339(now)],
+            )
+        });
+        if let Err(error) = result {
+            tracing::warn!(%error, "pruning expired plans failed");
+        }
+    }
+
     /// Stores a proposal for a plan the caller already built.
     pub fn create_proposal(
         &self,
@@ -127,15 +185,7 @@ impl Core {
             return Err(Error::Irreversible);
         }
         let client = clean(client, 60);
-        let pending = self
-            .list_proposals(Some("pending"))
-            .map_err(|e| Error::Other(e.to_string()))?;
-        if pending.len() >= MAX_PENDING {
-            return Err(Error::Full);
-        }
-        if pending.iter().filter(|p| p.client == client).count() >= MAX_PENDING_PER_CLIENT {
-            return Err(Error::ClientFull);
-        }
+        self.check_proposal_quota(&client)?;
         let proposal = Proposal {
             id: format!(
                 "prop-{:x}",

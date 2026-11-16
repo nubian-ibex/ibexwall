@@ -1528,7 +1528,16 @@ async fn a_proposal_waits_for_a_human_and_approval_applies_only_what_was_reviewe
         .unwrap();
     let proposal = &created["proposal"];
     assert_eq!(proposal["status"], "pending");
-    assert_eq!(proposal["client"], "claude-code");
+    // The quota identity is the peer's uid; the label is only a suffix.
+    assert!(
+        proposal["client"]
+            .as_str()
+            .unwrap()
+            .ends_with("/claude-code"),
+        "{}",
+        proposal["client"]
+    );
+    assert!(proposal["client"].as_str().unwrap().starts_with("user:"));
     assert!(!proposal["preview"].as_array().unwrap().is_empty());
     assert!(
         !proposal["justification"]
@@ -1564,13 +1573,12 @@ async fn a_proposal_waits_for_a_human_and_approval_applies_only_what_was_reviewe
         .call("com.ibexwall.Core.ListAudit", json!({ "limit": 10 }))
         .await
         .unwrap();
-    assert!(
-        audit["entries"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|e| { e["actor"] == "mcp:claude-code" && e["result"] == "proposal-created" })
-    );
+    assert!(audit["entries"].as_array().unwrap().iter().any(|e| {
+        e["actor"]
+            .as_str()
+            .is_some_and(|a| a.starts_with("mcp:user:") && a.ends_with("/claude-code"))
+            && e["result"] == "proposal-created"
+    }));
 
     // A bad patch is refused at proposal time, so the queue never holds it.
     let bad = client
@@ -1679,15 +1687,60 @@ async fn one_client_cannot_bury_the_queue() {
     }
     assert_eq!(accepted, 8, "the per-client bound");
     assert_eq!(refused, 4);
-    // Another client still gets through.
-    client
+    // A different label from the same peer does not buy a new quota.
+    let relabeled = client
         .call(
             "com.ibexwall.Core.CreateProposal",
             json!({ "plugin": "dev.echo", "patch": { "template": "dropin_file" },
                     "justification": "mine", "client": "other" }),
         )
+        .await;
+    assert!(relabeled.is_err(), "the label must not reset the quota");
+}
+
+#[tokio::test]
+async fn a_proposal_whose_approval_fails_stays_pending() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let (_core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+    let created = client
+        .call(
+            "com.ibexwall.Core.CreateProposal",
+            json!({ "plugin": "dev.echo", "patch": { "template": "dropin_file" },
+                    "justification": "x" }),
+        )
         .await
         .unwrap();
+    let id = created["proposal"]["id"].as_str().unwrap().to_string();
+    // The organization locks the key after the proposal was made, so
+    // planning again at decision time is refused.
+    let config_dir = sandbox.root.join("etc/ibexwall");
+    std::fs::create_dir_all(&config_dir).unwrap();
+    std::fs::write(config_dir.join("org.toml"), "lock = [\"dev.echo.*\"]\n").unwrap();
+    assert!(
+        client
+            .call(
+                "com.ibexwall.Core.DecideProposal",
+                json!({ "id": id, "decision": "approve" }),
+            )
+            .await
+            .is_err()
+    );
+    let pending = client
+        .call(
+            "com.ibexwall.Core.ListProposals",
+            json!({ "status": "pending" }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        pending["proposals"].as_array().unwrap().len(),
+        1,
+        "a failed approval must not strand the proposal as approved"
+    );
 }
 
 #[tokio::test]

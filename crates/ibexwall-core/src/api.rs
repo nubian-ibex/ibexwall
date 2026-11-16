@@ -277,7 +277,7 @@ async fn dispatch(
     match method {
         "GetInfo" => Ok(Reply::result(info(core))),
         "GetPosture" => Ok(Reply::result(posture(core))),
-        "GetDnsStatus" => Ok(Reply::result(dns_status(core))),
+        "GetDnsStatus" => Ok(Reply::result(dns_status(core).await)),
         "GetFirewall" => Ok(Reply::result(
             json!({ "firewall": crate::firewall::state(core).await }),
         )),
@@ -317,7 +317,11 @@ async fn dispatch(
             let plugin = str_field(&parameters, "plugin")?;
             let patch = parameters.get("patch").cloned().unwrap_or(Value::Null);
             let justification = str_field(&parameters, "justification")?;
-            let client = opt_str_field(&parameters, "client")?.unwrap_or_else(|| "unknown".into());
+            // The label is the caller's own word; the quota and the audit
+            // identity come from the peer's uid.
+            let label = opt_str_field(&parameters, "client")?.unwrap_or_else(|| "unknown".into());
+            let client = crate::proposals::clean(&format!("{actor}/{label}"), 60);
+            core.check_proposal_quota(&client).map_err(proposal_error)?;
             let (plan, ops) = build_plan(core, plugin, patch.clone(), &actor).await?;
             let digest = crate::audit::ops_digest(&ops);
             let proposal = core
@@ -329,64 +333,69 @@ async fn dispatch(
             let id = str_field(&parameters, "id")?;
             let decision = str_field(&parameters, "decision")?;
             let (proposal, digest) = core.pending_proposal(&id).map_err(proposal_error)?;
-            // One decision per proposal: the first caller to flip it from
-            // pending wins, the rest get "already decided".
             let final_status = match decision.as_str() {
                 "reject" => "rejected",
                 "approve" => "approved",
                 _ => return Err(invalid_argument("decision", "approve or reject".into())),
             };
-            if !core
-                .state
-                .claim_proposal(&id, final_status)
-                .map_err(internal)?
-            {
-                return Err(proposal_error(crate::proposals::Error::Decided));
-            }
-            match decision.as_str() {
-                "reject" => {
-                    core.audit(&actor, &proposal.plugin, None, &digest, "proposal-rejected");
-                    core.publish_proposal_event("proposals.decided", &proposal);
-                    Ok(Reply::result(json!({ "transaction": null })))
+            if decision == "approve" {
+                // Plan again from what the client asked for first, so a
+                // plugin failure or a changed plan leaves the proposal
+                // pending instead of stuck approved.
+                let (plan, ops) = build_plan(
+                    core,
+                    proposal.plugin.clone(),
+                    proposal.patch.clone(),
+                    &actor,
+                )
+                .await?;
+                if crate::audit::ops_digest(&ops) != digest {
+                    return Err(err("ProposalStale", json!({ "id": id })));
                 }
-                "approve" => {
-                    // Plan again from what the client asked for, and apply
-                    // only if the operations are the ones that were reviewed.
-                    let (plan, ops) = build_plan(
-                        core,
-                        proposal.plugin.clone(),
-                        proposal.patch.clone(),
-                        &actor,
-                    )
-                    .await?;
-                    if crate::audit::ops_digest(&ops) != digest {
-                        return Err(err("ProposalStale", json!({ "id": id })));
-                    }
-                    let reply = apply(core, &json!({ "plan_id": plan.id }), &actor).await;
-                    match &reply {
-                        Ok(_) => {
-                            core.audit(
-                                &actor,
-                                &proposal.plugin,
-                                None,
-                                &digest,
-                                "proposal-approved",
-                            );
-                            core.publish_proposal_event("proposals.decided", &proposal);
-                        }
-                        Err(_) => {
-                            core.audit(
-                                &actor,
-                                &proposal.plugin,
-                                None,
-                                &digest,
-                                "proposal-approval-failed",
-                            );
-                        }
-                    }
-                    reply
+                // One decision per proposal: the first caller to flip it
+                // from pending wins, the rest get "already decided".
+                if !core
+                    .state
+                    .claim_proposal(&id, final_status)
+                    .map_err(internal)?
+                {
+                    return Err(proposal_error(crate::proposals::Error::Decided));
                 }
-                _ => unreachable!("the decision was validated above"),
+                // Deciding is applying: holding `proposals.decide` and
+                // approving a reviewed plan is the authorization to run it
+                // (no second `apply` call), and only the reviewed
+                // operations are applied.
+                let reply = apply(core, &json!({ "plan_id": plan.id }), &actor).await;
+                match &reply {
+                    Ok(_) => {
+                        core.audit(&actor, &proposal.plugin, None, &digest, "proposal-approved");
+                        core.publish_proposal_event("proposals.decided", &proposal);
+                    }
+                    Err(_) => {
+                        if let Err(error) = core.reopen_proposal(&id) {
+                            tracing::error!(%error, "could not reopen a proposal whose apply failed");
+                        }
+                        core.audit(
+                            &actor,
+                            &proposal.plugin,
+                            None,
+                            &digest,
+                            "proposal-approval-failed",
+                        );
+                    }
+                }
+                reply
+            } else {
+                if !core
+                    .state
+                    .claim_proposal(&id, final_status)
+                    .map_err(internal)?
+                {
+                    return Err(proposal_error(crate::proposals::Error::Decided));
+                }
+                core.audit(&actor, &proposal.plugin, None, &digest, "proposal-rejected");
+                core.publish_proposal_event("proposals.decided", &proposal);
+                Ok(Reply::result(json!({ "transaction": null })))
             }
         }
         "SetDefaultMode" => {
@@ -473,10 +482,11 @@ async fn dispatch(
                 ibexwall_proto::UnitAction::Disable
             };
             // enable --now / disable --now: on at once and after a reboot.
-            core.engine
-                .sys
-                .systemd
-                .apply(names::UNIT_MONITOR, action, true)
+            // systemctl blocks: keep it off the async threads.
+            let systemd = Arc::clone(&core.engine.sys.systemd);
+            tokio::task::spawn_blocking(move || systemd.apply(names::UNIT_MONITOR, action, true))
+                .await
+                .map_err(internal)?
                 .map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?;
             let choice = names::path_under(&core.root, names::MONITOR_CHOICE);
             if let Some(dir) = choice.parent() {
@@ -531,7 +541,7 @@ async fn dispatch(
         }
         "GetConfig" => {
             let plugin = str_field(&parameters, "plugin")?;
-            core.reload_config();
+            reload_config_blocking(core).await;
             let manifest = core
                 .manifest(&plugin)
                 .map_err(|_| not_found("plugin", &plugin))?;
@@ -809,9 +819,9 @@ async fn dispatch_policy(
                 .map_err(internal)?;
             std::fs::create_dir_all(&config_dir)
                 .map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?;
-            std::fs::write(
+            crate::config::write_atomic(
                 &org_path,
-                toml::to_string_pretty(&org)
+                &toml::to_string_pretty(&org)
                     .map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?,
             )
             .map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?;
@@ -823,7 +833,7 @@ async fn dispatch_policy(
                     )
                 })
                 .map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?;
-            core.reload_config();
+            reload_config_blocking(core).await;
             let locks: Vec<String> = bundle.locks.clone();
             Ok(Reply::result(json!({
                 "version": bundle.version,
@@ -947,8 +957,14 @@ async fn dispatch_policy(
             let org_path = config_dir.join("org.toml");
             core.try_audit(actor, "core", None, "", "break-glass")
                 .map_err(internal)?;
-            let doc_text = std::fs::read_to_string(&org_path).unwrap_or_default();
-            let mut doc: toml::Table = doc_text.parse().unwrap_or_default();
+            // An unreadable or unparsable org.toml is an error: treating it
+            // as empty would write back an empty file and wipe every lock.
+            let doc_text = match std::fs::read_to_string(&org_path) {
+                Ok(text) => text,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+                Err(e) => return Err(internal(e)),
+            };
+            let mut doc: toml::Table = doc_text.parse().map_err(internal)?;
             if let Some(toml::Value::Array(old_locks)) = doc.get("lock") {
                 let new_locks: Vec<toml::Value> = old_locks
                     .iter()
@@ -961,9 +977,12 @@ async fn dispatch_policy(
                     .collect();
                 doc.insert("lock".into(), toml::Value::Array(new_locks));
             }
-            std::fs::write(&org_path, toml::to_string_pretty(&doc).map_err(internal)?)
-                .map_err(internal)?;
-            core.reload_config();
+            crate::config::write_atomic(
+                &org_path,
+                &toml::to_string_pretty(&doc).map_err(internal)?,
+            )
+            .map_err(internal)?;
+            reload_config_blocking(core).await;
             Ok(Reply::result(json!({
                 "unlocked": unlocked,
                 "expires_at": expires_at,
@@ -1143,6 +1162,12 @@ async fn run_checks(
 }
 
 /// Plans a change and stores the plan; returns it with its operations.
+/// `reload_config` reads files; off the async threads.
+async fn reload_config_blocking(core: &Arc<Core>) {
+    let core = Arc::clone(core);
+    let _ = tokio::task::spawn_blocking(move || core.reload_config()).await;
+}
+
 async fn build_plan(
     core: &Arc<Core>,
     plugin: String,
@@ -1152,7 +1177,7 @@ async fn build_plan(
     authorize_plugin_change(core, &plugin)?;
     // A config change on disk takes effect immediately, not after a
     // restart, so locks and the plan fingerprint reflect the real state.
-    core.reload_config();
+    reload_config_blocking(core).await;
 
     // The organization layer can lock a setting; a plan that touches a
     // locked key is refused whoever asks for it.
@@ -1219,6 +1244,7 @@ async fn build_plan(
         expires_at: expires_at.clone(),
         created_at: now,
     };
+    core.prune_expired_plans();
     core.state.save_plan(&persisted).map_err(internal)?;
 
     let plan = Plan {
@@ -1287,7 +1313,7 @@ async fn apply(core: &Arc<Core>, parameters: &Value, actor: &str) -> Result<Repl
 
     // Expiry and staleness (spec §4.5). The config is re-read so a
     // change since the plan was made actually fires PlanStale.
-    core.reload_config();
+    reload_config_blocking(core).await;
     if core
         .config
         .read()

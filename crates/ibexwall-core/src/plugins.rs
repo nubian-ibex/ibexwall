@@ -144,8 +144,14 @@ impl Supervisor {
     /// Ensures the plugin process is listening, spawning it directly
     /// (dev/F1-VM mode; systemd activation arrives with packaging).
     pub async fn ensure_running(&self, id: &str) -> Result<()> {
-        // Every use verifies the manifest signature (spec 5.1).
-        self.verify_signature(id)?;
+        // Every use verifies the manifest signature (spec 5.1). It reads
+        // files, so on a multi-thread runtime hand the thread back first.
+        match tokio::runtime::Handle::try_current().map(|h| h.runtime_flavor()) {
+            Ok(tokio::runtime::RuntimeFlavor::MultiThread) => {
+                tokio::task::block_in_place(|| self.verify_signature(id))?
+            }
+            _ => self.verify_signature(id)?,
+        }
         if let Some(entry) = self.plugins.get(id)
             && ibexwall_varlink::Client::connect(&entry.socket)
                 .await

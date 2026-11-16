@@ -26,6 +26,13 @@ pub enum SnapshotEntry {
         /// None: the file did not exist.
         prior: Option<PriorFile>,
     },
+    /// The path was a symlink before the transaction: rollback puts the
+    /// link back, not a copy of what it pointed to.
+    Symlink {
+        op_index: usize,
+        path: String,
+        target: String,
+    },
     Unit {
         op_index: usize,
         unit: String,
@@ -568,6 +575,12 @@ pub fn apply_snapshot_inverses_for(
                     None => attempt!(what, sys.fs.remove(Path::new(path))),
                 }
             }
+            SnapshotEntry::Symlink { path, target, .. } => attempt!(
+                format!("restore symlink {path}"),
+                sys.fs
+                    .restore_symlink(Path::new(path), Path::new(target))
+                    .map_err(anyhow::Error::from)
+            ),
             SnapshotEntry::Unit {
                 unit,
                 enabled,
@@ -1005,6 +1018,34 @@ mod tests {
                 .any(|l| l.starts_with("Restart systemd-resolved.service")),
             "{log:?}"
         );
+    }
+
+    #[test]
+    fn a_rollback_puts_a_symlink_back_as_a_symlink() {
+        use crate::fs::Fs as _;
+        use std::path::PathBuf;
+        let fs = std::sync::Arc::new(crate::FakeFs::new());
+        let (mut sys, _) = fake_sys();
+        sys.fs = fs.clone();
+        fs.symlink(Path::new("/etc/resolv.conf"), Path::new("/run/stub.conf"));
+        // The forward write replaced the link with a regular file.
+        fs.write_atomic(Path::new("/etc/resolv.conf"), b"x", 0o644, None)
+            .unwrap();
+        assert_eq!(fs.read_link(Path::new("/etc/resolv.conf")).unwrap(), None);
+        let manifest = SnapshotManifest {
+            tx: "tx1".into(),
+            entries: vec![SnapshotEntry::Symlink {
+                op_index: 0,
+                path: "/etc/resolv.conf".into(),
+                target: "/run/stub.conf".into(),
+            }],
+        };
+        apply_snapshot_inverses(&sys, Path::new("/nonexistent"), &manifest).unwrap();
+        assert_eq!(
+            fs.read_link(Path::new("/etc/resolv.conf")).unwrap(),
+            Some(PathBuf::from("/run/stub.conf"))
+        );
+        assert!(!fs.exists(Path::new("/etc/resolv.conf")));
     }
 
     #[test]

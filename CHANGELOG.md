@@ -75,6 +75,56 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
 - A rollback that had turned ufw on left it on.
 - Removing the packages left the monitor's link behind, and a monitor
   still running could start the daemon again during the removal.
+- Ctrl-C on `ibexctl apply` or `rollback` no longer leaves the transaction
+  stuck in `applying`: a call keeps running after its client hangs up, and
+  only the wait for the password dialog is cancelled.
+- Apply and policy changes are refused when the audit log cannot record
+  them, and a late Confirm (after the deadline) is refused.
+- After a crash, a rollback that failed is no longer replayed over a newer
+  change, and recovery undoes in newest-first order. The snapshot sweep no
+  longer deletes snapshots when its query fails.
+- A proposal whose apply fails goes back to pending; the proposal quota
+  counts per user, and the API closes idle connections, caps connections per
+  user and rejects oversized requests.
+- The resolver answers socket stays closed when its group is missing.
+- Turning a firewall on keeps every exposed TCP listener and the sshd port,
+  and fails on invalid extra input. Removing the live SSH port or service, or
+  switching to the travel profile, is refused unless `confirm_ssh_cut=true`.
+  Blocking `network-filesystems`, `rare-filesystems` or `bluetooth` is refused
+  while something uses them, unless `confirm_in_use=true`.
+- A rollback keeps a symlinked file a symlink, and a unit it created is
+  disabled again. The privileged helper never gets `/` or `/run` as writable.
+- No more false High finding for `/etc/shadow` permissions on Debian, Ubuntu
+  and Fedora; fewer false positives in the integrity check; the antivirus scan
+  unit starts on machines with YARA only.
+- SSH: turning passwords off is refused without a usable key and also turns
+  off keyboard-interactive login; the checks ignore case, follow include
+  globs, and `verify` confirms the setting took effect.
+- The VPN kill switch also blocks forwarded traffic from containers and
+  hotspots, and its DHCP rule is narrower. A hostname endpoint names the
+  profile in the error.
+- The `/tmp` and `/dev/shm` mount verdicts come from the host mount table,
+  and show not assessed when it cannot be read.
+- Posture flags only a passwordless `ALL` sudo grant and follows includes; an
+  Info note lists plain time sources next to NTS ones.
+- The connection monitor loader keeps the rules in force and reconnects when
+  the core restarts, and exits loudly on a fatal Ask queue error. Package
+  queries have a timeout and run off the Ask thread. The kernel's exec path
+  wins over `/proc/<pid>/exe`.
+- MCP: `explain_finding` hides findings of denied plugins; concurrent MCP
+  clients keep one audit chain.
+- DNS: CNAME-cloaked trackers are blocked, downloaded-list allow entries can
+  no longer unblock the DoH canary, and a corrupt `resolver.json` keeps
+  enforcement on after a failure. Binary-change alerts are no longer masked
+  by unrelated package updates. The agent exits when the core drops.
+- The admins polkit rule applies only to local, active sessions. Upgrading
+  from 0.1.1 no longer turns the monitor on if it was off. A purge keeps
+  snapshots and `state.db` when the removal cleanup failed.
+- Release checksums and signatures now cover the deb, rpm and Arch packages.
+- The keep countdown follows the real deadline and shows "undone" at zero;
+  Keep and Undo no longer fire twice on a double click; a partial hardening
+  undo can be retried; the prompt window stays open when the core is
+  unreachable and has its own narrow Tauri capability.
 
 ## 0.1.1 (2026-11-09)
 

@@ -43,6 +43,7 @@ pub enum Hook {
     #[default]
     Output,
     Input,
+    Forward,
 }
 
 impl Hook {
@@ -50,6 +51,7 @@ impl Hook {
         match self {
             Hook::Output => "output",
             Hook::Input => "input",
+            Hook::Forward => "forward",
         }
     }
 }
@@ -904,6 +906,16 @@ mod tests {
             .unwrap();
             assert!(fragment.validate().is_err(), "{prefix:?}");
         }
+    }
+
+    #[test]
+    fn a_forward_chain_compiles_with_the_forward_hook() {
+        let fragment: Fragment = serde_json::from_value(json!({ "chains": [{
+            "name": "net_vpn_fwd", "priority": 0, "hook": "forward",
+            "rules": [{ "verdict": "drop" }],
+        }] }))
+        .unwrap();
+        assert_eq!(fragment.compile()[1]["add"]["chain"]["hook"], "forward");
     }
 
     #[test]

@@ -88,6 +88,9 @@ pub struct Config {
     pub block: Vec<String>,
     /// Groups to allow again.
     pub unblock: Vec<String>,
+    /// Block a group even though a mounted or fstab file system, or a
+    /// Bluetooth input device, uses it.
+    pub confirm_in_use: bool,
 }
 
 struct Modules;
@@ -121,6 +124,52 @@ impl Plugin for Modules {
     }
 }
 
+/// File system types served by the modules of a group.
+fn group_fs_types(id: &str) -> &'static [&'static str] {
+    match id {
+        "network-filesystems" => &["nfs", "nfs4", "cifs", "smb3", "smbfs", "gfs2"],
+        "rare-filesystems" => &["cramfs", "vxfs", "jffs2", "hfs", "hfsplus", "udf"],
+        _ => &[],
+    }
+}
+
+/// What still depends on a group: a file system in `/etc/fstab` (mounted
+/// at boot) or mounted now, or a Bluetooth keyboard or mouse. Blocking it
+/// would break the next boot (an fstab entry without `nofail` drops to
+/// the emergency shell) or lock the person out of their input device.
+fn in_use(sandbox: &Sandbox, id: &str) -> Option<String> {
+    let types = group_fs_types(id);
+    if !types.is_empty() {
+        let fstab = sandbox.read("/etc/fstab").unwrap_or_default();
+        let fstab_types = fstab
+            .lines()
+            .filter(|l| !l.trim_start().starts_with('#'))
+            .filter_map(|l| {
+                let f: Vec<&str> = l.split_whitespace().collect();
+                // A `noauto` entry is not mounted at boot.
+                (f.len() >= 4 && !f[3].split(',').any(|o| o == "noauto")).then(|| f[2])
+            });
+        let mounts = sandbox.read("/proc/mounts").unwrap_or_default();
+        let mounted = mounts.lines().filter_map(|l| l.split_whitespace().nth(2));
+        if let Some(found) = fstab_types.chain(mounted).find(|t| types.contains(t)) {
+            return Some(format!(
+                "a `{found}` file system is mounted or in /etc/fstab"
+            ));
+        }
+    }
+    if id == "bluetooth"
+        && sandbox
+            .read("/proc/bus/input/devices")
+            .unwrap_or_default()
+            .lines()
+            // BUS_BLUETOOTH is 0x0005.
+            .any(|l| l.starts_with("I:") && l.contains("Bus=0005"))
+    {
+        return Some("a Bluetooth input device is connected".to_string());
+    }
+    None
+}
+
 /// The groups this plugin's own drop-in already blocks.
 pub fn blocked_groups(sandbox: &Sandbox) -> BTreeSet<String> {
     sandbox
@@ -149,6 +198,16 @@ pub fn plan(sandbox: &Sandbox, config: &Config) -> Result<Vec<Op>, PluginError> 
             "block",
             "name the groups to block or unblock",
         ));
+    }
+    if !config.confirm_in_use {
+        for id in &config.block {
+            if let Some(why) = in_use(sandbox, id) {
+                return Err(PluginError::invalid(
+                    "block",
+                    format!("`{id}` is in use: {why}; set confirm_in_use=true to block it anyway"),
+                ));
+            }
+        }
     }
     let mut now = blocked_groups(sandbox);
     for id in &config.block {

@@ -96,15 +96,32 @@ pub fn read_state(reader: &dyn Reader) -> State {
     state
 }
 
-/// Ports with a socket bound on every address (so reachable from other
-/// computers if the firewall lets them in): TCP in LISTEN, UDP bound.
+const WILDCARD4: &str = "00000000";
+const WILDCARD6: &str = "00000000000000000000000000000000";
+
+/// Loopback as /proc/net prints it (host-order words): 127.x.x.x, ::1 and
+/// its IPv4-mapped form.
+fn is_loopback(address: &str) -> bool {
+    match address.len() {
+        8 => address.ends_with("7F"),
+        32 => {
+            address == "00000000000000000000000001000000"
+                || (address.starts_with("0000000000000000FFFF0000") && address.ends_with("7F"))
+        }
+        _ => false,
+    }
+}
+
+/// Ports reachable from other computers if the firewall lets them in: TCP
+/// in LISTEN on any non-loopback address (an sshd with a fixed
+/// `ListenAddress` counts), UDP bound on every address.
 pub fn listening_ports(tcp: &str, tcp6: &str, udp: &str, udp6: &str) -> Vec<PortRule> {
     let mut ports = Vec::new();
     for (text, proto, state, wildcard) in [
-        (tcp, Proto::Tcp, "0A", "00000000"),
-        (tcp6, Proto::Tcp, "0A", "00000000000000000000000000000000"),
-        (udp, Proto::Udp, "07", "00000000"),
-        (udp6, Proto::Udp, "07", "00000000000000000000000000000000"),
+        (tcp, Proto::Tcp, "0A", WILDCARD4),
+        (tcp6, Proto::Tcp, "0A", WILDCARD6),
+        (udp, Proto::Udp, "07", WILDCARD4),
+        (udp6, Proto::Udp, "07", WILDCARD6),
     ] {
         for line in text.lines().skip(1) {
             let fields: Vec<&str> = line.split_whitespace().collect();
@@ -114,7 +131,11 @@ pub fn listening_ports(tcp: &str, tcp6: &str, udp: &str, udp6: &str) -> Vec<Port
             let Some((address, port)) = local.split_once(':') else {
                 continue;
             };
-            if address != wildcard || *st != state {
+            let exposed = match proto {
+                Proto::Tcp => !is_loopback(address),
+                Proto::Udp => address == wildcard,
+            };
+            if !exposed || *st != state {
                 continue;
             }
             if let Ok(port) = u16::from_str_radix(port, 16)
@@ -129,10 +150,94 @@ pub fn listening_ports(tcp: &str, tcp6: &str, udp: &str, udp6: &str) -> Vec<Port
     ports
 }
 
+/// The TCP ports sshd is configured for (22 when the file names none), or
+/// nothing when sshd is not installed. Only the main file is read: the
+/// reader cannot list `sshd_config.d`, so a drop-in `Port` is caught by
+/// the listening-socket scan instead.
+pub fn sshd_ports(reader: &dyn Reader) -> Vec<u16> {
+    if !(reader.exists("/usr/sbin/sshd") || reader.exists("/usr/bin/sshd")) {
+        return vec![];
+    }
+    let mut ports = Vec::new();
+    for line in reader
+        .read("/etc/ssh/sshd_config")
+        .unwrap_or_default()
+        .lines()
+    {
+        let mut words = line.split_whitespace();
+        match words.next().map(str::to_ascii_lowercase).as_deref() {
+            // Everything after the first Match applies to some conditions only.
+            Some("match") => break,
+            Some("port") => {
+                if let Some(port) = words.next().and_then(|p| p.parse::<u16>().ok())
+                    && port != 0
+                {
+                    ports.push(port);
+                }
+            }
+            _ => {}
+        }
+    }
+    if ports.is_empty() {
+        ports.push(22);
+    }
+    ports.sort_unstable();
+    ports.dedup();
+    ports
+}
+
+/// The sshd ports with a socket listening now: cutting these cuts a live
+/// way in.
+pub fn live_sshd_ports(reader: &dyn Reader, listening: &[PortRule]) -> Vec<u16> {
+    sshd_ports(reader)
+        .into_iter()
+        .filter(|port| {
+            listening.contains(&PortRule {
+                port: *port,
+                proto: Proto::Tcp,
+            })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn a_fixed_listen_address_is_still_exposed_and_loopback_is_not() {
+        let header = "  sl  local_address rem_address   st tx_queue\n";
+        // 192.168.1.5:2222, 127.0.0.53:53, ::1 and ::ffff:127.0.0.1 ports.
+        let tcp = format!(
+            "{header}   0: 0501A8C0:08AE 00000000:0000 0A 0\n   1: 3500007F:0035 00000000:0000 0A 0\n"
+        );
+        let tcp6 = format!(
+            "{header}   0: 00000000000000000000000001000000:1F90 00000000000000000000000000000000:0000 0A 0\n   1: 0000000000000000FFFF00000100007F:0050 00000000000000000000000000000000:0000 0A 0\n   2: 000080FE00000000000000000000000A:0016 00000000000000000000000000000000:0000 0A 0\n"
+        );
+        let ports = listening_ports(&tcp, &tcp6, "", "");
+        let numbers: Vec<u16> = ports.iter().map(|p| p.port).collect();
+        assert_eq!(numbers, [22, 2222]);
+    }
+
+    #[test]
+    fn sshd_ports_come_from_the_config_and_default_to_22() {
+        let t = |config: &'static str| {
+            tree(&[("/usr/sbin/sshd", ""), ("/etc/ssh/sshd_config", config)])
+        };
+        assert_eq!(sshd_ports(&t("#Port 22\n")), [22]);
+        assert_eq!(
+            sshd_ports(&t("port 2222\nPort 22\nMatch User x\nPort 9\n")),
+            [22, 2222]
+        );
+        assert!(sshd_ports(&tree(&[("/etc/ssh/sshd_config", "Port 2222\n")])).is_empty());
+        let listening = [PortRule {
+            port: 2222,
+            proto: Proto::Tcp,
+        }];
+        assert_eq!(live_sshd_ports(&t("Port 2222\n"), &listening), [2222]);
+        assert!(live_sshd_ports(&t("Port 22\n"), &listening).is_empty());
+    }
 
     struct Tree(BTreeMap<&'static str, &'static str>);
 

@@ -87,6 +87,9 @@ struct Config {
     /// `home`, `work`, `public` or `travel`: the zone firewalld applies to
     /// networks without one (firewalld only).
     profile: Option<String>,
+    /// Allow a plan that cuts the live sshd port (removing it, or the
+    /// `travel` profile): the person says they know they may lose SSH.
+    confirm_ssh_cut: bool,
 }
 
 impl Default for Config {
@@ -102,6 +105,7 @@ impl Default for Config {
             allow_listening: true,
             mdns: false,
             profile: None,
+            confirm_ssh_cut: false,
         }
     }
 }
@@ -172,6 +176,70 @@ impl Plugin for Firewall {
     async fn verify(&self, _transaction: &str, ops: &[Op]) -> bool {
         verify(&Sandbox::system(), ops)
     }
+}
+
+/// Refuses what would cut the sshd that is listening now: removing its
+/// port (or the `ssh` service when it is on 22) and, with firewalld, the
+/// drop-everything `travel` profile. `confirm_ssh_cut` is the explicit
+/// override.
+fn guard_ssh(
+    backend: Backend,
+    reader: &Files<'_>,
+    config: &Config,
+    removals: &[PortRule],
+) -> Result<(), PluginError> {
+    if config.confirm_ssh_cut {
+        return Ok(());
+    }
+    let listening = detect::read_state(reader).listening;
+    let live = detect::live_sshd_ports(reader, &listening);
+    if live.is_empty() {
+        return Ok(());
+    }
+    let refuse = |field: &str, what: String| {
+        Err(PluginError::invalid(
+            field,
+            format!(
+                "{what} would cut SSH (sshd is listening on {live:?}); set confirm_ssh_cut=true if you mean it"
+            ),
+        ))
+    };
+    for rule in removals {
+        if rule.proto == Proto::Tcp && live.contains(&rule.port) {
+            return refuse("remove", format!("removing {}/tcp", rule.port));
+        }
+    }
+    if live.contains(&22)
+        && config
+            .remove_service
+            .iter()
+            .any(|name| matches!(name.as_str(), "ssh" | "sshd"))
+    {
+        return refuse("remove_service", "removing the ssh service".to_string());
+    }
+    if backend == Backend::Firewalld
+        && config.profile.as_deref().and_then(Profile::parse) == Some(Profile::Travel)
+    {
+        return refuse(
+            "profile",
+            "the travel profile (drops everything)".to_string(),
+        );
+    }
+    Ok(())
+}
+
+/// The sshd ports to keep open when a firewall comes on: the configured
+/// ones, even before the daemon listens.
+fn keep_ports(reader: &Files<'_>, listening: Vec<PortRule>) -> Vec<PortRule> {
+    listening
+        .into_iter()
+        .chain(detect::sshd_ports(reader).into_iter().map(|port| PortRule {
+            port,
+            proto: Proto::Tcp,
+        }))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 /// `8080/tcp`, `53/udp` or `8080` (tcp).
@@ -245,6 +313,12 @@ fn plan_manager(
     reader: &Files<'_>,
     config: &Config,
 ) -> Result<Vec<Op>, PluginError> {
+    let removals = config
+        .remove
+        .iter()
+        .map(|text| parse_port(text))
+        .collect::<Result<Vec<_>, _>>()?;
+    guard_ssh(backend, reader, config, &removals)?;
     let mut ops = Vec::new();
     if let Some(name) = &config.profile {
         let profile = Profile::parse(name).ok_or_else(|| {
@@ -297,8 +371,7 @@ fn plan_manager(
             },
         )?);
     }
-    for text in &config.remove {
-        let PortRule { port, proto } = parse_port(text)?;
+    for PortRule { port, proto } in removals {
         ops.push(adapter_op(
             backend,
             &FirewallAction::RemovePort {
@@ -345,17 +418,18 @@ fn plan_turn_on(
     reader: &Files<'_>,
     config: &Config,
 ) -> Result<Vec<Op>, PluginError> {
-    let listening: Vec<PortRule> = if config.allow_listening {
-        detect::read_state(reader)
-            .listening
-            .into_iter()
-            .filter(|p| p.proto == Proto::Tcp)
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect()
-    } else {
-        vec![]
-    };
+    let listening: Vec<PortRule> = keep_ports(
+        reader,
+        if config.allow_listening {
+            detect::read_state(reader)
+                .listening
+                .into_iter()
+                .filter(|p| p.proto == Proto::Tcp)
+                .collect()
+        } else {
+            vec![]
+        },
+    );
     let keep = |ops: &mut Vec<Op>| -> Result<(), PluginError> {
         for PortRule { port, proto } in &listening {
             ops.push(adapter_op(
@@ -388,8 +462,16 @@ fn plan_turn_on(
         Backend::Nftables => unreachable!("only a manager is turned on"),
     }
     // Anything else asked in the same plan, now that the manager runs.
-    if let Ok(more) = plan_manager(backend, reader, config) {
-        ops.extend(more);
+    // A bad request must fail the plan, not be dropped after the manager
+    // is already on the way up. With nothing else asked there is nothing
+    // to plan (plan_manager would call that an error).
+    let asked_more = !(config.allow.is_empty()
+        && config.remove.is_empty()
+        && config.allow_service.is_empty()
+        && config.remove_service.is_empty()
+        && config.profile.is_none());
+    if asked_more {
+        ops.extend(plan_manager(backend, reader, config)?);
     }
     Ok(ops)
 }
@@ -465,13 +547,24 @@ fn plan_basic(
         // Do not cut the session the user is in: services listening now
         // stay reachable until they say otherwise.
         let state = detect::read_state(reader);
-        ports.extend(state.listening.iter().filter(|p| p.proto == Proto::Tcp));
+        let tcp: Vec<PortRule> = state
+            .listening
+            .into_iter()
+            .filter(|p| p.proto == Proto::Tcp)
+            .collect();
+        ports.extend(keep_ports(reader, tcp));
     }
     for text in &config.allow {
         ports.insert(parse_port(text)?);
     }
-    for text in &config.remove {
-        ports.remove(&parse_port(text)?);
+    let removals = config
+        .remove
+        .iter()
+        .map(|text| parse_port(text))
+        .collect::<Result<Vec<_>, _>>()?;
+    guard_ssh(Backend::Nftables, reader, &config, &removals)?;
+    for rule in removals {
+        ports.remove(&rule);
     }
     settings.ports = ports.into_iter().collect();
     if config.mdns || first_time {
@@ -753,6 +846,86 @@ mod tests {
         // SSH (22, on every address) first; the loopback-only port is not
         // opened; then ufw is turned on.
         assert_eq!(shape(&ops), ["ufw allow_port 22", "ufw enable null"]);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn turning_on_keeps_an_sshd_with_a_fixed_listen_address_and_its_port() {
+        // sshd on 2222 bound to one address, plus the configured port while
+        // the daemon is not listening.
+        let tcp = format!("{HEADER}   0: 0501A8C0:08AE 00000000:0000 0A 0\n");
+        let (root, sandbox) = tree(&[
+            ("/usr/sbin/ufw", ""),
+            ("/etc/ufw/ufw.conf", "ENABLED=no\n"),
+            ("/usr/sbin/sshd", ""),
+            ("/etc/ssh/sshd_config", "Port 2200\n"),
+            ("/proc/net/tcp", &tcp),
+        ]);
+        let ops = plan(
+            &sandbox,
+            config(serde_json::json!({"enable_manager": true, "allow_listening": false})),
+        )
+        .unwrap();
+        assert_eq!(shape(&ops), ["ufw allow_port 2200", "ufw enable null"]);
+        let ops = plan(
+            &sandbox,
+            config(serde_json::json!({"enable_manager": true})),
+        )
+        .unwrap();
+        assert_eq!(
+            shape(&ops),
+            [
+                "ufw allow_port 2200",
+                "ufw allow_port 2222",
+                "ufw enable null"
+            ]
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_bad_extra_request_fails_the_turn_on_plan() {
+        let (root, sandbox) = tree(&[("/usr/sbin/ufw", ""), ("/etc/ufw/ufw.conf", "ENABLED=no\n")]);
+        let error = plan(
+            &sandbox,
+            config(serde_json::json!({"enable_manager": true, "allow": 99999})),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("99999"), "{error}");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn cutting_the_live_sshd_needs_an_explicit_yes() {
+        let tcp = format!("{HEADER}   0: 00000000:0016 00000000:0000 0A 0\n");
+        let (root, sandbox) = tree(&[
+            FIREWALLD,
+            ("/usr/bin/firewall-cmd", ""),
+            ("/usr/lib/firewalld/zones/drop.xml", "<zone/>"),
+            ("/usr/sbin/sshd", ""),
+            ("/proc/net/tcp", &tcp),
+        ]);
+        for cut in [
+            serde_json::json!({"remove": "22/tcp"}),
+            serde_json::json!({"remove_service": "ssh"}),
+            serde_json::json!({"profile": "travel"}),
+        ] {
+            let error = plan(&sandbox, config(cut.clone())).unwrap_err();
+            assert!(
+                error.to_string().contains("confirm_ssh_cut"),
+                "{cut}: {error}"
+            );
+            let mut confirmed = cut;
+            confirmed["confirm_ssh_cut"] = true.into();
+            assert!(plan(&sandbox, config(confirmed)).is_ok());
+        }
+        // Another port is not SSH.
+        assert!(plan(&sandbox, config(serde_json::json!({"remove": "8080"}))).is_ok());
+        std::fs::remove_dir_all(root).unwrap();
+
+        // Without a listening sshd nothing is cut.
+        let (root, sandbox) = tree(&[FIREWALLD]);
+        assert!(plan(&sandbox, config(serde_json::json!({"remove": "22"}))).is_ok());
         std::fs::remove_dir_all(root).unwrap();
     }
 

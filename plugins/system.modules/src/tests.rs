@@ -25,6 +25,7 @@ fn config(block: &[&str], unblock: &[&str]) -> Config {
     Config {
         block: block.iter().map(|s| s.to_string()).collect(),
         unblock: unblock.iter().map(|s| s.to_string()).collect(),
+        ..Config::default()
     }
 }
 
@@ -100,5 +101,46 @@ fn only_known_groups_are_accepted_and_no_module_name_comes_from_the_caller() {
             );
         }
     }
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_group_that_a_mount_or_an_input_device_needs_is_refused_unless_confirmed() {
+    let (root, sandbox) = tree(&[
+        (
+            "/etc/fstab",
+            "# nas:/x /mnt nfs defaults 0 0\nnas:/home /home nfs4 defaults 0 0\nUUID=1 / ext4 defaults 0 1\n",
+        ),
+        (
+            "/proc/bus/input/devices",
+            "I: Bus=0005 Vendor=0001 Product=0002 Version=0003\n",
+        ),
+    ]);
+    for group in ["network-filesystems", "bluetooth"] {
+        let error = plan(&sandbox, &config(&[group], &[])).unwrap_err();
+        assert!(error.to_string().contains("confirm_in_use"), "{error}");
+        let mut confirmed = config(&[group], &[]);
+        confirmed.confirm_in_use = true;
+        assert!(plan(&sandbox, &confirmed).is_ok());
+    }
+    // Unrelated groups are not held back.
+    assert!(
+        plan(
+            &sandbox,
+            &config(&["net-protocols", "rare-filesystems"], &[])
+        )
+        .is_ok()
+    );
+    std::fs::remove_dir_all(root).unwrap();
+
+    // noauto entries and a plain system do not count.
+    let (root, sandbox) = tree(&[("/etc/fstab", "nas:/x /mnt nfs noauto,user 0 0\n")]);
+    assert!(
+        plan(
+            &sandbox,
+            &config(&["network-filesystems", "bluetooth"], &[])
+        )
+        .is_ok()
+    );
     std::fs::remove_dir_all(root).unwrap();
 }

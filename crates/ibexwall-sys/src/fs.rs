@@ -40,6 +40,17 @@ pub trait Fs: Send + Sync {
     ) -> io::Result<()>;
     fn remove(&self, path: &Path) -> io::Result<()>;
     fn create_dir_all(&self, path: &Path) -> io::Result<()>;
+    /// The target when `path` itself is a symlink (not followed), else
+    /// `None`. A snapshot needs it: `read` follows links, so a rollback
+    /// that only restored the content would turn the link into a file.
+    fn read_link(&self, _path: &Path) -> io::Result<Option<PathBuf>> {
+        Ok(None)
+    }
+    /// Puts a symlink at `path` (atomically replacing what is there),
+    /// refusing symlinked parents like `write_atomic`.
+    fn restore_symlink(&self, _path: &Path, _target: &Path) -> io::Result<()> {
+        Err(io::Error::other("symlinks are not supported here"))
+    }
 }
 
 /// Opens `dir` component by component from `/`, each step relative to
@@ -237,15 +248,80 @@ impl Fs for RealFs {
     }
 
     fn remove(&self, path: &Path) -> io::Result<()> {
-        match std::fs::remove_file(self.translate(checked(path)?)) {
+        // Through a parent opened without following links, so a symlinked
+        // directory cannot redirect the removal (SEC-04).
+        let path = self.translate(checked(path)?);
+        let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else {
+            return Err(io::Error::other("remove: no parent or file name"));
+        };
+        let dir_fd = match open_dir_no_symlinks(parent) {
+            Ok(fd) => fd,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(e),
+        };
+        match rfs::unlinkat(&dir_fd, name, rfs::AtFlags::empty()) {
             Ok(()) => Ok(()),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(e),
+            Err(e) if e == rustix::io::Errno::NOENT => Ok(()),
+            Err(e) => Err(e.into()),
         }
     }
 
     fn create_dir_all(&self, path: &Path) -> io::Result<()> {
-        std::fs::create_dir_all(self.translate(checked(path)?))
+        // Component by component, never following a link: a symlink in
+        // the chain is an error, as it is for `write_atomic`.
+        let path = self.translate(checked(path)?);
+        let flags = OFlags::DIRECTORY | OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+        let mut current = rfs::open("/", flags, Mode::empty())?;
+        for component in path.components() {
+            let Component::Normal(name) = component else {
+                continue;
+            };
+            current = match rfs::openat(&current, name, flags, Mode::empty()) {
+                Ok(fd) => fd,
+                Err(e) if e == rustix::io::Errno::NOENT => {
+                    match rfs::mkdirat(&current, name, Mode::from_bits_truncate(0o755)) {
+                        Ok(()) => {}
+                        // Created by someone else meanwhile.
+                        Err(e) if e == rustix::io::Errno::EXIST => {}
+                        Err(e) => return Err(e.into()),
+                    }
+                    rfs::openat(&current, name, flags, Mode::empty())?
+                }
+                Err(e) => return Err(e.into()),
+            };
+        }
+        Ok(())
+    }
+
+    fn read_link(&self, path: &Path) -> io::Result<Option<PathBuf>> {
+        let path = self.translate(checked(path)?);
+        match std::fs::symlink_metadata(&path) {
+            Ok(meta) if meta.file_type().is_symlink() => std::fs::read_link(&path).map(Some),
+            Ok(_) => Ok(None),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn restore_symlink(&self, path: &Path, target: &Path) -> io::Result<()> {
+        let path = self.translate(checked(path)?);
+        let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else {
+            return Err(io::Error::other("restore_symlink: no parent or file name"));
+        };
+        let dir_fd = open_dir_no_symlinks(parent)?;
+        let tmp_name = format!(
+            ".{}.ibexwall.tmp.{}",
+            name.to_string_lossy(),
+            std::process::id()
+        );
+        let _ = rfs::unlinkat(&dir_fd, &tmp_name, rfs::AtFlags::empty());
+        rfs::symlinkat(target, &dir_fd, &tmp_name)?;
+        if let Err(e) = rfs::renameat(&dir_fd, &tmp_name, &dir_fd, name) {
+            let _ = rfs::unlinkat(&dir_fd, &tmp_name, rfs::AtFlags::empty());
+            return Err(e.into());
+        }
+        rfs::fsync(dir_fd.as_fd())?;
+        Ok(())
     }
 }
 
@@ -396,6 +472,8 @@ impl Fs for FakeFs {
             }
         }
         self.log.push(format!("write {}", path.display()));
+        // The rename replaces a link at the final component, as on disk.
+        self.links.lock().expect("lock poisoned").remove(&path);
         let mut files = self.files.lock().expect("lock poisoned");
         let mut meta = files.get(&path).map(|f| f.meta).unwrap_or(FileMeta {
             mode: 0o644,
@@ -426,6 +504,26 @@ impl Fs for FakeFs {
     }
 
     fn create_dir_all(&self, _path: &Path) -> io::Result<()> {
+        Ok(())
+    }
+
+    fn read_link(&self, path: &Path) -> io::Result<Option<PathBuf>> {
+        Ok(self
+            .links
+            .lock()
+            .expect("lock poisoned")
+            .get(&normalize(path))
+            .cloned())
+    }
+
+    fn restore_symlink(&self, path: &Path, target: &Path) -> io::Result<()> {
+        let path = normalize(path);
+        self.log.push(format!("symlink {}", path.display()));
+        self.files.lock().expect("lock poisoned").remove(&path);
+        self.links
+            .lock()
+            .expect("lock poisoned")
+            .insert(path, normalize(target));
         Ok(())
     }
 }
@@ -489,6 +587,56 @@ mod tests {
         let err = RealFs::new().write_atomic(&link.join("evil.conf"), b"x\n", 0o644, None);
         assert!(err.is_err(), "writing through a symlinked parent must fail");
         assert!(!real.join("evil.conf").exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn real_fs_remove_and_mkdir_do_not_follow_symlinked_parents() {
+        let dir = tempdir();
+        let real = dir.join("real");
+        std::fs::create_dir_all(&real).unwrap();
+        std::fs::write(real.join("keep.conf"), b"x").unwrap();
+        let link = dir.join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let fs = RealFs::new();
+
+        assert!(fs.remove(&link.join("keep.conf")).is_err());
+        assert!(real.join("keep.conf").exists());
+        assert!(fs.create_dir_all(&link.join("sub/deeper")).is_err());
+        assert!(!real.join("sub").exists());
+
+        // The normal cases still work, and removing a missing file is fine.
+        fs.create_dir_all(&dir.join("a/b/c")).unwrap();
+        assert!(dir.join("a/b/c").is_dir());
+        fs.create_dir_all(&dir.join("a/b/c")).unwrap();
+        fs.remove(&real.join("keep.conf")).unwrap();
+        assert!(!real.join("keep.conf").exists());
+        fs.remove(&real.join("keep.conf")).unwrap();
+        fs.remove(&dir.join("nowhere/at/all")).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn real_fs_reads_and_restores_a_symlink_itself() {
+        let dir = tempdir();
+        let fs = RealFs::new();
+        let link = dir.join("resolv.conf");
+        assert_eq!(fs.read_link(&link).unwrap(), None);
+        std::os::unix::fs::symlink("../run/stub.conf", &link).unwrap();
+        assert_eq!(
+            fs.read_link(&link).unwrap(),
+            Some(PathBuf::from("../run/stub.conf"))
+        );
+        // A write replaces the link; restoring puts it back as a link.
+        fs.write_atomic(&link, b"nameserver 1.1.1.1\n", 0o644, None)
+            .unwrap();
+        assert_eq!(fs.read_link(&link).unwrap(), None);
+        fs.restore_symlink(&link, Path::new("../run/stub.conf"))
+            .unwrap();
+        assert_eq!(
+            fs.read_link(&link).unwrap(),
+            Some(PathBuf::from("../run/stub.conf"))
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

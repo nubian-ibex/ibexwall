@@ -88,10 +88,20 @@ pub fn ufw_rules(user_rules: &str) -> (Vec<PortRule>, Vec<String>) {
             continue;
         };
         let fields: Vec<&str> = tuple.split_whitespace().collect();
-        // action proto dport dst sport src direction [comment...]
-        let [action, proto, dport, dst, sport, src, direction, ..] = fields.as_slice() else {
+        // action proto dport dst sport src direction [comment...]; a rule
+        // made from an application profile (`ufw allow OpenSSH`) carries
+        // the profile names first: `... src OpenSSH - in`.
+        let [action, proto, dport, dst, sport, src, rest @ ..] = fields.as_slice() else {
             other.push(tuple.trim().to_string());
             continue;
+        };
+        let direction = match rest {
+            [direction, ..] if *direction == "in" => direction,
+            [_dapp, "-", direction, ..] => direction,
+            _ => {
+                other.push(tuple.trim().to_string());
+                continue;
+            }
         };
         let open_to_all = |net: &&str| matches!(*net, "0.0.0.0/0" | "::/0");
         let plain = *action == "allow"
@@ -99,8 +109,10 @@ pub fn ufw_rules(user_rules: &str) -> (Vec<PortRule>, Vec<String>) {
             && *sport == "any"
             && open_to_all(dst)
             && open_to_all(src);
-        match (plain, dport.parse::<u16>()) {
-            (true, Ok(port)) if port != 0 => {
+        // `80,443` is one rule for two ports.
+        let numbers: Result<Vec<u16>, _> = dport.split(',').map(str::parse::<u16>).collect();
+        match (plain, numbers) {
+            (true, Ok(list)) if !list.is_empty() && !list.contains(&0) => {
                 let protos: &[Proto] = match *proto {
                     "tcp" => &[Proto::Tcp],
                     "udp" => &[Proto::Udp],
@@ -110,11 +122,13 @@ pub fn ufw_rules(user_rules: &str) -> (Vec<PortRule>, Vec<String>) {
                 if protos.is_empty() {
                     other.push(tuple.trim().to_string());
                 }
-                for proto in protos {
-                    ports.push(PortRule {
-                        port,
-                        proto: *proto,
-                    });
+                for port in list {
+                    for proto in protos {
+                        ports.push(PortRule {
+                            port,
+                            proto: *proto,
+                        });
+                    }
                 }
             }
             _ => other.push(tuple.trim().to_string()),
@@ -262,6 +276,22 @@ mod tests {
         assert!(other.iter().any(|line| line.contains("192.168.1.0/24")));
         assert!(other.iter().any(|line| line.starts_with("deny tcp 23")));
         assert!(other.iter().any(|line| line.contains("6000:6007")));
+    }
+
+    #[test]
+    fn application_profile_and_multiport_tuples_are_plain_ports() {
+        let rules = "\
+### tuple ### allow tcp 22 0.0.0.0/0 any 0.0.0.0/0 OpenSSH - in
+### tuple ### allow tcp 80,443 0.0.0.0/0 any 0.0.0.0/0 in
+### tuple ### allow tcp 22 0.0.0.0/0 any 0.0.0.0/0 OpenSSH - in_eth0
+### tuple ### allow tcp 9 0.0.0.0/0 any 0.0.0.0/0 in comment=737368
+";
+        let (ports, other) = ufw_rules(rules);
+        let numbers: Vec<u16> = ports.iter().map(|p| p.port).collect();
+        assert_eq!(numbers, [9, 22, 80, 443]);
+        // Only the interface-bound rule is left unread.
+        assert_eq!(other.len(), 1, "{other:?}");
+        assert!(other[0].contains("in_eth0"));
     }
 
     #[test]

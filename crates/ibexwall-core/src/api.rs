@@ -258,7 +258,7 @@ async fn dispatch(
     match method {
         "GetInfo" => Ok(Reply::result(info(core))),
         "GetPosture" => Ok(Reply::result(posture(core))),
-        "GetDnsStatus" => Ok(Reply::result(dns_status(core))),
+        "GetDnsStatus" => Ok(Reply::result(dns_status(core).await)),
         "GetFirewall" => Ok(Reply::result(
             json!({ "firewall": crate::firewall::state(core).await }),
         )),
@@ -463,10 +463,11 @@ async fn dispatch(
                 ibexwall_proto::UnitAction::Disable
             };
             // enable --now / disable --now: on at once and after a reboot.
-            core.engine
-                .sys
-                .systemd
-                .apply(names::UNIT_MONITOR, action, true)
+            // systemctl blocks: keep it off the async threads.
+            let systemd = Arc::clone(&core.engine.sys.systemd);
+            tokio::task::spawn_blocking(move || systemd.apply(names::UNIT_MONITOR, action, true))
+                .await
+                .map_err(internal)?
                 .map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?;
             let choice = names::path_under(&core.root, names::MONITOR_CHOICE);
             if let Some(dir) = choice.parent() {
@@ -521,7 +522,7 @@ async fn dispatch(
         }
         "GetConfig" => {
             let plugin = str_field(&parameters, "plugin")?;
-            core.reload_config();
+            reload_config_blocking(core).await;
             let manifest = core
                 .manifest(&plugin)
                 .map_err(|_| not_found("plugin", &plugin))?;
@@ -788,9 +789,9 @@ async fn dispatch_policy(
             }
             std::fs::create_dir_all(&config_dir)
                 .map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?;
-            std::fs::write(
+            crate::config::write_atomic(
                 &org_path,
-                toml::to_string_pretty(&org)
+                &toml::to_string_pretty(&org)
                     .map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?,
             )
             .map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?;
@@ -802,7 +803,7 @@ async fn dispatch_policy(
                     )
                 })
                 .map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?;
-            core.reload_config();
+            reload_config_blocking(core).await;
             core.audit(actor, "core", None, "", "policy-applied");
             let locks: Vec<String> = bundle.locks.clone();
             Ok(Reply::result(json!({
@@ -925,8 +926,14 @@ async fn dispatch_policy(
             let config_dir =
                 ibexwall_proto::names::path_under(&core.root, ibexwall_proto::names::CONFIG_DIR);
             let org_path = config_dir.join("org.toml");
-            let doc_text = std::fs::read_to_string(&org_path).unwrap_or_default();
-            let mut doc: toml::Table = doc_text.parse().unwrap_or_default();
+            // An unreadable or unparsable org.toml is an error: treating it
+            // as empty would write back an empty file and wipe every lock.
+            let doc_text = match std::fs::read_to_string(&org_path) {
+                Ok(text) => text,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+                Err(e) => return Err(internal(e)),
+            };
+            let mut doc: toml::Table = doc_text.parse().map_err(internal)?;
             if let Some(toml::Value::Array(old_locks)) = doc.get("lock") {
                 let new_locks: Vec<toml::Value> = old_locks
                     .iter()
@@ -939,9 +946,12 @@ async fn dispatch_policy(
                     .collect();
                 doc.insert("lock".into(), toml::Value::Array(new_locks));
             }
-            std::fs::write(&org_path, toml::to_string_pretty(&doc).map_err(internal)?)
-                .map_err(internal)?;
-            core.reload_config();
+            crate::config::write_atomic(
+                &org_path,
+                &toml::to_string_pretty(&doc).map_err(internal)?,
+            )
+            .map_err(internal)?;
+            reload_config_blocking(core).await;
             core.audit(actor, "core", None, "", "break-glass");
             Ok(Reply::result(json!({
                 "unlocked": unlocked,
@@ -1122,6 +1132,12 @@ async fn run_checks(
 }
 
 /// Plans a change and stores the plan; returns it with its operations.
+/// `reload_config` reads files; off the async threads.
+async fn reload_config_blocking(core: &Arc<Core>) {
+    let core = Arc::clone(core);
+    let _ = tokio::task::spawn_blocking(move || core.reload_config()).await;
+}
+
 async fn build_plan(
     core: &Arc<Core>,
     plugin: String,
@@ -1131,7 +1147,7 @@ async fn build_plan(
     authorize_plugin_change(core, &plugin)?;
     // A config change on disk takes effect immediately, not after a
     // restart, so locks and the plan fingerprint reflect the real state.
-    core.reload_config();
+    reload_config_blocking(core).await;
 
     // The organization layer can lock a setting; a plan that touches a
     // locked key is refused whoever asks for it.
@@ -1267,7 +1283,7 @@ async fn apply(core: &Arc<Core>, parameters: &Value, actor: &str) -> Result<Repl
 
     // Expiry and staleness (spec §4.5). The config is re-read so a
     // change since the plan was made actually fires PlanStale.
-    core.reload_config();
+    reload_config_blocking(core).await;
     if core
         .config
         .read()

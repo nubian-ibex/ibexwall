@@ -56,15 +56,13 @@ pub async fn state(core: &Core) -> FirewallState {
     if state.backend == Some(Backend::Nftables) {
         // Our own chain is the firewall: it is on when the chain exists,
         // and its allowed ports are the ones the plugin remembers.
-        state.active = Some(
-            core.engine
-                .sys
-                .nft
-                .capture(names::FIREWALL_NFT_CHAIN)
-                .ok()
-                .flatten()
-                .is_some(),
-        );
+        let nft = std::sync::Arc::clone(&core.engine.sys.nft);
+        let captured = tokio::task::spawn_blocking(move || nft.capture(names::FIREWALL_NFT_CHAIN))
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .flatten();
+        state.active = Some(captured.is_some());
         if let Some(saved) = reader.read(names::ARTIFACT_FIREWALL_SETTINGS)
             && let Ok(saved) = serde_json::from_str::<serde_json::Value>(&saved)
             && let Ok(ports) = serde_json::from_value::<Vec<PortRule>>(saved["ports"].clone())

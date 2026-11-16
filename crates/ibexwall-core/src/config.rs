@@ -164,6 +164,25 @@ impl Layers {
     }
 }
 
+/// Replaces `path` without ever exposing a half-written file: the data goes
+/// to a sibling temp file, is synced, then renamed over the target. A crash
+/// leaves the old file or the new one, never a truncated `org.toml`.
+pub fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let tmp = path.with_extension("toml.tmp");
+    let mut file = std::fs::File::create(&tmp)?;
+    file.write_all(contents.as_bytes())?;
+    file.sync_all()?;
+    drop(file);
+    std::fs::rename(&tmp, path).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })?;
+    if let Some(dir) = path.parent() {
+        std::fs::File::open(dir)?.sync_all()?;
+    }
+    Ok(())
+}
+
 fn load_layer(path: &Path) -> Result<LayerFile> {
     match std::fs::read_to_string(path) {
         Ok(text) => toml::from_str(&text).with_context(|| format!("parsing {}", path.display())),
@@ -189,6 +208,18 @@ mod tests {
         )
         .unwrap();
         Layers::load(&root).unwrap()
+    }
+
+    #[test]
+    fn write_atomic_replaces_the_file_and_leaves_no_temp() {
+        let dir = std::env::temp_dir().join(format!("ibexwall-atomic-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("org.toml");
+        std::fs::write(&path, "old").unwrap();
+        write_atomic(&path, "new").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new");
+        assert!(!dir.join("org.toml.tmp").exists());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

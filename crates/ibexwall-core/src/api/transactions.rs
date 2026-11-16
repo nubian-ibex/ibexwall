@@ -28,10 +28,28 @@ pub(crate) async fn confirm(
             format!("transaction is {}", tx_state(&row.state)),
         ));
     }
+    // The watchdog rolls back at the deadline; past it, a Confirm that
+    // slips in before the watchdog gets the lock must not win.
+    if let Some(deadline) = core.state.confirm_deadline(&tx_id).map_err(internal)?
+        && ibexwall_sys::RealClock.unix_now() > deadline
+    {
+        return Err(err(
+            "Conflict",
+            json!({ "reason": "the confirmation window has expired" }),
+        ));
+    }
     core.state
         .mark_transaction(&tx_id, TxStatus::Committed)
         .map_err(internal)?;
     core.audit(actor, &row.plugin, Some(&tx_id), "", "confirmed");
+    core.publish_transaction_event(&Transaction {
+        id: tx_id.clone(),
+        plan_id: row.plan_id.clone(),
+        state: TransactionState::Committed,
+        started_at: ibexwall_sys::RealClock.rfc3339_now(),
+        confirm_deadline: None,
+        restore_point: row.restore_point.clone(),
+    });
     Ok(Reply::result(Value::Null))
 }
 
@@ -115,6 +133,14 @@ pub(crate) async fn rollback(
         &crate::audit::ops_digest(&ops),
         "rolled-back",
     );
+    core.publish_transaction_event(&Transaction {
+        id: target.clone(),
+        plan_id: row.plan_id.clone(),
+        state: TransactionState::RolledBack,
+        started_at: ibexwall_sys::RealClock.rfc3339_now(),
+        confirm_deadline: None,
+        restore_point: String::new(),
+    });
     // The rollback restored the machine, so this snapshot is no longer
     // needed; prune now instead of waiting for the next daemon start.
     if let Err(error) = core.state.prune(ibexwall_sys::RealClock.unix_now()) {
@@ -135,7 +161,8 @@ pub(crate) fn subscribe(core: &Arc<Core>) -> Result<Reply, VarlinkError> {
 pub(crate) fn parse_unix(rfc3339: &str) -> i64 {
     // Minimal parse of our own formatting (YYYY-MM-DDTHH:MM:SSZ).
     let bytes = rfc3339.as_bytes();
-    if bytes.len() < 19 {
+    // Fixed-width ASCII only: slicing a multi-byte character would panic.
+    if bytes.len() < 19 || !rfc3339.is_ascii() {
         return i64::MAX;
     }
     let year: i64 = rfc3339[0..4].parse().unwrap_or(1970);

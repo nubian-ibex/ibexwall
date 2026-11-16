@@ -93,13 +93,19 @@ pub struct Sighting {
 /// monitor observes, it never keeps processes alive.
 pub fn resolve(event: ConnectEvent, cgroups: &mut CgroupIndex) -> Sighting {
     let base = Path::new("/proc").join(event.pid.to_string());
-    // /proc is authoritative while the process lives (it resolves symlinks
-    // and relative exec paths); the kernel's copy covers the ones that
-    // exited before we looked.
-    let exe = std::fs::read_link(base.join("exe"))
-        .ok()
-        .map(|path| path.to_string_lossy().into_owned())
-        .or_else(|| event.exe_str().map(str::to_owned));
+    // The kernel recorded the exec path at connect time, so it names the
+    // right binary even when the process exec'd again or the pid was
+    // reused before we looked. /proc is the fallback, and also covers a
+    // relative exec path, which says nothing on its own.
+    let exe = event
+        .exe_str()
+        .filter(|path| path.starts_with('/'))
+        .map(str::to_owned)
+        .or_else(|| {
+            std::fs::read_link(base.join("exe"))
+                .ok()
+                .map(|path| path.to_string_lossy().into_owned())
+        });
     // The index answers from memory; /proc costs a syscall per event, so
     // it is only the fallback for a cgroup the index has not seen yet.
     let cgroup = cgroups.lookup(event.cgroup_id).or_else(|| {
@@ -439,8 +445,9 @@ impl Enricher {
             return known.clone();
         }
         let path = Path::new(exe);
+        let small = std::fs::metadata(path).is_ok_and(|meta| meta.len() <= MAX_HASHED_BYTES);
         let facts = ExeFacts {
-            hash: hash_file(path).ok(),
+            hash: small.then(|| hash_file(path).ok()).flatten(),
             package: self
                 .manager
                 .and_then(|manager| package_owner(manager, path, &run_argv)),
@@ -454,19 +461,87 @@ impl Enricher {
     }
 }
 
+/// A package query that takes longer than this is abandoned: a locked rpm
+/// or dpkg database must not stall the one thread that enriches events.
+const QUERY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// Executables larger than this are not hashed; reading them would hold the
+/// enrichment worker for seconds and delay every prompt behind it.
+const MAX_HASHED_BYTES: u64 = 256 * 1024 * 1024;
+
 /// Runs an allowlisted binary with an argv (never a shell) and returns
-/// stdout when it exits successfully.
+/// stdout when it exits successfully within `QUERY_TIMEOUT`.
 fn run_argv(binary: &str, args: &[String]) -> Option<String> {
-    let output = std::process::Command::new(binary)
+    run_argv_within(binary, args, QUERY_TIMEOUT)
+}
+
+fn run_argv_within(binary: &str, args: &[String], limit: std::time::Duration) -> Option<String> {
+    use std::io::Read as _;
+    let mut child = std::process::Command::new(binary)
         .args(args)
         .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
-        .output()
+        .spawn()
         .ok()?;
-    output
-        .status
-        .success()
-        .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+    let deadline = std::time::Instant::now() + limit;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    };
+    let mut out = String::new();
+    child.stdout.take()?.read_to_string(&mut out).ok()?;
+    status.success().then_some(out)
+}
+
+/// Work for the enrichment thread. Hashing and package queries are slow, so
+/// neither the ring buffer reader nor the Ask thread does them.
+enum Job {
+    Event(Sighting),
+    Ask(u16, Sighting),
+}
+
+/// Queued jobs beyond this are dropped: a burst of connections must not
+/// grow memory, and an Ask flow that was not described times out into the
+/// configured fallback.
+const JOB_QUEUE: usize = 1024;
+
+fn queue_job(
+    jobs: &std::sync::mpsc::SyncSender<Job>,
+    job: Job,
+    dropped: &std::sync::atomic::AtomicU64,
+) {
+    if jobs.try_send(job).is_err() {
+        let total = dropped.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        if total % 1000 == 1 {
+            eprintln!("ibexwall-ebpf-loader: enrichment is behind, {total} events dropped so far");
+        }
+    }
+}
+
+/// Describes each job and sends it to the core, one at a time.
+fn enrich_loop(jobs: std::sync::mpsc::Receiver<Job>, sink: std::sync::Arc<std::sync::Mutex<Sink>>) {
+    let mut enricher = Enricher::default();
+    for job in jobs {
+        let line = match job {
+            Job::Event(sighting) => describe(&sighting, &mut enricher).to_string(),
+            Job::Ask(id, sighting) => {
+                let mut line = describe(&sighting, &mut enricher);
+                line["ask_id"] = id.into();
+                serde_json::json!({ "ask": line }).to_string()
+            }
+        };
+        sink.lock().expect("lock poisoned").send(&line);
+    }
 }
 
 /// Runs until `stop`, printing one JSON object per event on stdout.
@@ -541,14 +616,13 @@ fn amain() -> Result<()> {
         "ibexwall-ebpf-loader: monitoring connect() (elf: {})",
         elf.display()
     );
-    let mut enricher = Enricher::default();
     let mut cgroups = CgroupIndex::new(PathBuf::from("/sys/fs/cgroup"));
     // With --socket the lines go to the core; without it, to stdout (the
     // VM spike and manual runs).
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut enforcer = Enforcer::take(&mut ebpf)?;
-    if let Some(at) = args.iter().position(|a| a == "--rules") {
-        enforcer.set(Policy::load(Path::new(&args[at + 1]))?)?;
+    if let Some(path) = rules_path(&args)? {
+        enforcer.set(Policy::load(Path::new(path))?)?;
     }
     let value_of = |flag: &str| {
         args.iter()
@@ -569,6 +643,12 @@ fn amain() -> Result<()> {
     });
     let disable_ask = args.iter().any(|a| a == "--ask-disabled");
     let sink = std::sync::Arc::new(std::sync::Mutex::new(Sink::open(args)?));
+    let (jobs, queued) = std::sync::mpsc::sync_channel::<Job>(JOB_QUEUE);
+    let dropped = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    {
+        let to_core = std::sync::Arc::clone(&sink);
+        std::thread::spawn(move || enrich_loop(queued, to_core));
+    }
     // The handle the answers come back through; set once the queue is up.
     let ask_handle: std::sync::Arc<std::sync::OnceLock<std::sync::Arc<ask::Ask>>> =
         std::sync::Arc::default();
@@ -577,12 +657,10 @@ fn amain() -> Result<()> {
             .take_map(ASK_FLOWS_MAP)
             .with_context(|| format!("map {ASK_FLOWS_MAP} not found"))?;
         let flows = aya::maps::HashMap::try_from(map)?;
-        let to_core = std::sync::Arc::clone(&sink);
+        let ask_jobs = jobs.clone();
+        let ask_dropped = std::sync::Arc::clone(&dropped);
         let handle = std::sync::Arc::clone(&ask_handle);
-        let describer = std::sync::Mutex::new((
-            Enricher::default(),
-            CgroupIndex::new(PathBuf::from("/sys/fs/cgroup")),
-        ));
+        let describer = std::sync::Mutex::new(CgroupIndex::new(PathBuf::from("/sys/fs/cgroup")));
         let started = ask::start(flows, move |id, flow, destination| {
             if let Some((decision, delay)) = local_answer {
                 let handle = std::sync::Arc::clone(&handle);
@@ -619,13 +697,10 @@ fn amain() -> Result<()> {
                 ip6,
                 exe: [0; ibexwall_net_common::EXE_LEN],
             };
-            let mut guard = describer.lock().expect("lock poisoned");
-            let (enricher, cgroups) = &mut *guard;
-            let sighting = resolve(event, cgroups);
-            let mut line = describe(&sighting, enricher);
-            line["ask_id"] = id.into();
-            let message = serde_json::json!({ "ask": line }).to_string();
-            to_core.lock().expect("lock poisoned").send(&message);
+            // Only the cheap /proc read happens here, while the process is
+            // still alive; hashing and the package query run on the worker.
+            let sighting = resolve(event, &mut describer.lock().expect("lock poisoned"));
+            queue_job(&ask_jobs, Job::Ask(id, sighting), &ask_dropped);
         });
         match started {
             Ok(ask) => {
@@ -656,10 +731,11 @@ fn amain() -> Result<()> {
             }
         }
     });
-    let reader = sink.lock().expect("lock poisoned").reader();
-    if let Some(reader) = reader {
+    if sink.lock().expect("lock poisoned").reader().is_some() {
+        let link = std::sync::Arc::clone(&sink);
         let handle = std::sync::Arc::clone(&ask_handle);
-        std::thread::spawn(move || read_core(reader, policies, handle));
+        let reason = degraded.clone();
+        std::thread::spawn(move || serve_core(link, policies, handle, reason));
     }
     if let Some(reason) = degraded {
         sink.lock()
@@ -667,9 +743,19 @@ fn amain() -> Result<()> {
             .send(&serde_json::json!({ "meta": "degraded", "reason": reason }).to_string());
     }
     run(ebpf, &mut cgroups, &mut |sighting| {
-        let line = describe(&sighting, &mut enricher).to_string();
-        sink.lock().expect("lock poisoned").send(&line);
+        queue_job(&jobs, Job::Event(sighting), &dropped);
     })
+}
+
+/// The `--rules FILE` argument; a missing FILE is an error, not a panic.
+fn rules_path(args: &[String]) -> Result<Option<&String>> {
+    match args.iter().position(|a| a == "--rules") {
+        None => Ok(None),
+        Some(at) => args
+            .get(at + 1)
+            .map(Some)
+            .context("--rules needs a file argument"),
+    }
 }
 
 /// The JSON the core reads for a connection (and for an Ask request).
@@ -700,12 +786,14 @@ fn describe(sighting: &Sighting, enricher: &mut Enricher) -> serde_json::Value {
 
 /// Reads what the core pushes: `{"policy": {...}}` and
 /// `{"answer": {"id": N, "decision": "allow"|"block"}}`. A line that does
-/// not parse is ignored; the previous policy stays in force.
+/// not parse is ignored; the previous policy stays in force. Returns when
+/// the connection ends: `true` if the policy channel is still open (so the
+/// caller should reconnect), `false` if the enforcer is gone.
 fn read_core(
     stream: std::os::unix::net::UnixStream,
-    policies: std::sync::mpsc::Sender<Policy>,
-    ask_handle: std::sync::Arc<std::sync::OnceLock<std::sync::Arc<ask::Ask>>>,
-) {
+    policies: &std::sync::mpsc::Sender<Policy>,
+    ask_handle: &std::sync::OnceLock<std::sync::Arc<ask::Ask>>,
+) -> bool {
     use std::io::BufRead as _;
     #[derive(serde::Deserialize)]
     struct Answer {
@@ -737,7 +825,7 @@ fn read_core(
                 ask.configure(std::time::Duration::from_secs(timeout), fallback);
             }
             if policies.send(policy).is_err() {
-                break;
+                return false;
             }
         }
         if let (Some(answer), Some(ask)) = (message.answer, ask_handle.get())
@@ -746,17 +834,63 @@ fn read_core(
             ask.answer(answer.id, decision);
         }
     }
-    // The core is gone. Exiting detaches the programs and closes the queue,
-    // so the network opens now instead of when the next write fails; systemd
-    // brings the unit back and the core's policy returns with it.
     eprintln!("ibexwall-ebpf-loader: lost the core: connection closed");
-    std::process::exit(1);
+    true
+}
+
+/// How long to wait before reconnect attempt `attempt` (0 based): doubling
+/// from half a second up to 30 s, so a restarting core is found quickly and
+/// a long outage costs next to nothing.
+fn backoff(attempt: u32) -> std::time::Duration {
+    std::time::Duration::from_millis(500u64 << attempt.min(6))
+        .min(std::time::Duration::from_secs(30))
+}
+
+/// Keeps the link to the core alive. Losing the core must not end the
+/// loader: exiting would detach the cgroup programs and drop every rule
+/// the core pushed, right when the core restarts to bring them back. The
+/// programs and maps stay as they were; events are dropped while the core
+/// is away and held Ask flows fall back after their timeout.
+fn serve_core(
+    sink: std::sync::Arc<std::sync::Mutex<Sink>>,
+    policies: std::sync::mpsc::Sender<Policy>,
+    ask_handle: std::sync::Arc<std::sync::OnceLock<std::sync::Arc<ask::Ask>>>,
+    degraded: Option<String>,
+) {
+    loop {
+        let reader = sink.lock().expect("lock poisoned").reader();
+        if let Some(reader) = reader
+            && !read_core(reader, &policies, &ask_handle)
+        {
+            return;
+        }
+        sink.lock().expect("lock poisoned").disconnect();
+        let mut attempt = 0;
+        loop {
+            std::thread::sleep(backoff(attempt));
+            attempt = attempt.saturating_add(1);
+            let mut guard = sink.lock().expect("lock poisoned");
+            if guard.reconnect() {
+                eprintln!("ibexwall-ebpf-loader: reconnected to the core");
+                if let Some(reason) = &degraded {
+                    guard.send(
+                        &serde_json::json!({ "meta": "degraded", "reason": reason }).to_string(),
+                    );
+                }
+                break;
+            }
+        }
+    }
 }
 
 /// Where the JSON lines go: stdout, or the core's monitor socket.
 enum Sink {
     Stdout,
-    Socket(std::os::unix::net::UnixStream),
+    Socket {
+        path: PathBuf,
+        /// `None` while the core is away.
+        stream: Option<std::os::unix::net::UnixStream>,
+    },
 }
 
 impl Sink {
@@ -784,12 +918,12 @@ impl Sink {
         // The core may still be starting: wait for it, a while.
         let mut last = None;
         for _ in 0..60 {
-            match std::os::unix::net::UnixStream::connect(path) {
+            match Self::connect(Path::new(path)) {
                 Ok(stream) => {
-                    // A core that stops reading must not wedge us:
-                    // the write fails, we exit, systemd restarts us.
-                    stream.set_write_timeout(Some(std::time::Duration::from_secs(5)))?;
-                    return Ok(Self::Socket(stream));
+                    return Ok(Self::Socket {
+                        path: path.into(),
+                        stream: Some(stream),
+                    });
                 }
                 Err(error) => last = Some(error),
             }
@@ -801,25 +935,60 @@ impl Sink {
         )
     }
 
+    fn connect(path: &Path) -> std::io::Result<std::os::unix::net::UnixStream> {
+        let stream = std::os::unix::net::UnixStream::connect(path)?;
+        // A core that stops reading must not wedge us: the write fails and
+        // the link is dropped and re-established.
+        stream.set_write_timeout(Some(std::time::Duration::from_secs(5)))?;
+        Ok(stream)
+    }
+
     /// A second handle on the core's socket, to read what it pushes.
     fn reader(&self) -> Option<std::os::unix::net::UnixStream> {
         match self {
             Self::Stdout => None,
-            Self::Socket(stream) => stream.try_clone().ok(),
+            Self::Socket { stream, .. } => stream.as_ref().and_then(|s| s.try_clone().ok()),
+        }
+    }
+
+    /// Drops the link (both halves, so a blocked reader wakes up).
+    fn disconnect(&mut self) {
+        if let Self::Socket { stream, .. } = self
+            && let Some(stream) = stream.take()
+        {
+            let _ = stream.shutdown(std::net::Shutdown::Both);
+        }
+    }
+
+    /// One attempt to restore the link; true when connected afterwards.
+    fn reconnect(&mut self) -> bool {
+        match self {
+            Self::Stdout => true,
+            Self::Socket { path, stream } => {
+                if stream.is_none() {
+                    *stream = Self::connect(path).ok();
+                }
+                stream.is_some()
+            }
         }
     }
 
     fn send(&mut self, line: &str) {
         match self {
             Self::Stdout => println!("{line}"),
-            Self::Socket(stream) => {
+            Self::Socket { stream, .. } => {
                 use std::io::Write as _;
+                let Some(open) = stream.as_mut() else {
+                    // The core is away: the event is lost, not queued.
+                    return;
+                };
                 let mut bytes = Vec::with_capacity(line.len() + 1);
                 bytes.extend_from_slice(line.as_bytes());
                 bytes.push(b'\n');
-                if let Err(error) = stream.write_all(&bytes) {
+                if let Err(error) = open.write_all(&bytes) {
                     eprintln!("ibexwall-ebpf-loader: lost the core: {error}");
-                    std::process::exit(1);
+                    // Shutting it down wakes the reader, which reconnects.
+                    self.disconnect();
                 }
             }
         }
@@ -876,6 +1045,35 @@ mod tests {
     }
 
     #[test]
+    fn rules_as_the_last_argument_is_an_error_not_a_panic() {
+        let args = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(rules_path(&args(&["--socket", "/s", "--rules"])).is_err());
+        assert_eq!(
+            rules_path(&args(&["--rules", "r.json"])).unwrap().unwrap(),
+            "r.json"
+        );
+        assert!(rules_path(&args(&["--socket", "/s"])).unwrap().is_none());
+    }
+
+    #[test]
+    fn resolve_prefers_the_kernel_path_over_proc() {
+        // A pid reused or re-exec'd after connect() would make /proc name
+        // the wrong binary; the exec path captured by the kernel wins.
+        let mut cgroups = CgroupIndex::new(PathBuf::from("/nonexistent"));
+        let mut ev = event(std::process::id(), "self", 4);
+        let path = b"/usr/bin/captured";
+        ev.exe[..path.len()].copy_from_slice(path);
+        let sighting = resolve(ev, &mut cgroups);
+        assert_eq!(sighting.exe.as_deref(), Some("/usr/bin/captured"));
+
+        // A relative kernel path is not an identity: /proc resolves it.
+        let mut ev = event(std::process::id(), "self", 4);
+        ev.exe[..5].copy_from_slice(b"./foo");
+        let exe = resolve(ev, &mut cgroups).exe.unwrap_or_default();
+        assert!(exe.starts_with('/') && !exe.ends_with("foo"), "{exe}");
+    }
+
+    #[test]
     fn resolve_reads_the_current_process() {
         let mut cgroups = CgroupIndex::new(PathBuf::from("/nonexistent"));
         let sighting = resolve(event(std::process::id(), "self", 4), &mut cgroups);
@@ -883,5 +1081,77 @@ mod tests {
         let exe = sighting.exe.unwrap_or_default().replace('-', "_");
         assert!(exe.contains("ibexwall_ebpf_loader"), "{exe}");
         assert!(sighting.cgroup.is_some());
+    }
+
+    #[test]
+    fn backoff_doubles_up_to_a_ceiling() {
+        use std::time::Duration;
+        assert_eq!(backoff(0), Duration::from_millis(500));
+        assert_eq!(backoff(1), Duration::from_secs(1));
+        assert_eq!(backoff(5), Duration::from_secs(16));
+        assert_eq!(backoff(6), Duration::from_secs(30));
+        assert_eq!(backoff(u32::MAX), Duration::from_secs(30));
+    }
+
+    #[test]
+    fn losing_the_core_does_not_end_the_process_and_it_can_come_back() {
+        use std::io::Read as _;
+        let dir = std::env::temp_dir().join(format!("ibexwall-sink-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("core.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        let mut sink = Sink::Socket {
+            path: path.clone(),
+            stream: Some(Sink::connect(&path).unwrap()),
+        };
+        let (mut peer, _) = listener.accept().unwrap();
+        sink.send("one");
+        let mut got = [0u8; 4];
+        peer.read_exact(&mut got).unwrap();
+        assert_eq!(&got, b"one\n");
+
+        // The core goes away: sending must neither exit nor panic.
+        drop(peer);
+        sink.send("two");
+        sink.send("three");
+        assert!(sink.reader().is_none());
+
+        // And it returns: the link is restored and carries lines again.
+        assert!(sink.reconnect());
+        let (mut peer, _) = listener.accept().unwrap();
+        sink.send("four");
+        let mut got = [0u8; 5];
+        peer.read_exact(&mut got).unwrap();
+        assert_eq!(&got, b"four\n");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_slow_package_query_is_abandoned() {
+        use std::time::{Duration, Instant};
+        let started = Instant::now();
+        let out = run_argv_within("sleep", &["5".into()], Duration::from_millis(200));
+        assert_eq!(out, None);
+        assert!(started.elapsed() < Duration::from_secs(2));
+        let out = run_argv_within("echo", &["hi".into()], Duration::from_secs(2));
+        assert_eq!(out.as_deref(), Some("hi\n"));
+        assert_eq!(run_argv_within("false", &[], Duration::from_secs(2)), None);
+    }
+
+    #[test]
+    fn a_full_job_queue_drops_instead_of_blocking() {
+        let (jobs, _held) = std::sync::mpsc::sync_channel::<Job>(1);
+        let dropped = std::sync::atomic::AtomicU64::new(0);
+        let make = || {
+            Job::Event(Sighting {
+                event: event(1, "x", 4),
+                exe: None,
+                cgroup: None,
+            })
+        };
+        queue_job(&jobs, make(), &dropped);
+        queue_job(&jobs, make(), &dropped);
+        queue_job(&jobs, make(), &dropped);
+        assert_eq!(dropped.load(std::sync::atomic::Ordering::Relaxed), 2);
     }
 }

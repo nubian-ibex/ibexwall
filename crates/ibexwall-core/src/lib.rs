@@ -254,6 +254,16 @@ impl Core {
             let ops: Vec<Op> = plan
                 .and_then(|p| serde_json::from_str(&p.ops_json).ok())
                 .unwrap_or_default();
+            // A failed rollback retried over a newer committed change to
+            // the same target would restore the stale snapshot and undo
+            // the newer change. Leave it failed for a person to decide.
+            if tx.state == TransactionState::Failed && self.newer_active_overlaps(&tx.id, &ops) {
+                tracing::warn!(
+                    transaction = %tx.id,
+                    "not retrying a failed rollback: a newer transaction touches the same target"
+                );
+                continue;
+            }
             let result = self.rollback_transaction(&tx.id, &ops);
             let (status, event_state, audit_result) = match &result {
                 Ok(()) => (
@@ -279,6 +289,31 @@ impl Core {
             });
         }
         Ok(())
+    }
+
+    /// Whether a newer committed or pending transaction touches any of
+    /// `ops`' targets. Unreadable data counts as an overlap: skipping is
+    /// the safe side.
+    fn newer_active_overlaps(&self, id: &str, ops: &[Op]) -> bool {
+        let targets = engine::ops::op_targets(ops);
+        let check = || -> Result<bool> {
+            for row in self.state.list_active_newer_than(id)? {
+                let plan = self
+                    .state
+                    .load_plan(&row.plan_id)?
+                    .ok_or_else(|| anyhow::anyhow!("plan {} missing", row.plan_id))?;
+                let other: Vec<Op> = serde_json::from_str(&plan.ops_json)?;
+                if engine::ops::op_targets(&other)
+                    .intersection(&targets)
+                    .next()
+                    .is_some()
+                {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        };
+        check().unwrap_or(true)
     }
 
     /// Undoes everything IbexWall changed on this machine, for an
@@ -360,7 +395,25 @@ impl Core {
         }
     }
 
-    /// Appends to the audit chain (spec §4.4).
+    /// Appends to the audit chain (spec §4.4) and reports a failure, for
+    /// the callers that must not change the machine without a record.
+    pub fn try_audit(
+        &self,
+        actor: &str,
+        plugin: &str,
+        transaction: Option<&str>,
+        ops_digest: &str,
+        result: &str,
+    ) -> Result<()> {
+        let ts = now();
+        self.state
+            .with_conn(|conn| {
+                audit::append(conn, &ts, actor, plugin, transaction, ops_digest, result)
+            })
+            .map(|_| ())
+    }
+
+    /// Best-effort append for records of something already done.
     pub fn audit(
         &self,
         actor: &str,
@@ -369,11 +422,7 @@ impl Core {
         ops_digest: &str,
         result: &str,
     ) {
-        let ts = now();
-        let appended = self.state.with_conn(|conn| {
-            audit::append(conn, &ts, actor, plugin, transaction, ops_digest, result)
-        });
-        if let Err(err) = appended {
+        if let Err(err) = self.try_audit(actor, plugin, transaction, ops_digest, result) {
             tracing::error!(error = %err, "audit append failed");
         }
     }

@@ -445,14 +445,14 @@ impl State {
         })?;
         // Snapshots exist per transaction; once a transaction is rolled
         // back the machine is restored and its snapshot can go.
-        let keep: std::collections::HashSet<String> = self
-            .with_conn(|conn| {
-                let mut stmt =
-                    conn.prepare("SELECT id FROM transactions WHERE state != 'rolled_back'")?;
-                let ids = stmt.query_map([], |row| row.get::<_, String>(0))?;
-                ids.collect::<std::result::Result<std::collections::HashSet<_>, _>>()
-            })
-            .unwrap_or_default();
+        // A failed query must skip the cleanup: an empty keep set would
+        // delete the snapshots of transactions still on the machine.
+        let keep: std::collections::HashSet<String> = self.with_conn(|conn| {
+            let mut stmt =
+                conn.prepare("SELECT id FROM transactions WHERE state != 'rolled_back'")?;
+            let ids = stmt.query_map([], |row| row.get::<_, String>(0))?;
+            ids.collect::<std::result::Result<std::collections::HashSet<_>, _>>()
+        })?;
         if let Ok(entries) = std::fs::read_dir(self.snapshots_dir()) {
             for entry in entries.flatten() {
                 let name = entry.file_name();
@@ -502,12 +502,14 @@ impl State {
 
     /// Transactions a restart must roll back (spec §4.5 recovery): an
     /// interrupted apply, an unanswered confirmation, or a transaction
-    /// whose rollback failed last time, retried here.
+    /// whose rollback failed last time, retried here. Newest first, so
+    /// two changes to one file unwind to the older state, not the newer.
     pub fn list_recoverable_transactions(&self) -> Result<Vec<TxRow>> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
                 "SELECT id, plan_id, plugin, state FROM transactions
-                 WHERE state IN ('applying', 'pending_confirm', 'failed') ORDER BY created_at",
+                 WHERE state IN ('applying', 'pending_confirm', 'failed') \
+                 ORDER BY created_at DESC, rowid DESC",
             )?;
             let rows = stmt.query_map([], row_to_tx)?;
             let mut out = Vec::new();
@@ -515,6 +517,34 @@ impl State {
                 out.push(row?);
             }
             Ok(out)
+        })
+    }
+
+    /// Committed or pending transactions created after `id`.
+    pub fn list_active_newer_than(&self, id: &str) -> Result<Vec<TxRow>> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, plan_id, plugin, state FROM transactions \
+                 WHERE state IN ('committed', 'pending_confirm') \
+                 AND (created_at, rowid) > (SELECT created_at, rowid FROM transactions WHERE id = ?1)",
+            )?;
+            let rows = stmt.query_map(rusqlite::params![id], row_to_tx)?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(out)
+        })
+    }
+
+    /// Unix deadline of a pending confirmation, when one is set.
+    pub fn confirm_deadline(&self, id: &str) -> Result<Option<i64>> {
+        self.with_conn(|conn| {
+            Ok(conn.query_row(
+                "SELECT confirm_deadline FROM transactions WHERE id = ?1",
+                rusqlite::params![id],
+                |row| row.get::<_, Option<i64>>(0),
+            )?)
         })
     }
 
@@ -797,6 +827,76 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let state = State::open(&dir).unwrap();
         (dir, state)
+    }
+
+    fn tx_row(id: &str, state: TransactionState) -> TxRow {
+        TxRow {
+            id: id.into(),
+            plan_id: format!("plan-{id}"),
+            plugin: "dev.echo".into(),
+            state,
+            restore_point: format!("snapshots/{id}"),
+        }
+    }
+
+    #[test]
+    fn a_failed_prune_query_keeps_every_snapshot() {
+        let (dir, state) = temp_state();
+        let snapshot = state.snapshots_dir().join("tx-live");
+        std::fs::create_dir_all(&snapshot).unwrap();
+        // The plans/events cleanup still works, the keep-set query does
+        // not: the view has no `state` column.
+        state
+            .with_conn(|conn| {
+                conn.execute_batch(
+                    "DROP TABLE transactions; \
+                     CREATE VIEW transactions AS SELECT 'x' AS id, 'p' AS plan_id;",
+                )
+            })
+            .unwrap();
+        assert!(state.prune(0).is_err());
+        assert!(
+            snapshot.exists(),
+            "a failed query must not delete snapshots"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn recovery_lists_newest_first_even_within_one_second() {
+        let (dir, state) = temp_state();
+        let at = "2026-11-01T12:00:00Z";
+        state
+            .insert_transaction(&tx_row("a", TransactionState::Applying), at)
+            .unwrap();
+        state
+            .insert_transaction(&tx_row("b", TransactionState::Applying), at)
+            .unwrap();
+        let ids: Vec<String> = state
+            .list_recoverable_transactions()
+            .unwrap()
+            .into_iter()
+            .map(|row| row.id)
+            .collect();
+        assert_eq!(ids, ["b", "a"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn newer_active_transactions_are_found_by_age_not_id() {
+        let (dir, state) = temp_state();
+        let at = "2026-11-01T12:00:00Z";
+        state
+            .insert_transaction(&tx_row("z-old", TransactionState::Failed), at)
+            .unwrap();
+        state
+            .insert_transaction(&tx_row("a-new", TransactionState::Committed), at)
+            .unwrap();
+        let newer = state.list_active_newer_than("z-old").unwrap();
+        assert_eq!(newer.len(), 1);
+        assert_eq!(newer[0].id, "a-new");
+        assert!(state.list_active_newer_than("a-new").unwrap().is_empty());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

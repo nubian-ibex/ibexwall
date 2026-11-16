@@ -6,7 +6,7 @@
 //! `ibexctl audit verify` walks the chain; any tampering breaks it.
 
 use anyhow::Result;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -79,13 +79,16 @@ pub fn append(
 ) -> Result<String> {
     let tx = conn.unchecked_transaction()?;
     ensure_table(&tx)?;
+    // Only an empty log starts the chain from zeros; a read error must
+    // not silently restart (and so fork) an existing chain.
     let prev_hash: String = tx
         .query_row(
             "SELECT hash FROM audit_log ORDER BY seq DESC LIMIT 1",
             [],
             |row| row.get(0),
         )
-        .unwrap_or_else(|_| "0".repeat(64));
+        .optional()?
+        .unwrap_or_else(|| "0".repeat(64));
 
     let entry = AuditEntry {
         // seq is storage metadata; the digest excludes it.
@@ -272,6 +275,25 @@ mod tests {
             Verification::Valid { entries: 0 }
         ));
         assert!(tail(&conn, 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_unreadable_last_hash_fails_the_append_instead_of_restarting_the_chain() {
+        let conn = conn();
+        // A BLOB where the hash should be text: the read errors, the
+        // table is not empty.
+        conn.execute(
+            "INSERT INTO audit_log (ts, actor, plugin, ops_digest, result, prev_hash, hash)
+             VALUES ('t', 'a', 'p', 'd', 'r', 'x', x'00')",
+            [],
+        )
+        .unwrap();
+        let outcome = append(&conn, "t", "a", "p", None, "d", "r");
+        assert!(outcome.is_err(), "the chain must not restart from zeros");
+        let rows: i64 = conn
+            .query_row("SELECT COUNT(*) FROM audit_log", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(rows, 1);
     }
 
     #[test]

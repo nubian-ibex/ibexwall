@@ -160,7 +160,9 @@ pub fn status(sandbox: &Sandbox, probe: &Probe) -> Status {
             }
         }
         Probe::MountOption { path, option } => {
-            let Some(mounts) = sandbox.read("/proc/mounts") else {
+            // Not /proc/mounts: the plugin's own sandbox changes /tmp, /dev and
+            // /home, so only PID 1's table says what the host does.
+            let Some(mounts) = sandbox.host_mounts() else {
                 return Status::Unknown;
             };
             let found = mounts.lines().rev().find_map(|l| {

@@ -212,7 +212,10 @@ impl Plugin for Persistence {
     }
 
     async fn check(&self, _config: Value) -> Result<CheckReport, PluginError> {
-        Ok(evaluate(&Sandbox::system(), "1970-01-01T00:00:00Z"))
+        // Hashing reads user-owned files: keep it off the async threads.
+        tokio::task::spawn_blocking(|| evaluate(&Sandbox::system(), "1970-01-01T00:00:00Z"))
+            .await
+            .map_err(|e| PluginError::Failed(e.to_string()))
     }
 
     async fn plan(&self, config: Value) -> Result<Vec<Op>, PluginError> {

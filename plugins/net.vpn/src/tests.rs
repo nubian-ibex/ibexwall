@@ -314,7 +314,30 @@ fn the_kill_switch_lets_the_tunnel_and_its_server_through_and_drops_the_rest() {
         (server.dports.clone(), server.protocols.len()),
         (vec![51820], 2)
     );
-    assert!(chain.rules.iter().any(|r| r.dports == [67, 547]));
+    // DHCP is limited to broadcast and link-local destinations.
+    let dhcp = chain.rules.iter().find(|r| r.dports == [67, 547]).unwrap();
+    assert!(!dhcp.daddr.is_empty(), "DHCP must not be open to any host");
+    assert!(dhcp.daddr.iter().all(|a| matches!(
+        a.as_str(),
+        "255.255.255.255" | "169.254.0.0/16" | "ff02::1:2" | "fe80::/10"
+    )));
+    // Forwarded traffic (containers, hotspot) is dropped unless it goes
+    // through the tunnel.
+    let Op::NftFragment { fragment } = &ops[1] else {
+        panic!()
+    };
+    let fragment: Fragment = serde_json::from_value(fragment.clone()).unwrap();
+    let fwd = &fragment.chains[1];
+    assert_eq!(
+        (fwd.name.as_str(), fwd.hook),
+        ("net_vpn_fwd", Hook::Forward)
+    );
+    assert!(
+        fwd.rules
+            .iter()
+            .any(|r| r.oif_prefix.as_deref() == Some("wg"))
+    );
+    assert_eq!(fwd.rules.last().unwrap().verdict, Verdict::Drop);
     assert!(chain.rules.iter().any(|r| r.daddr == ["10.0.2.2"]));
     assert_eq!(chain.rules.last().unwrap().verdict, Verdict::Drop);
     // Nothing before the drop accepts "everything".
@@ -326,6 +349,21 @@ fn the_kill_switch_lets_the_tunnel_and_its_server_through_and_drops_the_rest() {
                 || !r.daddr.is_empty()
                 || !r.dports.is_empty())
     );
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn a_hostname_endpoint_names_the_imported_profile() {
+    let (root, sandbox) = tree(&[
+        ("/usr/lib/systemd/system/NetworkManager.service", ""),
+        ("/usr/bin/nmcli", ""),
+        (
+            "/etc/ibexwall/vpn/profiles/office.json",
+            r#"{"name":"office","endpoints":["vpn.example.com:51820"],"dns":false}"#,
+        ),
+    ]);
+    let error = plan(&sandbox, &cfg(json!({ "action": "killswitch" }))).unwrap_err();
+    assert!(error.to_string().contains("office"), "{error}");
     std::fs::remove_dir_all(root).unwrap();
 }
 

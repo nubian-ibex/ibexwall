@@ -21,7 +21,7 @@ const COLLECT: &str = r#"
 set -u
 D=$(mktemp -d)
 cp_file() { [ -e "$1" ] && mkdir -p "$D$(dirname "$1")" && cat "$1" > "$D$1" 2>/dev/null; return 0; }
-for f in /proc/self/mounts /proc/swaps /proc/sys/fs/suid_dumpable \
+for f in /proc/self/mounts /proc/1/mountinfo /proc/swaps /proc/sys/fs/suid_dumpable \
          /proc/net/tcp /proc/net/tcp6 /proc/net/udp /proc/net/udp6 \
          /sys/kernel/security/lockdown /sys/fs/selinux/enforce \
          /sys/module/apparmor/parameters/enabled /etc/sudoers /etc/os-release \

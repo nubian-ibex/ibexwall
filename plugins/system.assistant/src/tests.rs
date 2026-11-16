@@ -316,3 +316,37 @@ fn the_fingerprint_of_the_certificate_is_reported() {
     assert_eq!(tls.args["fingerprint"], pair.fingerprint);
     std::fs::remove_dir_all(root).unwrap();
 }
+
+const READ_CLIENT: &str = "[[client]]\nname = \"claude-code\"\nscopes = [\"read:posture\", \"read:findings\", \"read:events:dns\", \"read:events:apps\"]\n";
+
+#[test]
+fn a_token_never_rewrites_an_existing_client() {
+    // `claude-code` has the read scopes; a token asking for `plan` must not
+    // change them.
+    let (root, sandbox) = tree(&[(CONFIG, READ_CLIENT)]);
+    let error = plan(&sandbox, &config(add_token(json!({})))).unwrap_err();
+    assert!(error.to_string().contains("already exists"), "{error}");
+    // Same scopes as the preset: the client is kept as it is.
+    let (text, _, _) =
+        written(plan(&sandbox, &config(add_token(json!({ "preset": "read" })))).unwrap());
+    assert_eq!(text.matches("name = \"claude-code\"").count(), 1);
+    assert!(text.contains(READ_CLIENT), "{text}");
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn inline_toml_tables_do_not_panic() {
+    let inline = "client = [{ name = \"x\", scopes = [\"read:posture\"] }]\ntoken = []\n";
+    let (root, sandbox) = tree(&[(CONFIG, inline)]);
+    let client = json!({ "action": "client", "client": "y", "preset": "read" });
+    assert!(plan(&sandbox, &config(client.clone())).is_ok());
+    let token = plan(
+        &sandbox,
+        &config(add_token(json!({ "client": "z", "preset": "read" }))),
+    );
+    assert!(token.is_ok(), "{token:?}");
+    std::fs::remove_dir_all(root).unwrap();
+    let (root, sandbox) = tree(&[(CONFIG, "client = 3\n")]);
+    assert!(plan(&sandbox, &config(client)).is_err());
+    std::fs::remove_dir_all(root).unwrap();
+}

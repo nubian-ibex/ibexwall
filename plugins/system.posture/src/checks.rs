@@ -45,7 +45,9 @@ impl Check {
 
 pub fn evaluate(sandbox: &Sandbox, detected_at: &str) -> CheckReport {
     let root_encryption = root_encryption(sandbox);
-    let mounts = sandbox.read("/proc/self/mounts");
+    // The plugin's own mount table is distorted by its sandbox (private
+    // /tmp and /dev), so the options are read from the host's.
+    let mounts = sandbox.host_mounts();
     let checks = vec![
         secure_boot(sandbox),
         lockdown(sandbox),
@@ -341,28 +343,13 @@ fn sudo_nopasswd(sandbox: &Sandbox) -> Check {
     let Some(main) = sandbox.read("/etc/sudoers") else {
         return Check::new(id, Severity::Medium, CheckOutcome::NotAssessed);
     };
-    let mut texts = vec![main.clone()];
-    let mut dirs: Vec<String> = vec!["/etc/sudoers.d".to_string()];
-    // The sudoers file itself can point elsewhere via @includedir.
-    for dir in included_dirs(&main) {
-        if !dirs.contains(&dir) {
-            dirs.push(dir);
-        }
-    }
-    for dir in dirs {
-        if sandbox.is_unreadable_dir(&dir) {
-            return Check::new(id, Severity::Medium, CheckOutcome::NotAssessed);
-        }
-        for name in sandbox.list(&dir) {
-            // sudo ignores files with a dot or ending in '~'.
-            if name.contains('.') || name.ends_with('~') {
-                continue;
-            }
-            match sandbox.read(&format!("{dir}/{name}")) {
-                Some(text) => texts.push(text),
-                None => return Check::new(id, Severity::Medium, CheckOutcome::NotAssessed),
-            }
-        }
+    let mut texts = Vec::new();
+    let mut seen = Vec::new();
+    // /etc/sudoers.d is read even when the main file does not name it.
+    if !gather(sandbox, "/etc/sudoers", main, 0, &mut texts, &mut seen)
+        || !gather_dir(sandbox, "/etc/sudoers.d", 0, &mut texts, &mut seen)
+    {
+        return Check::new(id, Severity::Medium, CheckOutcome::NotAssessed);
     }
     let found = texts.iter().any(|text| has_nopasswd(text));
     let outcome = if found {
@@ -373,23 +360,121 @@ fn sudo_nopasswd(sandbox: &Sandbox) -> Check {
     Check::new(id, Severity::Medium, outcome)
 }
 
-fn included_dirs(text: &str) -> Vec<String> {
-    text.lines()
-        .map(str::trim)
-        .filter_map(|line| {
-            line.strip_prefix("@includedir ")
-                .or_else(|| line.strip_prefix("#includedir "))
-                .map(str::trim)
-                .map(str::to_string)
-        })
-        .collect()
+/// Adds `text` and everything it includes (`@include`, `#include`,
+/// `@includedir`, `#includedir`; a relative path is under the including
+/// file's directory). `false` when something it names cannot be read.
+fn gather(
+    sandbox: &Sandbox,
+    path: &str,
+    text: String,
+    depth: u8,
+    texts: &mut Vec<String>,
+    seen: &mut Vec<String>,
+) -> bool {
+    seen.push(path.to_string());
+    let base = path.rsplit_once('/').map_or("", |(dir, _)| dir).to_string();
+    let absolute = |target: &str| {
+        if target.starts_with('/') {
+            target.to_string()
+        } else {
+            format!("{base}/{target}")
+        }
+    };
+    let mut ok = true;
+    for line in text.lines().map(str::trim) {
+        let directive = |names: [&str; 2]| {
+            names
+                .iter()
+                .find_map(|n| line.strip_prefix(n))
+                .map(|rest| rest.trim().trim_matches('"').to_string())
+        };
+        if depth >= 8 {
+            break;
+        }
+        if let Some(target) = directive(["@includedir ", "#includedir "]) {
+            ok &= gather_dir(sandbox, &absolute(&target), depth + 1, texts, seen);
+        } else if let Some(target) = directive(["@include ", "#include "]) {
+            let file = absolute(&target);
+            if !seen.contains(&file) {
+                match sandbox.read(&file) {
+                    Some(inner) => ok &= gather(sandbox, &file, inner, depth + 1, texts, seen),
+                    None => ok = false,
+                }
+            }
+        }
+    }
+    texts.push(text);
+    ok
 }
 
+fn gather_dir(
+    sandbox: &Sandbox,
+    dir: &str,
+    depth: u8,
+    texts: &mut Vec<String>,
+    seen: &mut Vec<String>,
+) -> bool {
+    if seen.contains(&dir.to_string()) {
+        return true;
+    }
+    seen.push(dir.to_string());
+    if sandbox.is_unreadable_dir(dir) {
+        return false;
+    }
+    let mut ok = true;
+    for name in sandbox.list(dir) {
+        // sudo ignores files with a dot or ending in '~'.
+        if name.contains('.') || name.ends_with('~') {
+            continue;
+        }
+        let file = format!("{dir}/{name}");
+        if seen.contains(&file) {
+            continue;
+        }
+        match sandbox.read(&file) {
+            Some(text) => ok &= gather(sandbox, &file, text, depth + 1, texts, seen),
+            None => ok = false,
+        }
+    }
+    ok
+}
+
+/// A rule that gives passwordless `ALL`, or `Defaults !authenticate`. A
+/// `NOPASSWD` limited to named commands is a deliberate, narrow grant and
+/// does not count; neither does a `PASSWD:` tag that turns the password back
+/// on for what follows it.
 fn has_nopasswd(text: &str) -> bool {
     text.lines()
         .map(str::trim)
-        .filter(|line| !line.starts_with('#') && !line.is_empty())
-        .any(|line| line.contains("NOPASSWD") || line.contains("!authenticate"))
+        .filter(|line| !line.starts_with('#') && !line.starts_with('@') && !line.is_empty())
+        .any(|line| {
+            if line.starts_with("Defaults") {
+                return line.contains("!authenticate");
+            }
+            let Some((_, rest)) = line.split_once("NOPASSWD:") else {
+                return false;
+            };
+            let mut nopasswd = true;
+            for item in rest.split(',') {
+                let mut item = item.trim();
+                // Tags (`PASSWD:`, `SETENV:`) can prefix a command.
+                while let Some((tag, after)) = item.split_once(':')
+                    && !tag.contains(char::is_whitespace)
+                    && !tag.contains('/')
+                {
+                    match tag {
+                        "PASSWD" => nopasswd = false,
+                        "NOPASSWD" => nopasswd = true,
+                        _ => {}
+                    }
+                    item = after.trim();
+                }
+                if nopasswd && item == "ALL" {
+                    return true;
+                }
+            }
+            false
+        })
 }
 
 #[cfg(test)]
@@ -746,6 +831,46 @@ mod tests {
         for r in [r1, r2, r3, r4] {
             let _ = std::fs::remove_dir_all(r);
         }
+    }
+
+    #[test]
+    fn sudo_nopasswd_fails_only_for_all_and_follows_includes() {
+        // A narrow grant is deliberate, not a finding.
+        assert!(!has_nopasswd(
+            "ibex ALL=(root) NOPASSWD: /usr/bin/systemctl restart x\n"
+        ));
+        assert!(!has_nopasswd(
+            "ibex ALL=(ALL) NOPASSWD: /bin/ls, PASSWD: ALL\n"
+        ));
+        assert!(has_nopasswd("ibex ALL=(ALL) NOPASSWD: /bin/ls, ALL\n"));
+        assert!(has_nopasswd("ibex ALL=(ALL) NOPASSWD: SETENV: ALL\n"));
+        assert!(has_nopasswd("Defaults !authenticate\n"));
+        // @include, #include and @includedir are followed, relative to the
+        // including file.
+        for (name, line) in [
+            ("inc1", "@include /etc/extra\n"),
+            ("inc2", "#include extra\n"),
+            ("inc3", "@includedir /etc/extra.d\n"),
+        ] {
+            let (root, sandbox) = tree(
+                &[
+                    ("/etc/sudoers", line.as_bytes()),
+                    ("/etc/extra", b"ibex ALL=(ALL) NOPASSWD: ALL\n"),
+                    ("/etc/extra.d/grant", b"ibex ALL=(ALL) NOPASSWD: ALL\n"),
+                ],
+                name,
+            );
+            assert_eq!(
+                sudo_nopasswd(&sandbox).outcome,
+                CheckOutcome::Fail,
+                "{line}"
+            );
+            std::fs::remove_dir_all(root).unwrap();
+        }
+        // An include that cannot be read is never a pass.
+        let (root, sandbox) = tree(&[("/etc/sudoers", b"@include /etc/missing\n")], "inc4");
+        assert_eq!(sudo_nopasswd(&sandbox).outcome, CheckOutcome::NotAssessed);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

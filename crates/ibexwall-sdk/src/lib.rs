@@ -177,6 +177,9 @@ async fn dispatch<P: Plugin>(plugin: &P, method: &str, params: Value) -> Reply {
     }
 }
 
+/// Largest file [`Sandbox::read_bytes`] returns.
+pub const MAX_READ_BYTES: u64 = 8 * 1024 * 1024;
+
 /// Read-only view of a filesystem tree rooted at `root`.
 ///
 /// Checks read through it instead of using absolute paths, so they run
@@ -209,9 +212,26 @@ impl Sandbox {
         std::fs::read_to_string(self.path(path)).ok()
     }
 
-    /// Raw file contents (EFI variables are binary).
+    /// Raw file contents (EFI variables are binary). Only a regular file of
+    /// at most [`MAX_READ_BYTES`]: a user-owned `~/.bashrc` can be a link to
+    /// `/dev/zero` or a FIFO, which would block or exhaust memory. The open
+    /// refuses a final symlink and never waits on a FIFO.
     pub fn read_bytes(&self, path: &str) -> Option<Vec<u8>> {
-        std::fs::read(self.path(path)).ok()
+        use std::io::Read as _;
+        use std::os::unix::fs::OpenOptionsExt as _;
+        let flags = rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK;
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(flags.bits() as i32)
+            .open(self.path(path))
+            .ok()?;
+        let meta = file.metadata().ok()?;
+        if !meta.is_file() || meta.len() > MAX_READ_BYTES {
+            return None;
+        }
+        let mut bytes = Vec::new();
+        file.take(MAX_READ_BYTES + 1).read_to_end(&mut bytes).ok()?;
+        (bytes.len() as u64 <= MAX_READ_BYTES).then_some(bytes)
     }
 
     pub fn exists(&self, path: &str) -> bool {
@@ -250,6 +270,31 @@ impl Sandbox {
     pub fn is_unreadable_dir(&self, dir: &str) -> bool {
         let path = self.path(dir);
         path.is_dir() && std::fs::read_dir(path).is_err()
+    }
+
+    /// The host's mount table in `/proc/mounts` layout (`source point type
+    /// options 0 0`), taken from PID 1's mount namespace. A plugin's own
+    /// `/proc/self/mounts` is distorted by its sandbox (private `/tmp` and
+    /// `/dev`, `ProtectHome` tmpfs, read-only remounts), so judging the
+    /// host's mount options from it gives wrong verdicts. `None` when PID 1's
+    /// table cannot be read: callers must say "cannot tell", not guess.
+    pub fn host_mounts(&self) -> Option<String> {
+        let text = self.read("/proc/1/mountinfo")?;
+        let mut out = String::new();
+        for line in text.lines() {
+            // id parent maj:min root point options [optional...] - type source super
+            let (head, tail) = line.split_once(" - ")?;
+            let head: Vec<&str> = head.split_whitespace().collect();
+            let tail: Vec<&str> = tail.split_whitespace().collect();
+            if head.len() < 6 || tail.len() < 2 {
+                return None;
+            }
+            out.push_str(&format!(
+                "{} {} {} {} 0 0\n",
+                tail[1], head[4], tail[0], head[5]
+            ));
+        }
+        Some(out)
     }
 
     /// Mode (low 12 bits), uid and gid of a file; `None` when it cannot
@@ -369,6 +414,52 @@ mod tests {
             .unwrap_err();
         assert_eq!(err.name, ibexwall_varlink::service_errors::METHOD_NOT_FOUND);
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn host_mounts_come_from_pid_one_in_proc_mounts_layout() {
+        let root = std::env::temp_dir().join(format!("ibx-mnt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("proc/1")).unwrap();
+        std::fs::write(
+            root.join("proc/1/mountinfo"),
+            "25 1 0:22 / /tmp rw,nosuid,nodev shared:5 - tmpfs tmpfs rw,size=1k\n\
+             30 1 8:1 / / rw,relatime - ext4 /dev/sda1 rw\n",
+        )
+        .unwrap();
+        let sandbox = Sandbox::at(&root);
+        assert_eq!(
+            sandbox.host_mounts().as_deref(),
+            Some("tmpfs /tmp tmpfs rw,nosuid,nodev 0 0\n/dev/sda1 / ext4 rw,relatime 0 0\n")
+        );
+        std::fs::remove_file(root.join("proc/1/mountinfo")).unwrap();
+        assert_eq!(sandbox.host_mounts(), None);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn read_bytes_takes_only_small_regular_files() {
+        let root = std::env::temp_dir().join(format!("ibx-rb-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("h")).unwrap();
+        std::fs::write(root.join("h/ok"), "x").unwrap();
+        std::fs::write(root.join("h/big"), vec![0u8; MAX_READ_BYTES as usize + 1]).unwrap();
+        std::os::unix::fs::symlink("/dev/zero", root.join("h/zero")).unwrap();
+        std::os::unix::fs::symlink("ok", root.join("h/link")).unwrap();
+        let fifo = root.join("h/fifo");
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg(&fifo)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let sandbox = Sandbox::at(&root);
+        assert_eq!(sandbox.read_bytes("/h/ok"), Some(b"x".to_vec()));
+        for bad in ["/h/big", "/h/zero", "/h/link", "/h/fifo", "/h/none"] {
+            assert_eq!(sandbox.read_bytes(bad), None, "{bad}");
+        }
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

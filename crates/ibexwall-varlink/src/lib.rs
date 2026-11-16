@@ -12,8 +12,8 @@ mod wire;
 
 pub use client::{CallStream, Client, call, call_more};
 pub use server::{
-    Call, Handler, Peer, Reply, ServeLimits, ServiceInfo, futures_handle, serve, serve_limited,
-    serve_with_fd,
+    Call, Cancel, Handler, Peer, Reply, ServeLimits, ServiceInfo, futures_handle, serve,
+    serve_limited, serve_with_fd,
 };
 pub use wire::{MAX_MESSAGE_BYTES, Reply as WireReply, Request, VarlinkError};
 

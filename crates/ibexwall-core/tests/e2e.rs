@@ -1902,3 +1902,141 @@ controls:
         .unwrap_err();
     assert_eq!(err.name, "com.ibexwall.Core.NotFound");
 }
+
+#[tokio::test]
+async fn an_apply_the_audit_log_cannot_record_does_not_touch_the_machine() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let (core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+    client
+        .call(
+            "com.ibexwall.Core.SetPluginEnabled",
+            json!({ "id": "dev.echo", "enabled": true }),
+        )
+        .await
+        .unwrap();
+    let plan = plan_with(&mut client, "dropin").await;
+    let target = sandbox.root.join("etc/sysctl.d/90-ibexwall-test.conf");
+    let before = std::fs::read_to_string(&target).ok();
+    core.state
+        .with_conn(|conn| {
+            conn.execute_batch(
+                "CREATE TRIGGER no_audit BEFORE INSERT ON audit_log \
+                 BEGIN SELECT RAISE(ABORT, 'disk full'); END;",
+            )
+        })
+        .unwrap();
+    let error = client
+        .call(
+            "com.ibexwall.Core.Apply",
+            json!({ "plan_id": plan["id"].as_str().unwrap() }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error.name, "com.ibexwall.Core.Conflict");
+    assert_eq!(std::fs::read_to_string(&target).ok(), before);
+}
+
+#[tokio::test]
+async fn confirm_after_the_deadline_is_refused() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let (core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+    client
+        .call(
+            "com.ibexwall.Core.SetPluginEnabled",
+            json!({ "id": "dev.echo", "enabled": true }),
+        )
+        .await
+        .unwrap();
+    let plan = plan_with(&mut client, "network").await;
+    let value = client
+        .call(
+            "com.ibexwall.Core.Apply",
+            json!({ "plan_id": plan["id"].as_str().unwrap(), "confirm_timeout_s": 3600 }),
+        )
+        .await
+        .unwrap();
+    let tx = value["transaction"]["id"].as_str().unwrap().to_string();
+    // The watchdog sleeps for an hour; the deadline is moved into the
+    // past to stand for the moment before it wakes.
+    core.state.set_confirm_deadline(&tx, 1).unwrap();
+    let error = client
+        .call("com.ibexwall.Core.Confirm", json!({ "transaction_id": tx }))
+        .await
+        .unwrap_err();
+    assert_eq!(error.name, "com.ibexwall.Core.Conflict");
+}
+
+#[tokio::test]
+async fn recovery_does_not_replay_a_failed_rollback_over_a_newer_commit() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let (core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+    client
+        .call(
+            "com.ibexwall.Core.SetPluginEnabled",
+            json!({ "id": "dev.echo", "enabled": true }),
+        )
+        .await
+        .unwrap();
+    let old_plan = plan_with(&mut client, "dropin").await["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let new_plan = plan_with(&mut client, "dropin").await["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let persisted = core.state.load_plan(&old_plan).unwrap().unwrap();
+    let ops: Vec<ibexwall_proto::Op> = serde_json::from_str(&persisted.ops_json).unwrap();
+    // The old transaction failed its rollback; its snapshot would restore
+    // fine now. A newer committed one touches the same file.
+    core.engine
+        .snapshot(&core.state, "tx-old", &ops, &[])
+        .unwrap();
+    core.engine.execute(None, &ops).unwrap();
+    for (id, plan_id, state, at) in [
+        (
+            "tx-old",
+            old_plan,
+            TransactionState::Failed,
+            "2026-11-01T12:00:00Z",
+        ),
+        (
+            "tx-new",
+            new_plan,
+            TransactionState::Committed,
+            "2026-11-01T12:00:05Z",
+        ),
+    ] {
+        core.state
+            .insert_transaction(
+                &TxRow {
+                    id: id.into(),
+                    plan_id,
+                    plugin: "dev.echo".into(),
+                    state,
+                    restore_point: format!("snapshots/{id}"),
+                },
+                at,
+            )
+            .unwrap();
+    }
+    drop(client);
+
+    let (core2, _client2) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+    let old = core2.state.get_transaction("tx-old").unwrap().unwrap();
+    assert_eq!(old.state, TransactionState::Failed);
+    let target = sandbox.root.join("etc/sysctl.d/90-ibexwall-test.conf");
+    assert!(target.exists(), "the newer change must still be in place");
+}

@@ -165,7 +165,8 @@ fn evaluate_control(
 /// shape `ibexwall_sys::format_rfc3339` produces.
 pub(crate) fn parse_unix(ts: &str) -> i64 {
     let bytes = ts.as_bytes();
-    if bytes.len() < 19 {
+    // Fixed-width ASCII only: slicing a multi-byte character would panic.
+    if bytes.len() < 19 || !ts.is_ascii() {
         return 0;
     }
     let year: i64 = ts[0..4].parse().unwrap_or(1970);
@@ -346,6 +347,13 @@ pub fn oscal(report: &ComplianceReport, now: i64) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_non_ascii_timestamp_does_not_panic() {
+        // 19+ bytes whose slice offsets fall inside a multi-byte char.
+        assert_eq!(parse_unix("2026-11-01T12:00:0é-extra"), 0);
+        assert_eq!(parse_unix("é026-11-01T12:00:00Z"), 0);
+    }
 
     fn stored(id: &str, outcome: CheckOutcome, age: i64) -> StoredCheck {
         StoredCheck {

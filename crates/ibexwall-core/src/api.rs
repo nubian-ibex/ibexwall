@@ -16,7 +16,7 @@ use ibexwall_proto::names;
 use ibexwall_proto::{Op, OpPreview, Plan, PluginInfo, Transaction, TransactionState};
 use ibexwall_sys::{Clock, Decision, Identity, Polkit, RealPolkit};
 use ibexwall_varlink::VarlinkError;
-use ibexwall_varlink::{Call, Handler, Peer, Reply, futures_handle};
+use ibexwall_varlink::{Call, Cancel, Handler, Peer, Reply, futures_handle};
 
 use crate::state::TxStatus;
 use crate::{Core, TxRow};
@@ -153,7 +153,11 @@ impl Handler for Api {
                 }
                 let mut receiver = core.events.subscribe();
                 loop {
-                    match receiver.recv().await {
+                    let next = tokio::select! {
+                        next = receiver.recv() => next,
+                        () = call.cancel.cancelled() => break,
+                    };
+                    match next {
                         Ok(event) => {
                             let frame = Reply::result_continues(
                                 serde_json::to_value(&event).unwrap_or_default(),
@@ -215,7 +219,16 @@ impl Handler for Api {
                 .strip_prefix("com.ibexwall.Core.")
                 .unwrap_or(&call.method)
                 .to_string();
-            let reply = match dispatch(&core, &*polkit, &method, call.parameters, call.peer).await {
+            let reply = match dispatch(
+                &core,
+                &*polkit,
+                &method,
+                call.parameters,
+                call.peer,
+                &call.cancel,
+            )
+            .await
+            {
                 Ok(reply) => reply,
                 Err(e) => Reply::error(e.name, e.parameters),
             };
@@ -230,6 +243,7 @@ async fn dispatch(
     method: &str,
     parameters: Value,
     peer: Peer,
+    cancel: &Cancel,
 ) -> Result<Reply, VarlinkError> {
     let action = polkit_action(method).ok_or_else(|| {
         VarlinkError::new(
@@ -245,10 +259,15 @@ async fn dispatch(
         .get("allowInteractiveAuthentication")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    let decision = polkit
-        .check_with(action.to_string(), identity, interactive)
-        .await
-        .map_err(|e| err("Conflict", json!({"reason": e.to_string()})))?;
+    // Only this wait stops when the client hangs up (the dialog is for
+    // them); once authorized, the call runs to its end (A-01).
+    let decision = tokio::select! {
+        decision = polkit.check_with(action.to_string(), identity, interactive) => decision,
+        () = cancel.cancelled() => {
+            return Err(err("Conflict", json!({"reason": "client disconnected"})));
+        }
+    }
+    .map_err(|e| err("Conflict", json!({"reason": e.to_string()})))?;
     match decision {
         Decision::Authorized => {}
         Decision::NotAuthorized => return Err(permission_denied(action)),
@@ -718,17 +737,21 @@ async fn dispatch_policy(
                     )
                 })?;
             let trust_dir = ibexwall_proto::names::path_under(&core.root, "/etc/ibexwall/trust");
+            // Only "no version stored yet" lifts the rollback guard; a
+            // read error must not, or a stale bundle would pass.
             let current_version = core
                 .state
                 .with_conn(|conn| {
+                    use rusqlite::OptionalExtension;
                     conn.query_row(
                         "SELECT value FROM config WHERE key = 'policy_version'",
                         [],
                         |row| row.get::<_, i64>(0),
                     )
-                    .ok()
+                    .optional()
                 })
-                .map(|v| v as u64);
+                .map_err(internal)?
+                .map(|v| u64::try_from(v).unwrap_or(0));
             crate::policy::verify_bundle(
                 &bundle,
                 &trust_dir,
@@ -777,6 +800,13 @@ async fn dispatch_policy(
                 }
                 org.insert("plugins".into(), toml::Value::Table(plugins));
             }
+            // Stored as a signed integer: a version past i64::MAX would
+            // wrap negative and later read back as "no version".
+            let stored_version = i64::try_from(bundle.version)
+                .map_err(|_| invalid_argument("bundle", "version out of range".into()))?;
+            // Record first: a policy change must not land unaudited.
+            core.try_audit(actor, "core", None, "", "policy-applied")
+                .map_err(internal)?;
             std::fs::create_dir_all(&config_dir)
                 .map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?;
             std::fs::write(
@@ -789,12 +819,11 @@ async fn dispatch_policy(
                 .with_conn(|conn| {
                     conn.execute(
                         "INSERT OR REPLACE INTO config (key, value) VALUES ('policy_version', ?1)",
-                        rusqlite::params![bundle.version as i64],
+                        rusqlite::params![stored_version],
                     )
                 })
                 .map_err(|e| err("Conflict", json!({ "reason": e.to_string() })))?;
             core.reload_config();
-            core.audit(actor, "core", None, "", "policy-applied");
             let locks: Vec<String> = bundle.locks.clone();
             Ok(Reply::result(json!({
                 "version": bundle.version,
@@ -916,6 +945,8 @@ async fn dispatch_policy(
             let config_dir =
                 ibexwall_proto::names::path_under(&core.root, ibexwall_proto::names::CONFIG_DIR);
             let org_path = config_dir.join("org.toml");
+            core.try_audit(actor, "core", None, "", "break-glass")
+                .map_err(internal)?;
             let doc_text = std::fs::read_to_string(&org_path).unwrap_or_default();
             let mut doc: toml::Table = doc_text.parse().unwrap_or_default();
             if let Some(toml::Value::Array(old_locks)) = doc.get("lock") {
@@ -933,7 +964,6 @@ async fn dispatch_policy(
             std::fs::write(&org_path, toml::to_string_pretty(&doc).map_err(internal)?)
                 .map_err(internal)?;
             core.reload_config();
-            core.audit(actor, "core", None, "", "break-glass");
             Ok(Reply::result(json!({
                 "unlocked": unlocked,
                 "expires_at": expires_at,
@@ -1309,13 +1339,22 @@ async fn apply(core: &Arc<Core>, parameters: &Value, actor: &str) -> Result<Repl
     core.state
         .insert_transaction(&row, &now)
         .map_err(internal)?;
-    core.audit(
+    // No record, no change: an apply the audit chain cannot show must
+    // not touch the machine. Nothing ran yet, so the row is closed.
+    if let Err(error) = core.try_audit(
         actor,
         &plan.plugin,
         Some(&tx_id),
         &crate::audit::ops_digest(&ops),
         "apply-start",
-    );
+    ) {
+        let _ = core.state.mark_transaction(&tx_id, TxStatus::RolledBack);
+        tracing::error!(%error, "audit append failed; apply aborted");
+        return Err(err(
+            "Conflict",
+            json!({ "reason": "the audit log cannot be written" }),
+        ));
+    }
 
     // Snapshot, then execute (spec §4.5 order). Execs the manifest marked
     // symmetric are re-run by the rollback once the files are back.
@@ -1451,6 +1490,11 @@ async fn apply(core: &Arc<Core>, parameters: &Value, actor: &str) -> Result<Repl
 #[cfg(test)]
 mod applied_tests {
     use super::*;
+
+    #[test]
+    fn a_non_ascii_expiry_does_not_panic() {
+        assert_eq!(parse_unix("2026-11-01T12:00:0é-extra"), i64::MAX);
+    }
 
     #[test]
     fn the_dns_choice_comes_from_the_settings_file_it_was_stored_with() {

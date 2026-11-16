@@ -334,6 +334,12 @@ fn uid_of(sandbox: &Sandbox, user: &str) -> Option<u32> {
 
 /// Refuse clear DNS and DoT from every user except the resolver. Loopback
 /// stays open so applications can reach the local stub.
+///
+/// Known limit (audit A-48): a local resolver run by another program
+/// (libvirt's dnsmasq, tailscaled) that forwards clear DNS from its own
+/// uid is rejected here too. Exempting those needs a per-uid list in the
+/// config and a decision on which programs may be trusted; until then the
+/// person can turn `enforcement` off.
 fn enforcement_op(sandbox: &Sandbox) -> Result<Op, PluginError> {
     let uid = uid_of(sandbox, names::DNS_USER).ok_or_else(|| {
         PluginError::invalid(

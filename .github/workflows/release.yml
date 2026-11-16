@@ -108,7 +108,8 @@ jobs:
   rpm:
     needs: build
     runs-on: ubuntu-latest
-    container: fedora:latest
+    # fedora:latest as of 2026-11-02; bump the digest on purpose.
+    container: fedora@sha256:a7d72ba2745b100a3351087472e5ee7b2450af7cf331e7673007e3817612839c
     permissions:
       contents: read
     steps:
@@ -137,7 +138,8 @@ jobs:
   arch:
     needs: build
     runs-on: ubuntu-latest
-    container: archlinux:latest
+    # archlinux:latest as of 2026-11-09; bump the digest on purpose.
+    container: archlinux@sha256:d4594bb2300cba11f41c2f27923eb56f63d9988909c402f9c95517d1e362c899
     permissions:
       contents: read
     steps:
@@ -156,6 +158,8 @@ jobs:
           mkdir -p /tmp/pkg /tmp/out
           cp packaging/arch/PKGBUILD packaging/arch/ibexwall.install /tmp/pkg/
           chown -R builder /tmp/pkg /tmp/out /tmp/s
+          # --skipinteg is a no-op today: the PKGBUILD has no source=() to check,
+          # the files come from the staged tree whose checksums the release signs.
           su builder -c 'cd /tmp/pkg && IBEXWALL_STAGE=/tmp/s/stage PKGDEST=/tmp/out makepkg -f --nodeps --skipinteg --nocheck'
           mkdir -p out && cp /tmp/out/*.pkg.tar.zst out/
           ls -la out
@@ -173,6 +177,8 @@ jobs:
       id-token: write
       attestations: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release
@@ -185,6 +191,20 @@ jobs:
         with:
           name: pkg-arch
           path: dist
+      # The packages are all here now: checksum and sign everything again so
+      # SHA256SUMS and the signatures cover the .deb, .rpm and .pkg.tar.zst.
+      - name: checksum and sign every file
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          set -eu
+          umask 077
+          mkdir -p "$RUNNER_TEMP/keys"
+          cp packaging/release.pub "$RUNNER_TEMP/keys/dev.pub"
+          printf '%s\n' "$RELEASE_SIGNING_KEY" > "$RUNNER_TEMP/keys/dev.key"
+          cargo xtask sign-release --version "${GITHUB_REF_NAME#v}" \
+            --key-dir "$RUNNER_TEMP/keys" dist
+          rm -f "$RUNNER_TEMP/keys/dev.key"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |

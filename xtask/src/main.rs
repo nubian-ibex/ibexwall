@@ -51,6 +51,9 @@ Commands:
   release --version V [--key-dir D] [--out DIR] [--skip-build]
                      Build the release artifacts, their SBOM and provenance,
                      checksum and sign them (the key is the maintainer's)
+  sign-release --version V --key-dir D DIR
+                     Checksum and sign every file in DIR again (after the
+                     packages built later were added)
   verify-release DIR PUBKEY
                      Check the checksums and signatures of a release
   repro [--key-dir D] [--with-desktop]
@@ -191,6 +194,24 @@ fn main() {
                 std::process::exit(2);
             }
             if let Err(err) = release::run_release(&options) {
+                eprintln!("error: {err:#}");
+                std::process::exit(1);
+            }
+        }
+        Some("sign-release") => {
+            let (mut version, mut key_dir, mut dir) = (String::new(), String::new(), String::new());
+            while let Some(arg) = args.next() {
+                match arg.as_str() {
+                    "--version" => version = args.next().unwrap_or_default(),
+                    "--key-dir" => key_dir = args.next().unwrap_or_default(),
+                    other => dir = other.to_string(),
+                }
+            }
+            if version.is_empty() || key_dir.is_empty() || dir.is_empty() {
+                eprintln!("error: sign-release needs --version, --key-dir and DIR");
+                std::process::exit(2);
+            }
+            if let Err(err) = release::sign_release(dir.as_ref(), &version, key_dir.as_ref()) {
                 eprintln!("error: {err:#}");
                 std::process::exit(1);
             }

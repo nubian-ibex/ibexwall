@@ -16,12 +16,19 @@
 # systemd in a chroot or a container build) is skipped.
 
 sockets_list=/usr/lib/ibexwall/sockets.list
+was_enabled=no
 
 have_systemd() {
     [ -d /run/systemd/system ]
 }
 
+# True on the first install: the state directory does not exist yet. Must be
+# asked before tmpfiles creates it.
+fresh_install=no
+
 post_install() {
+    fresh_install=no
+    [ -d /var/lib/ibexwall ] || fresh_install=yes
     systemd-sysusers /usr/lib/sysusers.d/ibexwall.conf /usr/lib/sysusers.d/ibexwall-dns.conf >/dev/null 2>&1 || true
     systemd-tmpfiles --create /usr/lib/tmpfiles.d/ibexwall.conf >/dev/null 2>&1 || true
     if have_systemd; then
@@ -31,16 +38,24 @@ post_install() {
             systemctl preset $(cat "$sockets_list") >/dev/null 2>&1 || true
             systemctl start $(cat "$sockets_list") >/dev/null 2>&1 || true
         }
-        # The connection monitor runs by default. Only a recorded "off"
-        # (the person turned it off) is kept across upgrades and
-        # reinstalls.
-        if [ "$(cat /var/lib/ibexwall/monitor.choice 2>/dev/null)" != off ]; then
+        # The connection monitor runs by default on a fresh install. Later
+        # it follows the person's choice. Versions before 0.2 recorded no
+        # choice, so an upgrade that finds none keeps what systemd has: a
+        # monitor that was turned off on purpose stays off.
+        choice=$(cat /var/lib/ibexwall/monitor.choice 2>/dev/null || true)
+        if [ "$choice" = on ] || { [ "$choice" != off ] && [ "$fresh_install" = yes ]; } ||
+            { [ -z "$choice" ] && [ "$was_enabled" = yes ]; }; then
             systemctl enable --now ibexwall-monitor.service >/dev/null 2>&1 || true
         fi
     fi
 }
 
 post_upgrade() {
+    # Read before post_install touches anything.
+    was_enabled=no
+    if have_systemd && systemctl is-enabled --quiet ibexwall-monitor.service >/dev/null 2>&1; then
+        was_enabled=yes
+    fi
     post_install
     if have_systemd; then
         # The sockets keep listening; the services start again on the new
@@ -58,7 +73,12 @@ pre_remove() {
         # Stop taking connections, then undo, then stop the rest.
         systemctl stop ibexwalld.socket ibexwalld.service >/dev/null 2>&1 || true
         if [ -x /usr/bin/ibexwalld ]; then
-            /usr/bin/ibexwalld --cleanup || echo "ibexwall: some changes could not be undone; the message above says which" >&2
+            if ! /usr/bin/ibexwalld --cleanup; then
+                echo "ibexwall: some changes could not be undone; the message above says which" >&2
+                # A purge must then keep the snapshots and the audit trail
+                # that a later rollback needs.
+                : >/var/lib/ibexwall/cleanup.failed 2>/dev/null || true
+            fi
         fi
         # shellcheck disable=SC2046
         systemctl disable --now $(cat "$sockets_list") >/dev/null 2>&1 || true
@@ -73,9 +93,20 @@ post_remove() {
 }
 
 # What a purge removes: the user's data, kept until now (state, audit chain,
-# settings). Only the formats that have a purge call it.
+# settings). Only the formats that have a purge call it. The debian postrm
+# gets a copy of this function at build time (packaging/deb/debian/rules),
+# because this file is already gone when a purge runs.
+# When the removal could not undo every change, the snapshots and the audit
+# trail (state.db) stay: they are what a rollback needs.
 purge_data() {
-    rm -rf /var/lib/ibexwall /var/lib/ibexwall-mcp /var/lib/ibexwall-dns /etc/ibexwall /run/ibexwall
+    rm -rf /var/lib/ibexwall-mcp /var/lib/ibexwall-dns /etc/ibexwall /run/ibexwall
+    if [ -e /var/lib/ibexwall/cleanup.failed ]; then
+        echo "ibexwall: cleanup had failed; keeping /var/lib/ibexwall/snapshots and state.db" >&2
+        find /var/lib/ibexwall -mindepth 1 -maxdepth 1 \
+            ! -name snapshots ! -name 'state.db*' -exec rm -rf {} + 2>/dev/null || true
+    else
+        rm -rf /var/lib/ibexwall
+    fi
 }
 
 # AppArmor (Debian and Ubuntu, package ibexwall-apparmor). The profiles live

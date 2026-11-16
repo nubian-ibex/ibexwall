@@ -624,8 +624,30 @@ pub fn run_release(options: &Release) -> Result<()> {
     )?;
     artifacts.push(statement);
 
-    // The checksums, then a signature for every file and for the checksums.
-    let mut names: Vec<String> = artifacts.iter().map(|p| file_name(p)).collect();
+    let names: Vec<String> = artifacts.iter().map(|p| file_name(p)).collect();
+    let names = write_checksums_and_signatures(&out, version, &pair, names)?;
+    std::fs::copy(
+        options.key_dir.join("dev.pub"),
+        out.join("ibexwall-release.pub"),
+    )?;
+    // The staged tree is in the archive; the copy is only a work area.
+    let _ = std::fs::remove_dir_all(&staging);
+    println!(
+        "release {version}: {} files in {}",
+        names.len() * 2,
+        out.display()
+    );
+    verify(&out, &out.join("ibexwall-release.pub"))
+}
+
+/// The checksums, then a signature for every file and for the checksums.
+/// Returns every name signed, SHA256SUMS included.
+fn write_checksums_and_signatures(
+    out: &Path,
+    version: &str,
+    pair: &devkey::KeyPair,
+    mut names: Vec<String>,
+) -> Result<Vec<String>> {
     names.sort();
     let mut sums = String::new();
     for name in &names {
@@ -639,25 +661,33 @@ pub fn run_release(options: &Release) -> Result<()> {
     for name in &names {
         let data = std::fs::read(out.join(name))?;
         let signature = devkey::sign_labelled(
-            &pair,
+            pair,
             &data,
             &format!("ibexwall {version} {name}"),
             "ibexwall release signature",
         );
         std::fs::write(out.join(format!("{name}.minisig")), signature)?;
     }
-    std::fs::copy(
-        options.key_dir.join("dev.pub"),
-        out.join("ibexwall-release.pub"),
-    )?;
-    // The staged tree is in the archive; the copy is only a work area.
-    let _ = std::fs::remove_dir_all(&staging);
-    println!(
-        "release {version}: {} files in {}",
-        names.len() * 2,
-        out.display()
-    );
-    verify(&out, &out.join("ibexwall-release.pub"))
+    Ok(names)
+}
+
+/// `cargo xtask sign-release`: run once every package is in `dir` (the rpm
+/// and the arch package are built after the release step), so the checksums
+/// and signatures cover all of them. Replaces SHA256SUMS and the signatures.
+pub fn sign_release(dir: &Path, version: &str, key_dir: &Path) -> Result<()> {
+    let pair = devkey::ensure_keypair(&key_dir.join("dev.pub"), &key_dir.join("dev.key"))?;
+    let mut names = Vec::new();
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let derived =
+            name == "SHA256SUMS" || name.ends_with(".minisig") || name == "ibexwall-release.pub";
+        if entry.file_type()?.is_file() && !derived {
+            names.push(name);
+        }
+    }
+    write_checksums_and_signatures(dir, version, &pair, names)?;
+    verify(dir, &dir.join("ibexwall-release.pub"))
 }
 
 /// What anyone does with a release: the checksums match the files, and every
@@ -872,6 +902,34 @@ mod tests {
             64
         );
         assert!(statement["predicate"]["runDetails"]["builder"]["id"].is_string());
+    }
+
+    #[test]
+    fn signing_a_release_dir_covers_the_packages_added_after_the_first_pass() {
+        let dir = std::env::temp_dir().join(format!("ibx-sign-{}", std::process::id()));
+        let keys = dir.join("keys");
+        std::fs::create_dir_all(&keys).unwrap();
+        devkey::ensure_keypair(&keys.join("dev.pub"), &keys.join("dev.key")).unwrap();
+        std::fs::copy(keys.join("dev.pub"), dir.join("ibexwall-release.pub")).unwrap();
+        std::fs::write(dir.join("a.tar.gz"), b"tree").unwrap();
+        sign_release(&dir, "0.0.0", &keys).unwrap();
+        for package in ["x.deb", "x.rpm", "x.pkg.tar.zst"] {
+            std::fs::write(dir.join(package), package.as_bytes()).unwrap();
+        }
+        sign_release(&dir, "0.0.0", &keys).unwrap();
+        let sums = std::fs::read_to_string(dir.join("SHA256SUMS")).unwrap();
+        for name in ["a.tar.gz", "x.deb", "x.rpm", "x.pkg.tar.zst"] {
+            assert!(
+                sums.contains(&format!("  {name}\n")),
+                "{name} is checksummed"
+            );
+            assert!(
+                dir.join(format!("{name}.minisig")).is_file(),
+                "{name} is signed"
+            );
+        }
+        assert!(!sums.contains("minisig") && !sums.contains("release.pub"));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

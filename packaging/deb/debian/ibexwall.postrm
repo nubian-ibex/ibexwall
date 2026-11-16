@@ -9,6 +9,7 @@ remove | purge | disappear)
 esac
 if [ "$1" = purge ]; then
     # The user's data stays until a purge: state, audit chain, settings.
-    rm -rf /var/lib/ibexwall /var/lib/ibexwall-mcp /var/lib/ibexwall-dns /etc/ibexwall /run/ibexwall
+#PURGE_DATA#
+    purge_data
 fi
 exit 0

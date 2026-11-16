@@ -101,6 +101,15 @@ impl Engine {
         for (index, op) in ops.iter().enumerate() {
             match op {
                 Op::FileWrite { path, .. } | Op::FileRemove { path } => {
+                    // `read` follows links; a link must come back as a link.
+                    if let Some(target) = self.sys.fs.read_link(std::path::Path::new(path))? {
+                        entries.push(SnapshotEntry::Symlink {
+                            op_index: index,
+                            path: path.clone(),
+                            target: target.to_string_lossy().into_owned(),
+                        });
+                        continue;
+                    }
                     let prior = match self.sys.fs.read(std::path::Path::new(path)) {
                         Ok(content) => {
                             let meta = self.sys.fs.metadata(std::path::Path::new(path))?;
@@ -486,20 +495,24 @@ impl Engine {
         let mut resolved: std::collections::BTreeSet<String> = Default::default();
         for dir in dirs {
             let mut current = Path::new(&dir);
-            loop {
+            // The nearest ancestor that exists, "/" when none does.
+            let found = loop {
                 if self.sys.fs.exists(current) {
-                    resolved.insert(current.to_string_lossy().into_owned());
-                    break;
+                    break current;
                 }
                 match current.parent() {
                     Some(parent) if parent != Path::new("/") => current = parent,
-                    _ => {
-                        // Nothing exists up the chain: give the whole root
-                        // (the plan is about to fail honestly anyway).
-                        resolved.insert("/".into());
-                        break;
-                    }
+                    _ => break Path::new("/"),
                 }
+            };
+            // Never widen to the whole root or to /run (a missing lock file
+            // under it would otherwise make every runtime file writable):
+            // name the path itself, with the `-` prefix systemd ignores when
+            // it is absent. A helper that needs it then fails visibly.
+            if found == Path::new("/") || found == Path::new("/run") {
+                resolved.insert(format!("-{dir}"));
+            } else {
+                resolved.insert(found.to_string_lossy().into_owned());
             }
         }
         resolved.into_iter().collect()
@@ -584,7 +597,7 @@ fn snapshot_write_directories(manifest: &SnapshotManifest) -> Vec<String> {
     let mut dirs: std::collections::BTreeSet<String> = Default::default();
     for entry in &manifest.entries {
         match entry {
-            SnapshotEntry::File { path, .. } => {
+            SnapshotEntry::File { path, .. } | SnapshotEntry::Symlink { path, .. } => {
                 if let Some(parent) = Path::new(path).parent() {
                     let parent = parent.to_string_lossy();
                     if !parent.is_empty() {

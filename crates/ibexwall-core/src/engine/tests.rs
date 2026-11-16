@@ -843,3 +843,75 @@ fn the_executor_work_file_is_private_and_removed_after_the_run() {
     );
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+/// Records the directories a transient unit would be allowed to write.
+#[derive(Default)]
+struct RecordingExecutor {
+    dirs: std::sync::Mutex<Vec<String>>,
+}
+
+impl ibexwall_sys::systemd::Systemd for RecordingExecutor {
+    fn snapshot(&self, _unit: &str) -> anyhow::Result<UnitSnapshot> {
+        Ok(UnitSnapshot::default())
+    }
+    fn apply(&self, _unit: &str, _action: UnitAction, _now: bool) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn run_transient_executor(
+        &self,
+        _unit: &str,
+        _exec_args: &[String],
+        dirs: &[String],
+    ) -> anyhow::Result<()> {
+        *self.dirs.lock().unwrap() = dirs.to_vec();
+        Ok(())
+    }
+}
+
+#[test]
+fn a_missing_path_never_widens_read_write_paths_to_run_or_root() {
+    let fs = Arc::new(FakeFs::new());
+    // /run exists; the lock file under it does not. /etc/ufw exists.
+    fs.seed(Path::new("/run"), b"");
+    fs.seed(Path::new("/etc/ufw"), b"");
+    let recorder = Arc::new(RecordingExecutor::default());
+    let engine = Engine::with(SysBundle {
+        fs,
+        runner: Arc::new(ibexwall_sys::firewall::FakeRunner::new()),
+        systemd: recorder.clone(),
+        sysctl: Arc::new(FakeSysctl::new()),
+        clock: Arc::new(FakeClock::new(1_793_534_400)),
+        nft: Arc::new(FakeNft::new()),
+        allow_system_executors: true,
+        use_transient_executor: true,
+        executor_work_dir: Some(
+            std::env::temp_dir().join(format!("ibx-rw-{}", std::process::id())),
+        ),
+    });
+    let dirs = engine.writable_ancestors(vec![
+        "/etc/ufw".into(),
+        "/run/xtables.lock".into(),
+        "/nowhere/at/all".into(),
+        "/etc/ufw/new.d".into(),
+    ]);
+    assert_eq!(dirs, ["-/nowhere/at/all", "-/run/xtables.lock", "/etc/ufw"]);
+    assert!(recorder.dirs.lock().unwrap().is_empty());
+}
+
+#[test]
+fn a_symlinked_file_comes_back_as_a_symlink_after_a_write() {
+    let rig = rig("symlink", false);
+    let path = "/etc/resolv.conf";
+    rig.fs
+        .symlink(Path::new(path), Path::new("/run/stub-resolv.conf"));
+    let ops = vec![write(path, "nameserver 127.0.0.153\n")];
+    rig.engine.snapshot(&rig.state, "txl", &ops, &[]).unwrap();
+    rig.engine.execute(None, &ops).unwrap();
+    assert_eq!(rig.fs.read_link(Path::new(path)).unwrap(), None);
+    rig.engine.rollback(&rig.state, "txl").unwrap();
+    assert_eq!(
+        rig.fs.read_link(Path::new(path)).unwrap().as_deref(),
+        Some(Path::new("/run/stub-resolv.conf"))
+    );
+    assert!(!rig.fs.exists(Path::new(path)));
+}

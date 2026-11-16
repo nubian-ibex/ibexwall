@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-posture"
+description = "Enables the get_posture command without any pre-configured scope."
+commands.allow = ["get_posture"]
+
+[[permission]]
+identifier = "deny-get-posture"
+description = "Denies the get_posture command without any pre-configured scope."
+commands.deny = ["get_posture"]

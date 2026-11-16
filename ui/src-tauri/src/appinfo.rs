@@ -193,7 +193,17 @@ fn data_url(path: &Path) -> Option<String> {
 fn find_icon(icon: &str, icon_roots: &[PathBuf]) -> Option<String> {
     let given = Path::new(icon);
     if given.is_absolute() {
-        return data_url(given);
+        // A desktop entry is untrusted input: an absolute `Icon=` may only
+        // name a file inside an icon directory, so it cannot be used to
+        // read an arbitrary image the user can open (symlinks resolved).
+        let real = std::fs::canonicalize(given).ok()?;
+        let inside = icon_roots
+            .iter()
+            .map(PathBuf::as_path)
+            .chain([Path::new("/usr/share/pixmaps")])
+            .filter_map(|root| std::fs::canonicalize(root).ok())
+            .any(|root| real.starts_with(root));
+        return if inside { data_url(&real) } else { None };
     }
     if icon.contains('/') || icon.contains("..") {
         return None;
@@ -428,6 +438,25 @@ mod tests {
         assert!(find_icon("a/b", std::slice::from_ref(&icons_dir)).is_none());
         assert!(find_icon("secret", std::slice::from_ref(&icons_dir)).is_some());
         std::fs::remove_dir_all(icons_dir).unwrap();
+    }
+
+    #[test]
+    fn an_absolute_icon_must_sit_inside_an_icon_directory() {
+        let icons_dir = scratch("abs-in");
+        let outside = scratch("abs-out");
+        let inside_file = icons_dir.join("app.png");
+        let outside_file = outside.join("photo.png");
+        std::fs::write(&inside_file, b"x").unwrap();
+        std::fs::write(&outside_file, b"x").unwrap();
+        let link = icons_dir.join("link.png");
+        std::os::unix::fs::symlink(&outside_file, &link).unwrap();
+        let roots = std::slice::from_ref(&icons_dir);
+        let path = |p: &Path| p.to_str().unwrap().to_string();
+        assert!(find_icon(&path(&inside_file), roots).is_some());
+        assert!(find_icon(&path(&outside_file), roots).is_none());
+        assert!(find_icon(&path(&link), roots).is_none());
+        std::fs::remove_dir_all(icons_dir).unwrap();
+        std::fs::remove_dir_all(outside).unwrap();
     }
 
     #[test]

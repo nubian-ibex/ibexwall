@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-make-assistant-token"
+description = "Enables the make_assistant_token command without any pre-configured scope."
+commands.allow = ["make_assistant_token"]
+
+[[permission]]
+identifier = "deny-make-assistant-token"
+description = "Denies the make_assistant_token command without any pre-configured scope."
+commands.deny = ["make_assistant_token"]

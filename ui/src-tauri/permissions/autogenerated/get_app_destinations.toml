@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-app-destinations"
+description = "Enables the get_app_destinations command without any pre-configured scope."
+commands.allow = ["get_app_destinations"]
+
+[[permission]]
+identifier = "deny-get-app-destinations"
+description = "Denies the get_app_destinations command without any pre-configured scope."
+commands.deny = ["get_app_destinations"]

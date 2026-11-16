@@ -668,7 +668,8 @@ export class FixtureTransport implements Transport {
       plan_id: planId,
       state: this.scenario === 'attention' ? 'pending_confirm' : 'committed',
       started_at: '2026-11-01T12:00:00Z',
-      confirm_deadline: this.scenario === 'attention' ? '2026-11-01T12:01:00Z' : undefined,
+      confirm_deadline:
+        this.scenario === 'attention' ? new Date(Date.now() + 60_000).toISOString() : undefined,
       restore_point: 'snapshots/tx-fixture-1',
     }));
   }

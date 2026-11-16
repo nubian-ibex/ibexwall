@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-dns-status"
+description = "Enables the get_dns_status command without any pre-configured scope."
+commands.allow = ["get_dns_status"]
+
+[[permission]]
+identifier = "deny-get-dns-status"
+description = "Denies the get_dns_status command without any pre-configured scope."
+commands.deny = ["get_dns_status"]

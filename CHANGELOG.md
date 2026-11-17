@@ -6,6 +6,21 @@
 Versions follow [Semantic Versioning](https://semver.org). The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## Unreleased (0.2.1)
+
+### Fixed
+
+- With the Ask fallback set to block, a burst of new flows that filled the
+  Ask queue no longer leaves unasked: a full queue follows the fallback
+  (ADR-0047, proposed). The queue holds 4096 packets instead of 1024.
+- The daemon starts when one configuration file is unreadable, such as a
+  truncated `org.toml`: the file is ignored, reported as degraded in
+  `ibexctl status`, and left for you to fix.
+
+### Changed
+
+- UI toolchain updates (vite, typescript-eslint, playwright, lucide).
+
 ## 0.2.0 (2026-11-13)
 
 ### Added

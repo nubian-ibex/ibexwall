@@ -7,16 +7,15 @@ Last updated: 2026-11-07 (F11b fully delivered; all five distros green)
 
 ## Current phase
 
-**Now: v0.2.0 published 2026-11-16.** It carries the Firewall screen
-rework (the switch is the real firewall state, Apply then Confirm, turn a
-running ufw or firewalld off) and 41 fixes from the 2026-11-15 audit (daemon
-recovery and cancellation, polkit, SSH and firewall lockout guards, DNS, MCP,
-eBPF loader, packaging and signing of the deb, rpm and Arch packages). CI and
-the VM matrix are green (f10 on five distros, desktop, firewall-on, f5, f3).
-The docs were deployed. Open for 0.2.1, from `planning/15-auditoria-*`:
-A-10 (answers directory mode), A-17 (boot with a corrupt org.toml), A-18
-(Ask queue overflow, needs an ADR), A-43 (agent unit hardening), A-46 (mixed
-NTS sources), A-48 (real ufw fixtures), and the VM-only checks listed there.
+**Now: v0.2.1 in progress on the local `v0.2.1` branch** (written while the
+maintainer was away: unsigned, not pushed). In it: a full Ask queue follows
+the fallback (ADR-0047, proposed: revert `fix(nfq)` to reject), the daemon
+starts with a corrupt config layer, a real-ufw VM scenario for application
+profile rules, UI toolchain bumps. v0.2.0 itself is published. Waiting for
+the maintainer: accept or change ADR-0047 and ADR-0048 (restore points),
+sign the branch's commits, push. Postponed on purpose: A-10 (needs a new
+runtime path plus AppArmor and SELinux), A-43 (needs the agent tested on a
+desktop), A-46 (decision: mixed NTS sources, warn or fail).
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

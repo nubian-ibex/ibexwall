@@ -53,6 +53,9 @@ pub struct Layers {
     pub org: LayerFile,
     /// Glob patterns locked by the org layer (`net.firewall.*`).
     pub locks: Vec<String>,
+    /// Layer files that could not be read at start: the daemon runs on the
+    /// others rather than not at all, and says so in `GetInfo`.
+    pub problems: Vec<String>,
     root: PathBuf,
 }
 
@@ -63,26 +66,46 @@ pub enum LockError {
 }
 
 impl Layers {
+    /// Like [`Layers::load`], but a layer file that cannot be read or parsed
+    /// is left out and reported in `problems`. Used at start: a truncated
+    /// `org.toml` (a crash during a write, a hand edit) must not keep the
+    /// daemon, and with it the recovery of interrupted changes, from
+    /// running. The bad file is left as it is for the person to fix.
+    pub fn load_lenient(root: &Path) -> Self {
+        let config_dir = ibexwall_proto::names::path_under(root, names::CONFIG_DIR);
+        let mut problems = Vec::new();
+        let mut layer = |name: &str| match load_layer(&config_dir.join(name)) {
+            Ok(layer) => layer,
+            Err(error) => {
+                tracing::error!(file = name, error = %format!("{error:#}"), "unusable configuration file, ignoring it");
+                problems.push(format!("configuration {name} is unusable and ignored"));
+                LayerFile::default()
+            }
+        };
+        let user = layer("config.toml");
+        let profile = layer("profiles.d/active.toml");
+        let org = layer("org.toml");
+        Self {
+            user,
+            profile,
+            org,
+            locks: org_locks(&config_dir),
+            problems,
+            root: root.to_path_buf(),
+        }
+    }
+
     /// Loads `user`, `profile` and `org` layer files if present.
     pub fn load(root: &Path) -> Result<Self> {
         let config_dir = ibexwall_proto::names::path_under(root, names::CONFIG_DIR);
-        let mut layers = Self {
+        let layers = Self {
             user: load_layer(&config_dir.join("config.toml"))?,
             profile: load_layer(&config_dir.join("profiles.d/active.toml"))?,
             org: load_layer(&config_dir.join("org.toml"))?,
-            locks: Vec::new(),
+            locks: org_locks(&config_dir),
+            problems: Vec::new(),
             root: root.to_path_buf(),
         };
-        // Locks travel with the org layer: `lock = ["net.dns.*"]`.
-        if let Ok(text) = std::fs::read_to_string(config_dir.join("org.toml"))
-            && let Ok(doc) = text.parse::<toml::Table>()
-            && let Some(toml::Value::Array(list)) = doc.get("lock")
-        {
-            layers.locks = list
-                .iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect();
-        }
         Ok(layers)
     }
 
@@ -183,6 +206,20 @@ pub fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Locks travel with the org layer: `lock = ["net.dns.*"]`.
+fn org_locks(config_dir: &Path) -> Vec<String> {
+    if let Ok(text) = std::fs::read_to_string(config_dir.join("org.toml"))
+        && let Ok(doc) = text.parse::<toml::Table>()
+        && let Some(toml::Value::Array(list)) = doc.get("lock")
+    {
+        return list
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect();
+    }
+    Vec::new()
+}
+
 fn load_layer(path: &Path) -> Result<LayerFile> {
     match std::fs::read_to_string(path) {
         Ok(text) => toml::from_str(&text).with_context(|| format!("parsing {}", path.display())),
@@ -195,6 +232,33 @@ fn load_layer(path: &Path) -> Result<LayerFile> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_corrupt_layer_is_ignored_and_reported_at_start() {
+        let root = std::env::temp_dir().join(format!("ibexwall-lenient-{}", std::process::id()));
+        let config_dir = root.join("etc/ibexwall");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::write(
+            config_dir.join("config.toml"),
+            "[plugins.\"net.dns\"]\nprovider = \"quad9\"\n",
+        )
+        .unwrap();
+        // A write that stopped half way.
+        std::fs::write(
+            config_dir.join("org.toml"),
+            "lock = [\"net.dns.*\"\n[\"net.fi",
+        )
+        .unwrap();
+        assert!(Layers::load(&root).is_err());
+        let layers = Layers::load_lenient(&root);
+        assert!(layers.user.plugins.contains_key("net.dns"));
+        assert!(layers.org.plugins.is_empty());
+        assert_eq!(layers.problems.len(), 1, "{:?}", layers.problems);
+        assert!(layers.problems[0].contains("org.toml"));
+        // The file is left for the person to fix.
+        assert!(config_dir.join("org.toml").exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     fn layers_with_org_lock(lock: &str) -> Layers {
         let root = std::env::temp_dir().join(format!("ibexwall-layers-{}", std::process::id()));

@@ -5,7 +5,13 @@
 
 use super::*;
 
-pub(crate) fn info(_core: &Arc<Core>) -> Value {
+pub(crate) fn info(core: &Arc<Core>) -> Value {
+    let degraded = core
+        .config
+        .read()
+        .expect("config lock poisoned")
+        .problems
+        .clone();
     let distro = std::fs::read_to_string("/etc/os-release")
         .ok()
         .and_then(|text| {
@@ -23,7 +29,7 @@ pub(crate) fn info(_core: &Arc<Core>) -> Value {
             "distro": distro,
             "kernel": kernel,
             "features": [],
-            "degraded": [],
+            "degraded": degraded,
         }
     })
 }

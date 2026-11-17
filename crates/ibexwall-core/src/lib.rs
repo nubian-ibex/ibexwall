@@ -212,7 +212,7 @@ impl Core {
             }
         }
 
-        let config = config::Layers::load(&root)?;
+        let config = config::Layers::load_lenient(&root);
         let plugins = Arc::new(plugins::Supervisor::discover(&root, dev_key).await?);
         let mut core = Self {
             config: std::sync::RwLock::new(config),

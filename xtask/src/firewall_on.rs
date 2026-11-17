@@ -147,6 +147,22 @@ sudo ibexctl rollback "$ON_TX" --json >/dev/null
 echo "METRIC: $MGR turned off through IbexWall, and the undo turned it back on"
 "#;
 
+/// ufw writes a rule for an application profile (`ufw allow OpenSSH`) with
+/// the profile name where a port would be. The plugin must still see that
+/// port 22 is allowed (checked against a real ufw, not a copy of its format).
+const APP_PROFILE: &str = r#"
+if [ $MGR != ufw ]; then echo "METRIC: not ufw, the application profile case does not apply"; exit 0; fi
+sudo ufw --force enable >/dev/null
+sudo ufw allow OpenSSH >/dev/null
+echo "--- user.rules tuple lines"; sudo grep -h '^### tuple' /etc/ufw/user.rules /etc/ufw/user6.rules
+status=$(sudo ibexctl firewall status 2>&1)
+echo "--- ibexctl firewall status"; echo "$status"
+cleanup() { sudo ufw delete allow OpenSSH >/dev/null 2>&1; sudo ufw --force disable >/dev/null 2>&1; }
+echo "$status" | grep -q '22' || { echo "THE APPLICATION PROFILE RULE IS NOT READ AS PORT 22"; cleanup; exit 1; }
+cleanup
+echo "METRIC: ufw's OpenSSH profile rule is read as 22/tcp"
+"#;
+
 pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     println!("== firewall-on: stage ==");
     let input = stage_and_pack(workspace)?;
@@ -172,6 +188,7 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     scenario!("w6 a change nobody keeps undoes itself", TIMEOUT);
     scenario!("w7 a port a range already allows", RANGE);
     scenario!("w8 turning it off, and the undo", TURN_OFF);
+    scenario!("w9 an application profile rule", APP_PROFILE);
 
     if failures == 0 {
         println!("PASS: firewall-on suite (all scenarios)");

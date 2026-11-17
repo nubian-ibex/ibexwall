@@ -122,16 +122,31 @@ fn message(msg: u16, flags: u16, seq: u32, queue: u16, attrs: &[u8]) -> Vec<u8> 
     out
 }
 
+/// How many packets the queue holds. Held packets are mostly the first
+/// packet of a flow (a SYN), so this is small in memory (ADR-0047).
+pub const QUEUE_LEN: u32 = 4096;
+
+/// The flags message: whether a full queue accepts the overflow (fail open)
+/// or drops it. Sent without an acknowledgement request, so it can go out
+/// on the socket another thread reads.
+pub fn flags_message(queue: u16, fail_open: bool) -> Vec<u8> {
+    let value = if fail_open { NFQA_CFG_F_FAIL_OPEN } else { 0 };
+    let mut attrs = attr(NFQA_CFG_FLAGS, &value.to_be_bytes());
+    attrs.extend(attr(NFQA_CFG_MASK, &NFQA_CFG_F_FAIL_OPEN.to_be_bytes()));
+    message(NFQNL_MSG_CONFIG, NLM_F_REQUEST, 0, queue, &attrs)
+}
+
 /// The four configuration messages: bind, copy whole packets, a bounded
-/// queue, fail open when it is full.
-pub fn config_messages(queue: u16) -> Vec<Vec<u8>> {
+/// queue, and what a full queue does (`fail_open`).
+pub fn config_messages(queue: u16, fail_open: bool) -> Vec<Vec<u8>> {
     let request = NLM_F_REQUEST | NLM_F_ACK;
     let bind = attr(NFQA_CFG_CMD, &[NFQNL_CFG_CMD_BIND, 0, 0, 0]);
     let mut params = Vec::from(0xffffu32.to_be_bytes());
     params.push(NFQNL_COPY_PACKET);
     let params = attr(NFQA_CFG_PARAMS, &params);
-    let maxlen = attr(NFQA_CFG_QUEUE_MAXLEN, &1024u32.to_be_bytes());
-    let mut flags = attr(NFQA_CFG_FLAGS, &NFQA_CFG_F_FAIL_OPEN.to_be_bytes());
+    let maxlen = attr(NFQA_CFG_QUEUE_MAXLEN, &QUEUE_LEN.to_be_bytes());
+    let value = if fail_open { NFQA_CFG_F_FAIL_OPEN } else { 0 };
+    let mut flags = attr(NFQA_CFG_FLAGS, &value.to_be_bytes());
     flags.extend(attr(NFQA_CFG_MASK, &NFQA_CFG_F_FAIL_OPEN.to_be_bytes()));
     [bind, params, maxlen, flags]
         .into_iter()
@@ -249,8 +264,9 @@ pub struct Queue {
 }
 
 impl Queue {
-    /// Binds `number` and configures it (fail open). Needs `CAP_NET_ADMIN`.
-    pub fn open(number: u16) -> io::Result<Self> {
+    /// Binds `number` and configures it. `fail_open` says what a full queue
+    /// does: accept the overflow (true) or drop it. Needs `CAP_NET_ADMIN`.
+    pub fn open(number: u16, fail_open: bool) -> io::Result<Self> {
         let fd = net::socket(
             AddressFamily::NETLINK,
             SocketType::RAW,
@@ -258,7 +274,7 @@ impl Queue {
         )?;
         net::bind(&fd, &SocketAddrNetlink::new(0, 0))?;
         let queue = Self { fd, number };
-        for (step, message) in config_messages(number).into_iter().enumerate() {
+        for (step, message) in config_messages(number, fail_open).into_iter().enumerate() {
             net::send(&queue.fd, &message, net::SendFlags::empty())?;
             // Each request is acknowledged; a refusal (queue already bound
             // by someone else, no permission) is reported here.
@@ -276,6 +292,18 @@ impl Queue {
             }
         }
         Ok(queue)
+    }
+
+    /// Changes what a full queue does. Only the thread that reads the queue
+    /// may call this: the kernel accepts configuration only from the socket
+    /// that bound the queue, and the request asks for no acknowledgement.
+    pub fn set_fail_open(&self, fail_open: bool) -> io::Result<()> {
+        net::send(
+            &self.fd,
+            &flags_message(self.number, fail_open),
+            net::SendFlags::empty(),
+        )?;
+        Ok(())
     }
 
     /// Waits up to `timeout` for packets; empty when nothing came or the
@@ -334,7 +362,7 @@ mod tests {
 
     #[test]
     fn config_binds_the_queue_and_asks_to_fail_open() {
-        let messages = config_messages(4242);
+        let messages = config_messages(4242, true);
         assert_eq!(messages.len(), 4);
         // Bind: length, type (queue subsystem, config), request+ack, the
         // queue number big endian after the two zero bytes.
@@ -367,6 +395,30 @@ mod tests {
                 .windows(4)
                 .any(|w| w == NFQA_CFG_F_FAIL_OPEN.to_be_bytes())
         );
+    }
+
+    #[test]
+    fn a_blocking_queue_clears_the_fail_open_flag_and_keeps_the_mask() {
+        // The value is zero but the mask still names the flag, so the
+        // kernel clears it instead of leaving it as it was.
+        let flags = &config_messages(4242, false)[3];
+        let value = &flags[20..28];
+        assert_eq!(u16::from_ne_bytes([value[2], value[3]]), NFQA_CFG_FLAGS);
+        assert_eq!(&value[4..8], &0u32.to_be_bytes());
+        assert!(
+            flags
+                .windows(4)
+                .any(|w| w == NFQA_CFG_F_FAIL_OPEN.to_be_bytes())
+        );
+        // The later switch asks for no acknowledgement.
+        let later = flags_message(4242, false);
+        assert_eq!(
+            u16::from_ne_bytes([later[6], later[7]]) & NLM_F_ACK,
+            0,
+            "no ack"
+        );
+        let on = flags_message(4242, true);
+        assert_eq!(&on[24..28], &NFQA_CFG_F_FAIL_OPEN.to_be_bytes());
     }
 
     #[test]

@@ -148,6 +148,10 @@ impl Broker {
 pub struct Ask {
     queue: ibexwall_nfq::Queue,
     broker: Broker,
+    /// What a full queue should do: accept the overflow when the fallback
+    /// is allow, drop it when it is block (ADR-0047). Applied by the thread
+    /// that reads the queue.
+    fail_open: std::sync::atomic::AtomicBool,
 }
 
 fn refused_mark(mark: u32) -> u32 {
@@ -172,6 +176,10 @@ impl Ask {
 
     pub fn configure(&self, timeout: Duration, fallback: Decision) {
         self.broker.configure(timeout, fallback);
+        self.fail_open.store(
+            fallback == Decision::Allow,
+            std::sync::atomic::Ordering::SeqCst,
+        );
     }
 }
 
@@ -188,11 +196,13 @@ pub fn start(
     flows: aya::maps::HashMap<aya::maps::MapData, u32, [u8; ibexwall_net_common::ASK_FLOW_LEN]>,
     ask_user: impl Fn(u16, Flow4, Option<ibexwall_nfq::Destination>) + Send + 'static,
 ) -> Result<Arc<Ask>> {
-    let queue = ibexwall_nfq::Queue::open(ibexwall_net_common::ASK_QUEUE)
+    // The default fallback is allow, so a full queue starts fail-open.
+    let queue = ibexwall_nfq::Queue::open(ibexwall_net_common::ASK_QUEUE, true)
         .context("binding the Ask queue (needs CAP_NET_ADMIN)")?;
     let ask = Arc::new(Ask {
         queue,
         broker: Broker::new(Duration::from_secs(30), Decision::Allow),
+        fail_open: std::sync::atomic::AtomicBool::new(true),
     });
     eprintln!(
         "ibexwall-ebpf-loader: Ask queue {} bound",
@@ -200,7 +210,17 @@ pub fn start(
     );
     let serving = Arc::clone(&ask);
     std::thread::spawn(move || {
+        let mut fail_open = true;
         loop {
+            let wanted = serving.fail_open.load(std::sync::atomic::Ordering::SeqCst);
+            if wanted != fail_open {
+                match serving.queue.set_fail_open(wanted) {
+                    Ok(()) => fail_open = wanted,
+                    Err(error) => eprintln!(
+                        "ibexwall-ebpf-loader: changing what a full Ask queue does failed: {error}"
+                    ),
+                }
+            }
             let packets = match serving.queue.recv(Duration::from_millis(250)) {
                 Ok(packets) => packets,
                 // Only an error that cannot heal gets here (the nfq crate

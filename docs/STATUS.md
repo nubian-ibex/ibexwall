@@ -7,16 +7,15 @@ Last updated: 2026-11-07 (F11b fully delivered; all five distros green)
 
 ## Current phase
 
-**Now: v0.2.1 in progress on the local `v0.2.1` branch** (written while the
-maintainer was away: unsigned, not pushed). In it: a full Ask queue follows
-the fallback (ADR-0047, proposed: revert `fix(nfq)` to reject), the daemon
-starts with a corrupt config layer, a real-ufw VM scenario for application
-profile rules, a new `--phase audit` (A-17, A-25, A-03, A-01 on real VMs,
-passing on Ubuntu 24.04 and Fedora), UI toolchain bumps. v0.2.0 itself is published. Waiting for
-the maintainer: accept or change ADR-0047 and ADR-0048 (restore points),
-sign the branch's commits, push. Postponed on purpose: A-10 (needs a new
-runtime path plus AppArmor and SELinux), A-43 (needs the agent tested on a
-desktop), A-46 (decision: mixed NTS sources, warn or fail).
+**Now: v0.2.1 tagged 2026-11-18, release is a DRAFT** (not published).
+Contents: a full Ask queue follows the fallback (ADR-0047, accepted by the
+maintainer's go-ahead; revert `fix(nfq)` to undo), the daemon starts with a
+corrupt config layer, `system.mounts` reads the host mount table, `confirm_keys`
+for SSH, the `--phase audit` VM suite, a real-ufw scenario, UI toolchain bumps.
+CI green. Fedora VM (.107) reinstalled from the draft; the Ubuntu VM (.110)
+was unreachable. Postponed: A-10, A-43, A-46, and ADR-0048 (restore points,
+proposed). Next: check in the app, publish with `gh release edit v0.2.1
+--draft=false`, deploy `ibexwall-docs`.
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

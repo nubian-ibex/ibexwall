@@ -3,7 +3,8 @@
 
 //! `system.mounts`: `/tmp` and `/dev/shm` should not honor setuid files or
 //! device nodes, and `/dev/shm` should not run programs. The check reads
-//! the live mount options (`/proc/mounts`); the control writes owned
+//! the host's live mount options (PID 1's mount table: the plugin's own
+//! `/proc/mounts` is its private namespace, not the host); the control writes owned
 //! systemd drop-ins for `tmp.mount` and `dev-shm.mount` (never fstab, never
 //! a distro file) that apply at the next boot. Nothing is remounted live:
 //! remounting `/tmp` under running programs is the kind of change that
@@ -86,7 +87,7 @@ fn required(target: &Target, tmp_noexec: bool) -> Vec<&'static str> {
 /// `(fstype, options)` of a mount point; the last entry wins (a later mount
 /// hides an earlier one).
 fn mount_options(sandbox: &Sandbox, mount: &str) -> Option<(String, BTreeSet<String>)> {
-    let text = sandbox.read("/proc/mounts")?;
+    let text = sandbox.host_mounts()?;
     text.lines()
         .filter_map(|line| {
             let mut fields = line.split_whitespace();
@@ -127,7 +128,7 @@ pub fn evaluate(sandbox: &Sandbox, detected_at: &str) -> CheckReport {
         let want = required(target, false);
         let outcome = match mount_options(sandbox, target.mount) {
             // Cannot read the mount table at all: never a pass.
-            None if sandbox.read("/proc/mounts").is_none() => CheckOutcome::NotAssessed,
+            None if sandbox.host_mounts().is_none() => CheckOutcome::NotAssessed,
             // /tmp on the root file system has no entry of its own, and no
             // mount unit to configure.
             None if target.mount == "/tmp" => CheckOutcome::NotApplicable,
@@ -229,6 +230,20 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         for (path, content) in files {
+            // The plugin reads PID 1's mountinfo; the tests keep writing the
+            // short `/proc/mounts` layout and this converts it.
+            let (path, content) = if *path == "/proc/mounts" {
+                let converted: String = content
+                    .lines()
+                    .map(|line| {
+                        let f: Vec<&str> = line.split_whitespace().collect();
+                        format!("1 1 0:1 / {} {} - {} {} rw\n", f[1], f[3], f[2], f[0])
+                    })
+                    .collect();
+                ("/proc/1/mountinfo", converted)
+            } else {
+                (*path, content.to_string())
+            };
             let full = root.join(path.trim_start_matches('/'));
             std::fs::create_dir_all(full.parent().unwrap()).unwrap();
             std::fs::write(full, content).unwrap();

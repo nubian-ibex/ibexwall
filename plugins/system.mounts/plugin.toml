@@ -29,7 +29,7 @@ write_paths = ["/etc/systemd/system/tmp.mount.d", "/etc/systemd/system/dev-shm.m
 [sandbox]
 user = "dynamic"
 capabilities = []
-read_paths = ["/proc/mounts", "/etc/systemd/system", "/usr/lib/systemd/system"]
+read_paths = ["/proc/1/mountinfo", "/etc/systemd/system", "/usr/lib/systemd/system"]
 network = false
 
 [risk]

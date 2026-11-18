@@ -10,6 +10,8 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
 
 ### Fixed
 
+- `system.mounts` judges `/dev/shm` and `/tmp` from the host mount table,
+  not from its own namespace (a VM check showed it was wrong).
 - With the Ask fallback set to block, a burst of new flows that filled the
   Ask queue no longer leaves unasked: a full queue follows the fallback
   (ADR-0047, proposed). The queue holds 4096 packets instead of 1024.
@@ -19,6 +21,9 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
 
 ### Changed
 
+- `system.ssh` has a `confirm_keys` setting: where AppArmor hides `~/.ssh`
+  from the plugin (Ubuntu, Debian), check by hand, then plan with
+  `confirm_keys=true`.
 - UI toolchain updates (vite, typescript-eslint, playwright, lucide).
 
 ## 0.2.0 (2026-11-13)

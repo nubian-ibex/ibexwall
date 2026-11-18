@@ -11,7 +11,8 @@ Last updated: 2026-11-07 (F11b fully delivered; all five distros green)
 maintainer was away: unsigned, not pushed). In it: a full Ask queue follows
 the fallback (ADR-0047, proposed: revert `fix(nfq)` to reject), the daemon
 starts with a corrupt config layer, a real-ufw VM scenario for application
-profile rules, UI toolchain bumps. v0.2.0 itself is published. Waiting for
+profile rules, a new `--phase audit` (A-17, A-25, A-03, A-01 on real VMs,
+passing on Ubuntu 24.04 and Fedora), UI toolchain bumps. v0.2.0 itself is published. Waiting for
 the maintainer: accept or change ADR-0047 and ADR-0048 (restore points),
 sign the branch's commits, push. Postponed on purpose: A-10 (needs a new
 runtime path plus AppArmor and SELinux), A-43 (needs the agent tested on a

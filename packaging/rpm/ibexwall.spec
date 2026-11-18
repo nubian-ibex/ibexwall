@@ -12,7 +12,7 @@
 %global __strip /bin/true
 
 Name:           ibexwall
-Version:        0.2.0
+Version:        0.2.1
 Release:        1%{?dist}
 Summary:        Security center for Linux
 License:        GPL-3.0-or-later
@@ -138,6 +138,10 @@ if [ "$1" -ge 1 ]; then
 fi
 
 %changelog
+* Wed Nov 18 2026 Nubian Ibex <maintainers@nubian-ibex.invalid> - 0.2.1-1
+- Fixes from the 2026-11-15 audit and a full Ask queue that follows the
+  fallback; see CHANGELOG.md.
+
 * Fri Nov 13 2026 Nubian Ibex <maintainers@nubian-ibex.invalid> - 0.2.0-1
 - Turn on the installed firewall, ports inside allowed ranges, block lists,
   the connection monitor and a first-run welcome; see CHANGELOG.md.

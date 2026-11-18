@@ -2175,7 +2175,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-agent"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "futures-util",
@@ -2192,7 +2192,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-apps"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-identity",
  "rusqlite",
@@ -2202,7 +2202,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-cli"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2217,7 +2217,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2252,7 +2252,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-desktop"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "base64 0.22.1",
  "ibexwall-proto",
@@ -2267,7 +2267,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-dns"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2287,7 +2287,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-ebpf-loader"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "aya",
@@ -2301,7 +2301,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-exec"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "ibexwall-proto",
@@ -2311,11 +2311,11 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-exporters"
-version = "0.2.0"
+version = "0.2.1"
 
 [[package]]
 name = "ibexwall-firewall"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "roxmltree",
  "serde",
@@ -2325,7 +2325,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-identity"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "hex",
  "serde",
@@ -2334,7 +2334,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-mcp"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "bytes",
@@ -2359,18 +2359,18 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-net-common"
-version = "0.2.0"
+version = "0.2.1"
 
 [[package]]
 name = "ibexwall-nfq"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "rustix",
 ]
 
 [[package]]
 name = "ibexwall-plugin-accounts"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2381,7 +2381,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-assistant"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "base64 0.22.1",
  "ibexwall-proto",
@@ -2397,7 +2397,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-audit"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2408,7 +2408,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-av"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2420,7 +2420,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-camera-mic"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2431,7 +2431,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-coredump"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2442,7 +2442,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-cves"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2453,7 +2453,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-dns"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-dns",
  "ibexwall-proto",
@@ -2467,7 +2467,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-echo"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2477,7 +2477,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-exposure"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2488,7 +2488,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-firewall"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-firewall",
  "ibexwall-proto",
@@ -2501,7 +2501,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-firmware"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2512,7 +2512,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-flatpak-network"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2524,7 +2524,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-flatpak-perms"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2535,7 +2535,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-hardening"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-plugin-modules",
  "ibexwall-plugin-mounts",
@@ -2549,7 +2549,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-integrity"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2561,7 +2561,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-isolate"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2573,7 +2573,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-modules"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2584,7 +2584,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-mounts"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2595,7 +2595,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-nts"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2606,7 +2606,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-openscap"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2617,7 +2617,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-persistence"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "hex",
  "ibexwall-proto",
@@ -2631,7 +2631,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-ports"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2642,7 +2642,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-posture"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2653,7 +2653,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-rootkit"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2664,7 +2664,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-session-lock"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2675,7 +2675,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-ssh"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2686,7 +2686,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-sysctl"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2697,7 +2697,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-telemetry"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2708,7 +2708,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-updates"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2719,7 +2719,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-usb"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2730,7 +2730,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-vpn"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2743,7 +2743,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugin-wifi"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-sdk",
@@ -2754,7 +2754,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-plugins"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-plugin-accounts",
  "ibexwall-plugin-assistant",
@@ -2792,7 +2792,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-proto"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "schemars 1.2.3",
  "serde",
@@ -2803,7 +2803,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-sdk"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ibexwall-proto",
  "ibexwall-varlink",
@@ -2816,7 +2816,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-sys"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "hex",
@@ -2835,14 +2835,14 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-token"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "argon2",
 ]
 
 [[package]]
 name = "ibexwall-tui"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "crossterm",
@@ -2855,7 +2855,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-varlink"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "rustix",
@@ -2869,7 +2869,7 @@ dependencies = [
 
 [[package]]
 name = "ibexwall-web"
-version = "0.2.0"
+version = "0.2.1"
 
 [[package]]
 name = "ico"
@@ -7457,7 +7457,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",

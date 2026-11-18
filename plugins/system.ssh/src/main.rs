@@ -43,6 +43,11 @@ pub struct Config {
     /// Also turn password sign-in off. Off by default: it locks out anyone
     /// without a key.
     pub password_auth: Option<bool>,
+    /// Turn passwords off even though no authorized key was found. The
+    /// plugin cannot read `~/.ssh` where the AppArmor profile denies it
+    /// (Ubuntu, Debian), so a machine that does have keys looks like one
+    /// that has none; this says the person checked.
+    pub confirm_keys: bool,
 }
 
 impl Plugin for Ssh {
@@ -456,10 +461,10 @@ pub fn plan(sandbox: &Sandbox, config: &Config) -> Result<Vec<Op>, PluginError> 
     if config.password_auth == Some(false) {
         // Without a key that can sign in, turning passwords off locks the
         // person out of new logins (a password-only VPS, for instance).
-        if !has_authorized_key(sandbox, &current) {
+        if !config.confirm_keys && !has_authorized_key(sandbox, &current) {
             return Err(PluginError::invalid(
                 "password_auth",
-                "no account has a usable authorized key, so turning passwords off would lock out new logins; add a key first".to_string(),
+                "no usable authorized key was found, so turning passwords off could lock out new logins; add a key first (where the system hides ~/.ssh from this plugin, check by hand and set confirm_keys=true)".to_string(),
             ));
         }
         lines.push("PasswordAuthentication no".into());
@@ -633,6 +638,7 @@ mod tests {
             &sandbox,
             &Config {
                 password_auth: Some(false),
+                ..Config::default()
             },
         )
         .unwrap();
@@ -699,6 +705,7 @@ mod tests {
     fn turning_passwords_off_needs_a_key_and_also_closes_keyboard_interactive() {
         let config = Config {
             password_auth: Some(false),
+            ..Config::default()
         };
         let base = [
             (
@@ -714,6 +721,17 @@ mod tests {
         let (root, sandbox) = tree(&base);
         let error = plan(&sandbox, &config).unwrap_err();
         assert!(error.to_string().contains("authorized key"));
+        // Where the system hides ~/.ssh from the plugin, the person says
+        // they checked.
+        let confirmed = Config {
+            confirm_keys: true,
+            ..Config::default()
+        };
+        let confirmed = Config {
+            password_auth: Some(false),
+            ..confirmed
+        };
+        assert!(plan(&sandbox, &confirmed).is_ok());
         std::fs::remove_dir_all(root).unwrap();
         // A key only for a nologin account does not count; a comment neither.
         let mut files = base.to_vec();

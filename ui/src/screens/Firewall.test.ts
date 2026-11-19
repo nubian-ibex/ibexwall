@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { renderScreen } from '../test-utils';
+import { fireEvent, screen, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../lib/app.svelte';
 import { FixtureTransport } from '../lib/fixtures';
@@ -9,7 +10,7 @@ import Firewall from './Firewall.svelte';
 async function open(scenario: ConstructorParameters<typeof FixtureTransport>[0] = 'attention') {
   const transport = new FixtureTransport(scenario);
   app.useTransport(transport);
-  render(Firewall);
+  renderScreen(Firewall);
   await app.refresh();
   return transport;
 }
@@ -43,7 +44,6 @@ describe('Firewall screen', () => {
     await fireEvent.input(await screen.findByLabelText('Port'), { target: { value: '9000' } });
     await fireEvent.change(screen.getByLabelText('Protocol'), { target: { value: 'udp' } });
     await fireEvent.click(screen.getByRole('button', { name: /allow this port/i }));
-    await fireEvent.click(await screen.findByRole('button', { name: /^apply$/i }));
     expect(plan).toHaveBeenCalledWith('net.firewall', { allow: '9000/udp' });
   });
 
@@ -63,10 +63,12 @@ describe('Firewall screen', () => {
     await turnOn(transport);
     const plan = vi.spyOn(transport, 'planChange');
     await fireEvent.click(await screen.findByRole('button', { name: 'Remove 8080/tcp' }));
-    await fireEvent.click(await screen.findByRole('button', { name: /^apply$/i }));
-    expect(plan).toHaveBeenLastCalledWith('net.firewall', { remove: '8080/tcp' });
+    await vi.waitFor(() =>
+      expect(plan).toHaveBeenLastCalledWith('net.firewall', { remove: '8080/tcp' }),
+    );
+    // The review is a modal step: close it before asking for something else.
+    await fireEvent.click(screen.getAllByRole('button', { name: /^close$/i }).at(-1)!);
     await fireEvent.click(screen.getByRole('button', { name: 'Remove ssh' }));
-    await fireEvent.click(await screen.findByRole('button', { name: /^apply$/i }));
     expect(plan).toHaveBeenLastCalledWith('net.firewall', { remove_service: 'ssh' });
   });
 
@@ -86,7 +88,6 @@ describe('Firewall screen', () => {
     const plan = vi.spyOn(transport, 'planChange');
     await fireEvent.click(await screen.findByRole('radio', { name: /home/i }));
     await fireEvent.click(screen.getByRole('button', { name: /switch to home/i }));
-    await fireEvent.click(await screen.findByRole('button', { name: /^apply$/i }));
     expect(plan).toHaveBeenCalledWith('net.firewall', { profile: 'home' });
   });
 
@@ -105,7 +106,7 @@ describe('Firewall screen', () => {
     const real = await transport.getFirewall();
     vi.spyOn(transport, 'getFirewall').mockResolvedValue({ ...real, other: [hostile] });
     app.useTransport(transport);
-    const { container } = render(Firewall);
+    const { container } = renderScreen(Firewall);
     expect(await screen.findByText(hostile)).toBeVisible();
     expect(container.querySelector('img')).toBeNull();
   });
@@ -114,7 +115,7 @@ describe('Firewall screen', () => {
     const transport = new FixtureTransport('attention');
     vi.spyOn(transport, 'getFirewall').mockRejectedValue(new TransportError('unreachable'));
     app.useTransport(transport);
-    render(Firewall);
+    renderScreen(Firewall);
     expect(await screen.findByRole('alert')).toBeVisible();
     expect(screen.getByRole('button', { name: /try again/i })).toBeVisible();
   });
@@ -127,7 +128,7 @@ describe('Firewall screen', () => {
       other: ['port 1025-65535/tcp', 'forward'],
     });
     app.useTransport(transport);
-    render(Firewall);
+    renderScreen(Firewall);
     await turnOn(transport);
     await fireEvent.input(await screen.findByLabelText('Port'), { target: { value: '9099' } });
     expect(await screen.findByText(/9099\/tcp is already allowed by this rule/)).toBeVisible();
@@ -155,7 +156,7 @@ describe('Firewall screen', () => {
       ports: active ? state.ports : [],
     });
     app.useTransport(transport);
-    render(Firewall);
+    renderScreen(Firewall);
     if (pluginOn) await turnOn(transport);
     else await app.refresh();
     return transport;
@@ -182,21 +183,21 @@ describe('Firewall screen', () => {
     const enable = vi.spyOn(transport, 'setPluginEnabled');
     const plan = vi.spyOn(transport, 'planChange');
     await fireEvent.click(await screen.findByRole('switch', { name: /the firewall is off/i }));
-    await fireEvent.click(await screen.findByRole('button', { name: /^apply$/i }));
     expect(enable).toHaveBeenCalledWith('net.firewall', true);
-    expect(plan).toHaveBeenCalledWith('net.firewall', {
-      enable_manager: true,
-      allow_listening: true,
-    });
-    // After the preview, the button that carries it out is named Confirm.
-    expect(await screen.findByRole('button', { name: /^confirm$/i })).toBeVisible();
+    await vi.waitFor(() =>
+      expect(plan).toHaveBeenCalledWith('net.firewall', {
+        enable_manager: true,
+        allow_listening: true,
+      }),
+    );
+    // After the preview, the panel offers the button that carries it out.
+    expect(await screen.findByRole('button', { name: /^apply \d+ change/i })).toBeVisible();
   });
 
   it("IbexWall's own protection is planned with enable_basic, and cannot be switched off here", async () => {
     const transport = await openWith('nftables', false);
     const plan = vi.spyOn(transport, 'planChange');
     await fireEvent.click(await screen.findByRole('switch', { name: /the firewall is off/i }));
-    await fireEvent.click(await screen.findByRole('button', { name: /^apply$/i }));
     expect(plan).toHaveBeenCalledWith('net.firewall', {
       enable_basic: true,
       allow_listening: true,
@@ -208,7 +209,6 @@ describe('Firewall screen', () => {
     await turnOn(transport);
     const plan = vi.spyOn(transport, 'planChange');
     await fireEvent.click(await screen.findByRole('switch', { name: /the firewall is on/i }));
-    await fireEvent.click(await screen.findByRole('button', { name: /^apply$/i }));
     expect(plan).toHaveBeenCalledWith('net.firewall', { disable_manager: true });
   });
 
@@ -218,24 +218,23 @@ describe('Firewall screen', () => {
     const read = vi.spyOn(transport, 'getFirewall');
     await fireEvent.input(await screen.findByLabelText('Port'), { target: { value: '171' } });
     await fireEvent.click(screen.getByRole('button', { name: /allow this port/i }));
-    await fireEvent.click(await screen.findByRole('button', { name: /^apply$/i }));
-    await fireEvent.click(await screen.findByRole('button', { name: /^confirm$/i }));
+    await fireEvent.click(await screen.findByRole('button', { name: /^apply \d+ change/i }));
     await vi.waitFor(() => expect(read).toHaveBeenCalled());
   });
 
-  it('says in plain words that nothing changes before the confirmation', async () => {
+  it('says in plain words that nothing has changed when the review opens', async () => {
     await open();
     await fireEvent.click(await screen.findByRole('switch', { name: /the firewall is on/i }));
-    expect(await screen.findByText(/Nothing changes yet/)).toBeVisible();
+    expect(await screen.findByText(/Nothing has changed yet/)).toBeVisible();
   });
 
-  it('the switch moves to where it was asked to go, and Cancel puts it back', async () => {
+  it('the switch moves to where it was asked to go, and closing the review puts it back', async () => {
     await openWith('ufw', false);
     const toggle = await screen.findByRole('switch', { name: /the firewall is off/i });
     await fireEvent.click(toggle);
     const moved = await screen.findByRole('switch', { name: /the firewall is on/i });
     expect(moved).toHaveAttribute('aria-checked', 'true');
-    await fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+    await fireEvent.click(screen.getAllByRole('button', { name: /^close$/i }).at(-1)!);
     const back = await screen.findByRole('switch', { name: /the firewall is off/i });
     expect(back).toHaveAttribute('aria-checked', 'false');
     expect(back).toBeEnabled();

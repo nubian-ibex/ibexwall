@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { renderScreen } from '../test-utils';
+import { fireEvent, screen, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppEntry } from '../gen/contracts';
 import { app } from '../lib/app.svelte';
@@ -10,7 +11,7 @@ import Apps from './Apps.svelte';
 async function open(scenario: ConstructorParameters<typeof FixtureTransport>[0] = 'attention') {
   const transport = new FixtureTransport(scenario);
   app.useTransport(transport);
-  render(Apps);
+  renderScreen(Apps);
   await app.refresh();
   return transport;
 }
@@ -96,7 +97,7 @@ describe('Apps screen', () => {
     await fireEvent.click(await screen.findByRole('button', { name: /details for telegram/i }));
     expect(screen.getByText(/cannot be changed from here/i)).toBeVisible();
     await fireEvent.click(screen.getByRole('button', { name: /block network access/i }));
-    await fireEvent.click(await screen.findByRole('button', { name: /^apply$/i }));
+    await fireEvent.click(await screen.findByRole('button', { name: /review and apply/i }));
     expect(enable).toHaveBeenCalledWith('apps.flatpak-network', true);
     expect(plan).toHaveBeenCalledWith('apps.flatpak-network', { app: 'org.telegram.desktop' });
   });
@@ -138,7 +139,7 @@ describe('Apps screen', () => {
       ],
     });
     app.useTransport(transport);
-    const { container } = render(Apps);
+    const { container } = renderScreen(Apps);
     expect(await screen.findByText(hostile)).toBeVisible();
     expect(container.querySelector('img')).toBeNull();
   });
@@ -147,7 +148,7 @@ describe('Apps screen', () => {
     const transport = new FixtureTransport('attention');
     vi.spyOn(transport, 'listApps').mockRejectedValue(new TransportError('unreachable'));
     app.useTransport(transport);
-    render(Apps);
+    renderScreen(Apps);
     expect(await screen.findByRole('alert')).toBeVisible();
     expect(screen.getByRole('button', { name: /try again/i })).toBeVisible();
   });
@@ -161,7 +162,7 @@ describe('Apps screen', () => {
     });
     const turnOn = vi.spyOn(transport, 'setMonitorEnabled');
     app.useTransport(transport);
-    render(Apps);
+    renderScreen(Apps);
     await app.refresh();
     await fireEvent.click(
       await screen.findByRole('button', { name: 'Turn on the connection monitor' }),
@@ -179,7 +180,7 @@ describe('Apps screen', () => {
       },
     ]);
     app.useTransport(transport);
-    render(Apps);
+    renderScreen(Apps);
     await app.refresh();
     const list = await screen.findByRole('region', { name: 'Apps' });
     expect(await within(list).findByText('Firefox Web Browser')).toBeVisible();

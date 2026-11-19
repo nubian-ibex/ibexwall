@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { renderScreen } from '../test-utils';
+import { fireEvent, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../lib/app.svelte';
 import { FixtureTransport } from '../lib/fixtures';
@@ -11,7 +12,7 @@ describe('Assistant', () => {
 
   it('shows a suggestion as the AI’s words, with the operations and what the assistant cannot do', async () => {
     app.useTransport(new FixtureTransport('attention'));
-    render(Assistant);
+    renderScreen(Assistant);
     expect(await screen.findByText(/suggested by claude-code \(an ai\)/i)).toBeVisible();
     expect(screen.getByText(/written by the ai, not checked/i)).toBeVisible();
     expect(screen.getByText(/cannot apply, approve or undo/i)).toBeVisible();
@@ -22,7 +23,7 @@ describe('Assistant', () => {
   it('renders hostile AI text as quoted text and never acts on it', async () => {
     const transport = new FixtureTransport('attention');
     app.useTransport(transport);
-    render(Assistant);
+    renderScreen(Assistant);
     const quote = await screen.findByText(/ignore previous instructions/i);
     expect(quote.tagName).toBe('BLOCKQUOTE');
     expect(await transport.listProposals('pending')).toHaveLength(1);
@@ -31,7 +32,7 @@ describe('Assistant', () => {
   it('approving applies it and moves it to the decided list', async () => {
     const transport = new FixtureTransport('attention');
     app.useTransport(transport);
-    render(Assistant);
+    renderScreen(Assistant);
     await fireEvent.click(await screen.findByRole('button', { name: /approve and apply/i }));
     expect(await screen.findAllByText('Approved')).not.toHaveLength(0);
     expect(await transport.listProposals('pending')).toHaveLength(0);
@@ -40,7 +41,7 @@ describe('Assistant', () => {
   it('rejecting leaves nothing pending', async () => {
     const transport = new FixtureTransport('attention');
     app.useTransport(transport);
-    render(Assistant);
+    renderScreen(Assistant);
     await fireEvent.click(await screen.findByRole('button', { name: /^reject$/i }));
     await waitFor(() => expect(screen.getAllByText('Rejected')).toHaveLength(2));
   });
@@ -50,14 +51,14 @@ describe('Assistant', () => {
     transport.decideProposal = () =>
       Promise.reject(new TransportError('com.ibexwall.Core.ProposalStale'));
     app.useTransport(transport);
-    render(Assistant);
+    renderScreen(Assistant);
     await fireEvent.click(await screen.findByRole('button', { name: /approve and apply/i }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/plan changed/i);
   });
 
   it('explains when there is nothing to decide', async () => {
     app.useTransport(new FixtureTransport('empty'));
-    render(Assistant);
+    renderScreen(Assistant);
     expect(await screen.findByText(/no suggestions yet/i)).toBeVisible();
   });
 
@@ -65,7 +66,7 @@ describe('Assistant', () => {
     const transport = new FixtureTransport('attention');
     transport.listProposals = () => Promise.reject(new Error('unreachable'));
     app.useTransport(transport);
-    render(Assistant);
+    renderScreen(Assistant);
     expect(await screen.findByRole('button', { name: /try again/i })).toBeVisible();
   });
 });
@@ -75,7 +76,7 @@ describe('Assistant: connect an AI', () => {
 
   async function open(transport = new FixtureTransport('attention')) {
     app.useTransport(transport);
-    render(Assistant);
+    renderScreen(Assistant);
     await screen.findByRole('heading', { name: /connect an ai|conectar uma ia/i });
     return transport;
   }
@@ -107,7 +108,7 @@ describe('Assistant: connect an AI', () => {
     expect([...select.options].map((o) => o.value)).toEqual(['read', 'plan', 'propose']);
     await fireEvent.change(select, { target: { value: 'propose' } });
     expect(screen.getByText(/leave a suggestion here/i)).toBeVisible();
-    await fireEvent.click(screen.getAllByRole('button', { name: /^apply$/i })[0]!);
+    await fireEvent.click(screen.getAllByRole('button', { name: /review and apply/i })[0]!);
     expect(plan).toHaveBeenCalledWith('system.assistant', {
       action: 'client',
       client: 'claude-code',
@@ -125,7 +126,7 @@ describe('Assistant: connect an AI', () => {
     await fireEvent.click(screen.getByRole('button', { name: /make the key/i }));
     expect(await screen.findByText(/copy this key now/i)).toBeVisible();
     expect(screen.getByText(/ibx_fix01_/)).toBeVisible();
-    await fireEvent.click(screen.getAllByRole('button', { name: /^apply$/i }).at(-1)!);
+    await fireEvent.click(screen.getAllByRole('button', { name: /review and apply/i }).at(-1)!);
     const patch = plan.mock.calls.at(-1)![1] as Record<string, string>;
     expect(patch['action']).toBe('token_add');
     expect(patch['hash']).toMatch(/^\$argon2id\$/);
@@ -137,7 +138,7 @@ describe('Assistant: connect an AI', () => {
     const plan = vi.spyOn(transport, 'planChange');
     await open(transport);
     await fireEvent.click(await screen.findByRole('button', { name: /^remove$/i }));
-    await fireEvent.click(screen.getAllByRole('button', { name: /^apply$/i }).at(-1)!);
+    await fireEvent.click(screen.getAllByRole('button', { name: /review and apply/i }).at(-1)!);
     expect(plan).toHaveBeenLastCalledWith('system.assistant', {
       action: 'token_revoke',
       id: 'k1x',
@@ -163,7 +164,7 @@ describe('Assistant: connect an AI', () => {
     });
     await fireEvent.click(screen.getByRole('button', { name: /replace the certificate/i }));
     expect(screen.getByText(/never shown/i)).toBeVisible();
-    await fireEvent.click(screen.getAllByRole('button', { name: /^apply$/i }).at(-1)!);
+    await fireEvent.click(screen.getAllByRole('button', { name: /review and apply/i }).at(-1)!);
     expect(plan).toHaveBeenLastCalledWith('system.assistant', {
       action: 'tls',
       hosts: ['mcp.home.example', '192.168.1.20'],

@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { renderScreen } from '../test-utils';
+import { fireEvent, screen, waitFor } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { app } from '../lib/app.svelte';
 import { FixtureTransport, type Scenario } from '../lib/fixtures';
@@ -7,7 +8,7 @@ import Plugins from './Plugins.svelte';
 
 async function show(scenario: Scenario = 'attention') {
   app.useTransport(new FixtureTransport(scenario));
-  render(Plugins);
+  renderScreen(Plugins);
   await app.refresh();
 }
 
@@ -35,7 +36,7 @@ describe('Plugins', () => {
     await show();
     // system.ports fixture is read-only; open its detail: no change flow.
     await fireEvent.click(screen.getAllByRole('button', { name: /detail/i })[0]!);
-    expect(screen.queryByRole('button', { name: /^apply$/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /review and apply/i })).toBeNull();
   });
 
   it('speaks Portuguese', async () => {

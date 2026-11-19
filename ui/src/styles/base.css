@@ -46,6 +46,11 @@ select {
   outline-offset: 2px;
 }
 
+a {
+  color: var(--primary-strong);
+  text-underline-offset: 3px;
+}
+
 .mono {
   font-family: var(--font-mono);
   font-size: 13px;

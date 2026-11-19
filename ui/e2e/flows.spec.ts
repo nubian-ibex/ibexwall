@@ -81,10 +81,16 @@ test('firewall: state, a reviewed port change and a profile', async ({ page }) =
   await expect(page.getByRole('switch', { name: /the firewall is on/i })).toBeVisible();
   await page.getByLabel('Port', { exact: true }).fill('171');
   await page.getByRole('button', { name: /allow this port/i }).click();
-  await expect(page.getByText(/nothing changes yet/i)).toBeVisible();
-  await page.getByRole('button', { name: /^apply$/i }).click();
-  // The preview is followed by the button that carries the change out.
-  await expect(page.getByRole('button', { name: /^confirm$/i })).toBeVisible();
+  // The review opens in a panel with its three steps, and nothing has changed.
+  const panel = page.getByRole('dialog');
+  await expect(panel.getByText(/nothing has changed yet/i)).toBeVisible();
+  await expect(panel.getByRole('listitem').filter({ hasText: 'Review' })).toHaveAttribute(
+    'aria-current',
+    'step',
+  );
+  await expect(panel.getByRole('button', { name: /^apply 1 change$/i })).toBeEnabled();
+  await page.keyboard.press('Escape');
+  await expect(panel).toBeHidden();
   await page.getByRole('radio', { name: /travel/i }).check();
   // The choice spells out what it means, before anyone commits to it.
   await expect(page.getByText(/nothing comes in unasked/i)).toBeVisible();
@@ -132,4 +138,31 @@ test('assistant: a suggestion is quoted as the AI’s text and can be rejected',
   await expect(page.getByText(/written by the ai, not checked/i)).toBeVisible();
   await page.getByRole('button', { name: /^reject$/i }).click();
   await expect(page.getByRole('button', { name: /approve and apply/i })).toHaveCount(0);
+});
+
+test('hardening: ticks fill the change bar, the review has three steps and Keep ends it', async ({
+  page,
+}) => {
+  await page.goto('/?scenario=attention');
+  await page.getByRole('button', { name: /^hardening$/i }).click();
+  const bar = page.getByRole('region', { name: /changes ready/i });
+  await expect(bar).toBeVisible();
+  await bar.getByRole('button', { name: /review and apply/i }).click();
+  const panel = page.getByRole('dialog');
+  await expect(panel.getByRole('button', { name: /^apply \d+ changes?$/i })).toBeEnabled();
+  await panel.getByRole('button', { name: /^apply \d+ changes?$/i }).click();
+  await expect(panel.getByRole('button', { name: /keep changes/i })).toBeVisible();
+  await panel.getByRole('button', { name: /keep changes/i }).click();
+  await expect(panel.getByText(/changes are in place/i)).toBeVisible();
+  await panel
+    .getByRole('button', { name: /^close$/i })
+    .last()
+    .click();
+  await expect(panel).toBeHidden();
+});
+
+test('the sidebar shows the version', async ({ page }) => {
+  await page.goto('/?scenario=attention');
+  await expect(page.getByText(/^Version$/)).toBeVisible();
+  await expect(page.locator('aside code')).toHaveText(/^\d+\.\d+\.\d+/);
 });

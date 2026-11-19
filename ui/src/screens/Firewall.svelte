@@ -16,7 +16,7 @@
   } from '../lib/firewall';
   import { t } from '../lib/i18n.svelte';
   import { TransportError } from '../lib/transport';
-  import ChangeFlow from '../components/ChangeFlow.svelte';
+  import { changes } from '../lib/changes.svelte';
   import Detected from '../components/Detected.svelte';
   import StateMessage from '../components/StateMessage.svelte';
   import Switch from '../components/Switch.svelte';
@@ -30,16 +30,10 @@
 
   let load = $state<Load>({ status: 'loading' });
   let busy = $state(false);
-  let pending = $state<Record<string, unknown> | null>(null);
   /** Where the switch was asked to go, while that change is under review. */
   let target = $state<boolean | null>(null);
-  let reviewEl = $state<HTMLElement | null>(null);
-
-  // The review sits under the switch, but a change asked for further down
-  // the page must not leave the person looking at nothing.
-  $effect(() => {
-    if (pending && reviewEl) reviewEl.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-  });
+  /** The review panel is open: nothing else can be asked meanwhile. */
+  const pending = $derived(changes.panel !== null);
   let port = $state('');
   let proto = $state<(typeof PROTOCOLS)[number]>('tcp');
   let service = $state('');
@@ -61,6 +55,14 @@
 
   onMount(() => {
     void refresh();
+    // The machine changed (applied, kept or undone): show it as it is now.
+    // The panel closing without a change also puts the switch back.
+    const stop = changes.onApplied(() => void refresh());
+    return stop;
+  });
+
+  $effect(() => {
+    if (changes.panel === null) target = null;
   });
 
   const fw = $derived(load.status === 'ready' ? load.data : null);
@@ -73,7 +75,7 @@
   const isOn = $derived(fw?.active === true);
   /** IbexWall's own protection is undone from History, not switched off. */
   const ownProtection = $derived(fw?.backend === 'nftables' && isOn);
-  const canFlip = $derived(canAct && !ownProtection && pending === null && !busy);
+  const canFlip = $derived(canAct && !ownProtection && !pending && !busy);
   const portValue = $derived(portSpec(port, proto));
   /** The range that already lets this port in, when there is one. */
   const covered = $derived(fw && portValue ? coveringRange(fw, portValue) : null);
@@ -102,7 +104,7 @@
         busy = false;
       }
     }
-    pending = patch;
+    changes.propose(PLUGIN, patch, t('nav-firewall'));
   }
 
   /** The switch asks for the change; it only moves when the firewall does. */
@@ -118,17 +120,6 @@
     } else {
       void propose({ disable_manager: true });
     }
-  }
-
-  function cancel() {
-    pending = null;
-    target = null;
-  }
-
-  /** The machine changed: show it as it is now. */
-  async function done() {
-    await refresh();
-    target = null;
   }
 
   function addPort() {
@@ -195,16 +186,6 @@
       onchange={flip}
     />
   </section>
-
-  {#if pending}
-    <section class="card review" aria-labelledby="fw-review" bind:this={reviewEl}>
-      <h2 id="fw-review">{t('firewall-review-note')}</h2>
-      {#key JSON.stringify(pending)}
-        <ChangeFlow plugin={PLUGIN} patch={pending} ondone={done} />
-        <button type="button" class="link" onclick={cancel}>{t('firewall-cancel')}</button>
-      {/key}
-    </section>
-  {/if}
 
   {#if isOn}
     <section class="card" aria-labelledby="fw-ports">
@@ -423,17 +404,6 @@
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
-  }
-  .review {
-    border-color: var(--primary-strong);
-  }
-  .link {
-    background: none;
-    border: 0;
-    color: var(--accent);
-    cursor: pointer;
-    text-decoration: underline;
-    min-height: var(--target);
   }
   .card {
     display: grid;

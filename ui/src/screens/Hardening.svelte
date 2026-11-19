@@ -6,8 +6,16 @@
   import { app } from '../lib/app.svelte';
   import { i18n, t } from '../lib/i18n.svelte';
   import { docsUrl } from '../lib/site';
-  import { AREAS, CATALOG, statusOf, type Item, type Status } from '../lib/hardening';
-  import HardeningFlow from '../components/HardeningFlow.svelte';
+  import {
+    AREAS,
+    CATALOG,
+    groupByPlugin,
+    statusOf,
+    type Item,
+    type Status,
+  } from '../lib/hardening';
+  import { changes } from '../lib/changes.svelte';
+  import { onMount } from 'svelte';
 
   let statuses = $state<Map<string, Status>>(new Map());
   let loaded = $state(false);
@@ -40,8 +48,28 @@
     ticked = on ? [...rest, item.id] : rest;
   }
 
-  /** Checks a tick: a risky item states what it can break in the review too. */
-  const riskyChosen = $derived(chosen.filter((i) => i.risk !== 'low'));
+  // What is ticked is queued in the change bar, one draft per plugin; the
+  // review panel plans and applies it. Whatever got applied or undone is
+  // read again, so the ticks and the queue follow the machine.
+  $effect(() => {
+    changes.setSource(
+      'hardening',
+      groupByPlugin(chosen).map((group) => ({
+        id: `hardening-${group.plugin}`,
+        plugin: group.plugin,
+        patch: group.patch,
+        count: chosen.filter((i) => i.apply.plugin === group.plugin).length,
+        label: t('nav-hardening'),
+      })),
+    );
+  });
+  onMount(() => {
+    const stop = changes.onApplied(() => void load());
+    return () => {
+      stop();
+      changes.discard('hardening');
+    };
+  });
 </script>
 
 <header class="page-head">
@@ -101,16 +129,6 @@
     </section>
   {/if}
 {/each}
-
-<section class="review" aria-labelledby="review-title">
-  <h2 id="review-title">{t('hardening-review-title', { count: chosen.length })}</h2>
-  {#if riskyChosen.length > 0}
-    <p class="warn" role="note">{t('hardening-risky', { count: riskyChosen.length })}</p>
-  {/if}
-  {#key [...ticked].sort().join(',')}
-    <HardeningFlow items={chosen} ondone={load} />
-  {/key}
-</section>
 
 <style>
   .muted {
@@ -176,17 +194,5 @@
   .sources {
     font-size: 14px;
     overflow-wrap: anywhere;
-  }
-  .review {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-card);
-    padding: var(--space-5);
-    margin-top: var(--space-6);
-  }
-  .warn {
-    border-left: 4px solid var(--accent);
-    padding: var(--space-2) var(--space-4);
-    margin: var(--space-3) 0;
   }
 </style>

@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { renderScreen } from '../test-utils';
+import { fireEvent, screen } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../lib/app.svelte';
 import { DNS_DEFAULTS, DNS_PROVIDERS, dnsPatch, transportFor } from '../lib/dns';
@@ -12,7 +13,7 @@ describe('Dns screen', () => {
 
   it('shows the plugin as off with the providers and what each one logs', async () => {
     app.useTransport(new FixtureTransport('attention'));
-    render(Dns);
+    renderScreen(Dns);
     await app.refresh();
     expect(await screen.findByRole('heading', { name: /secure dns is off/i })).toBeVisible();
     expect(screen.getByRole('radio', { name: /quad9/i })).toBeChecked();
@@ -25,7 +26,7 @@ describe('Dns screen', () => {
     const transport = new FixtureTransport('attention');
     const plan = vi.spyOn(transport, 'planChange');
     app.useTransport(transport);
-    render(Dns);
+    renderScreen(Dns);
     await app.refresh();
     await fireEvent.click(await screen.findByRole('radio', { name: /cloudflare/i }));
     await fireEvent.change(screen.getByLabelText(/how lookups are encrypted/i), {
@@ -35,7 +36,7 @@ describe('Dns screen', () => {
       target: { value: 'hagezi-pro' },
     });
     await fireEvent.click(screen.getByRole('checkbox', { name: /refuse unencrypted dns/i }));
-    await fireEvent.click(screen.getByRole('button', { name: /^apply$/i }));
+    await fireEvent.click(screen.getByRole('button', { name: /review and apply/i }));
     expect(plan).toHaveBeenCalledWith('net.dns', {
       provider: 'cloudflare',
       transport: 'https',
@@ -49,7 +50,7 @@ describe('Dns screen', () => {
 
   it('offers only the transports a provider documents', async () => {
     app.useTransport(new FixtureTransport('attention'));
-    render(Dns);
+    renderScreen(Dns);
     await app.refresh();
     const select = (await screen.findByLabelText(
       /how lookups are encrypted/i,
@@ -61,7 +62,7 @@ describe('Dns screen', () => {
 
   it('shows counters only when the plugin is on and the resolver reports', async () => {
     app.useTransport(new FixtureTransport('attention'));
-    const off = render(Dns);
+    const off = renderScreen(Dns);
     await app.refresh();
     // Plugin off: no counters section at all.
     expect(screen.queryByRole('heading', { name: /since the resolver started/i })).toBeNull();
@@ -69,7 +70,7 @@ describe('Dns screen', () => {
 
     const transport = new FixtureTransport('protected');
     app.useTransport(transport);
-    render(Dns);
+    renderScreen(Dns);
     await app.refresh();
     expect(
       await screen.findByRole('heading', { name: /since the resolver started/i }),
@@ -90,9 +91,9 @@ describe('Dns screen', () => {
         }),
       );
     app.useTransport(transport);
-    render(Dns);
+    renderScreen(Dns);
     await app.refresh();
-    await fireEvent.click(await screen.findByRole('button', { name: /^apply$/i }));
+    await fireEvent.click(await screen.findByRole('button', { name: /review and apply/i }));
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('could not proceed');
     expect(alert).toHaveTextContent('backend');
@@ -102,7 +103,7 @@ describe('Dns screen', () => {
   it('speaks Portuguese', async () => {
     i18n.set('pt-BR');
     app.useTransport(new FixtureTransport('attention'));
-    render(Dns);
+    renderScreen(Dns);
     await app.refresh();
     expect(
       await screen.findByRole('heading', { name: /dns seguro está desligado/i }),
@@ -116,7 +117,7 @@ describe('Dns screen: your own servers', () => {
 
   it('tells the person what the network offers and fills it in on a click', async () => {
     app.useTransport(new FixtureTransport('attention'));
-    render(Dns);
+    renderScreen(Dns);
     await app.refresh();
     expect(await screen.findByText(/your network offers dns servers/i)).toBeVisible();
     await fireEvent.click(screen.getByRole('button', { name: 'Use 192.168.1.1' }));
@@ -129,7 +130,7 @@ describe('Dns screen: your own servers', () => {
 
   it('refuses unencrypted DNS to a public address and holds back the review', async () => {
     app.useTransport(new FixtureTransport('attention'));
-    render(Dns);
+    renderScreen(Dns);
     await app.refresh();
     await fireEvent.click(await screen.findByLabelText(/use my own servers/i));
     await fireEvent.input(screen.getByLabelText(/first server/i), { target: { value: '8.8.8.8' } });
@@ -164,7 +165,7 @@ describe('Dns screen: what was found', () => {
     const transport = new FixtureTransport('attention');
     const plan = vi.spyOn(transport, 'planChange');
     app.useTransport(transport);
-    render(Dns);
+    renderScreen(Dns);
     await app.refresh();
     expect(await screen.findByText(/how your dns works today/i)).toBeVisible();
     expect(
@@ -178,7 +179,7 @@ describe('Dns screen: what was found', () => {
   it('speaks Portuguese', async () => {
     i18n.set('pt-BR');
     app.useTransport(new FixtureTransport('attention'));
-    render(Dns);
+    renderScreen(Dns);
     await app.refresh();
     expect(await screen.findByText(/como o seu dns funciona hoje/i)).toBeVisible();
     expect(screen.getByRole('button', { name: /usar esta sugestão/i })).toBeVisible();

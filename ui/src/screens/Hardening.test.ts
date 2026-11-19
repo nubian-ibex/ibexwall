@@ -1,6 +1,8 @@
-import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { renderScreen } from '../test-utils';
+import { fireEvent, screen, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../lib/app.svelte';
+import { changes } from '../lib/changes.svelte';
 import { FixtureTransport } from '../lib/fixtures';
 import { CATALOG, groupByPlugin, mergePatches, statusOf } from '../lib/hardening';
 import { i18n } from '../lib/i18n.svelte';
@@ -8,7 +10,7 @@ import Hardening from './Hardening.svelte';
 
 async function open(transport = new FixtureTransport('attention')) {
   app.useTransport(transport);
-  render(Hardening);
+  renderScreen(Hardening);
   await screen.findByText(/of \d+ recommended settings are already in place|de \d+ configurações/i);
   return transport;
 }
@@ -52,7 +54,7 @@ describe('Hardening screen', () => {
     const apply = vi.spyOn(transport, 'apply');
     await open(transport);
     // The safe, missing modules are already ticked: both go to one plan.
-    await fireEvent.click(screen.getByRole('button', { name: /review the change/i }));
+    await fireEvent.click(await screen.findByRole('button', { name: /review and apply/i }));
     const calls = plan.mock.calls;
     const sysctl = calls.find(([plugin]) => plugin === 'system.sysctl');
     const modules = calls.find(([plugin]) => plugin === 'system.modules');
@@ -62,13 +64,18 @@ describe('Hardening screen', () => {
     );
     expect(modules![1]).toEqual({ block: expect.arrayContaining(['net-protocols', 'vivid']) });
     expect(apply).not.toHaveBeenCalled();
-    expect(await screen.findAllByRole('heading', { level: 3 })).not.toHaveLength(0);
+    expect(await screen.findByRole('dialog')).toBeVisible();
   });
 
-  it('warns when a ticked setting can affect programs', async () => {
+  it('queues what is ticked in the change bar, with a count that follows the ticks', async () => {
     await open();
+    const before = changes.total;
+    expect(before).toBeGreaterThan(0);
+    expect(screen.getByRole('region', { name: /changes ready/i })).toBeVisible();
     await fireEvent.click(screen.getByRole('checkbox', { name: /turn off bluetooth/i }));
-    expect(screen.getByRole('note')).toHaveTextContent(/can affect programs you use/i);
+    expect(changes.total).toBe(before + 1);
+    await fireEvent.click(screen.getByRole('button', { name: /discard/i }));
+    expect(changes.total).toBe(0);
   });
 
   it('links each setting to its page on the site', async () => {

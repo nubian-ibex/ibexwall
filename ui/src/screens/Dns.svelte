@@ -392,7 +392,6 @@
     border-radius: var(--radius-card);
     padding: var(--space-5);
     margin-bottom: var(--space-4);
-    max-width: 760px;
   }
   .status {
     grid-template-columns: 1fr auto;

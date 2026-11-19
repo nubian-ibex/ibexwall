@@ -51,8 +51,16 @@
         {/each}
       </ul>
     </nav>
-    <footer class={app.serviceStatus} role="status">
-      <span class="dot" aria-hidden="true"></span>{t(`sidebar-status-${app.serviceStatus}`)}
+    <footer class={app.serviceStatus}>
+      <div class="status" role="status">
+        <span class="dot" aria-hidden="true"></span>{t(`sidebar-status-${app.serviceStatus}`)}
+      </div>
+      {#if app.info.status === 'ready'}
+        <div class="version">
+          <span>{t('sidebar-version')}</span>
+          <code>{app.info.data.version}</code>
+        </div>
+      {/if}
     </footer>
   </aside>
   <main id="content" tabindex="-1">
@@ -141,12 +149,34 @@
   }
   footer {
     flex: none;
-    display: flex;
-    align-items: center;
+    display: grid;
     gap: var(--space-2);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--divider);
     color: var(--primary-strong);
     font-weight: 600;
     font-size: 14px;
+  }
+  .status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .version {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--muted);
+    font-weight: 400;
+    font-size: 13px;
+  }
+  .version code {
+    font-family: var(--font-mono);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0 var(--space-2);
+    color: var(--text-2);
   }
   .dot {
     width: 8px;
@@ -171,8 +201,9 @@
     outline: none;
   }
   .content {
-    padding: var(--space-10);
-    max-width: 1200px;
+    padding: var(--space-8) var(--space-10);
+    /* One width for every screen. */
+    max-width: 1100px;
   }
   @media (max-width: 800px) {
     .shell {

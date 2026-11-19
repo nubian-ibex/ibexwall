@@ -15,6 +15,20 @@ async function shell(scenario: 'protected' | 'attention' | 'error' | 'denied') {
   return screen.getByRole('status');
 }
 
+describe('AppShell version', () => {
+  beforeEach(() => i18n.set('en'));
+
+  it('shows the version the daemon reports in the sidebar', async () => {
+    app.useTransport(new FixtureTransport('protected'));
+    render(AppShell, { children });
+    await app.refresh();
+    expect(await screen.findByText('Version')).toBeVisible();
+    const info = app.info.status === 'ready' ? app.info.data.version : '';
+    expect(info).not.toBe('');
+    expect(screen.getByText(info, { selector: 'code' })).toBeVisible();
+  });
+});
+
 describe('AppShell status', () => {
   beforeEach(() => i18n.set('en'));
 

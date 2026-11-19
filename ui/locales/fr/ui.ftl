@@ -9,6 +9,7 @@ nav-settings = Réglages
 sidebar-status-checking = Connexion au service…
 sidebar-status-active = Protection active
 sidebar-status-running = Service en cours d’exécution
+sidebar-version = Version
 sidebar-status-degraded = Service partiellement opérationnel
 sidebar-status-offline = Le service ne répond pas
 sidebar-status-no-access = Pas d’accès au service

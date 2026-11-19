@@ -7,20 +7,27 @@
     DNS_LISTS,
     DNS_PROVIDERS,
     dnsPatch,
+    ownPatch,
     ownProblems,
     transportFor,
     type DnsChoice,
     type DnsProviderId,
     type DnsTransport,
   } from '../lib/dns';
-  import ChangeFlow from '../components/ChangeFlow.svelte';
   import Detected from '../components/Detected.svelte';
   import { relativeTime } from '../lib/time';
   import StateMessage from '../components/StateMessage.svelte';
   import type { DnsStatus, Finding } from '../gen/contracts';
   import Switch from '../components/Switch.svelte';
+  import { changes } from '../lib/changes.svelte';
+  import { onMount } from 'svelte';
 
+  const TABS = ['provider', 'lists', 'protection', 'own'] as const;
+  type Tab = (typeof TABS)[number];
+  let tab = $state<Tab>('provider');
   let choice = $state<DnsChoice>({ ...DNS_DEFAULTS });
+  /** What is applied now: the form is compared to it to know what changed. */
+  let applied = $state<DnsChoice>({ ...DNS_DEFAULTS });
   let busy = $state(false);
   let counters = $state<DnsStatus | null>(null);
   let notes = $state<Finding[]>([]);
@@ -62,9 +69,61 @@
     if (app.plugins.status !== 'ready') return;
     void app.transport
       .getConfig('net.dns')
-      .then((config) => (choice = choiceFromConfig(config.effective)))
+      .then((config) => {
+        choice = choiceFromConfig(config.effective);
+        applied = choiceFromConfig(config.effective);
+      })
       .catch(() => {});
   });
+
+  /** How many things the person changed in each tab, against what is applied. */
+  const changedIn = $derived({
+    provider:
+      Number(choice.provider !== applied.provider) + Number(choice.transport !== applied.transport),
+    lists: Number(choice.list !== applied.list),
+    protection:
+      Number(choice.enforcement !== applied.enforcement) +
+      Number(choice.blockDoh !== applied.blockDoh) +
+      Number(choice.browserPolicies !== applied.browserPolicies),
+    own: Number(JSON.stringify(ownPatch(choice.own)) !== JSON.stringify(ownPatch(applied.own))),
+  });
+  const changedTotal = $derived(Object.values(changedIn).reduce((sum, n) => sum + n, 0));
+
+  // Changes in any tab join one queue in the change bar; a half-filled own
+  // server is not queued until it is valid.
+  $effect(() => {
+    changes.setSource(
+      'dns',
+      changedTotal > 0 && problems.length === 0
+        ? [
+            {
+              id: 'dns-form',
+              plugin: 'net.dns',
+              patch: dnsPatch(choice),
+              count: changedTotal,
+              label: t('nav-dns'),
+            },
+          ]
+        : [],
+    );
+  });
+  onMount(() => {
+    // The machine changed: read what is applied again, so the form matches it.
+    const stop = changes.onApplied(() => void app.refresh());
+    return () => {
+      stop();
+      changes.discard('dns');
+    };
+  });
+
+  /** Arrow keys move between tabs, as a tab list does. */
+  function moveTab(event: KeyboardEvent, from: Tab) {
+    const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+    if (step === 0) return;
+    event.preventDefault();
+    tab = TABS[(TABS.indexOf(from) + step + TABS.length) % TABS.length]!;
+    document.getElementById(`dns-tab-${tab}`)?.focus();
+  }
 
   const plugin = $derived(
     app.plugins.status === 'ready' ? app.plugins.data.find((p) => p.id === 'net.dns') : undefined,
@@ -128,168 +187,189 @@
     />
   </section>
 
-  <section class="card">
-    <fieldset>
-      <legend>{t('dns-provider')}</legend>
-      {#each DNS_PROVIDERS as provider (provider.id)}
-        <label class="option">
-          <input
-            type="radio"
-            name="dns-provider"
-            value={provider.id}
-            checked={choice.provider === provider.id}
-            onchange={() => pickProvider(provider.id)}
-          />
-          <span>
-            <strong>{t(`dns-provider-${provider.id}`)}</strong>
-            <span class="muted">
-              {t('dns-jurisdiction', { code: provider.jurisdiction })} · {t(
-                `dns-provider-${provider.id}-logs`,
-              )}
+  <div class="tabs" role="tablist" aria-label={t('dns-tabs-label')}>
+    {#each TABS as name (name)}
+      <button
+        type="button"
+        role="tab"
+        id={`dns-tab-${name}`}
+        class="tab"
+        aria-selected={tab === name}
+        aria-controls="dns-panel"
+        tabindex={tab === name ? 0 : -1}
+        onclick={() => (tab = name)}
+        onkeydown={(event) => moveTab(event, name)}
+      >
+        {t(`dns-tab-${name}`)}
+        {#if changedIn[name] > 0}
+          <span class="dirty" title={t('dns-tab-changed')} aria-label={t('dns-tab-changed')}></span>
+        {/if}
+      </button>
+    {/each}
+  </div>
+
+  <div class="card" id="dns-panel" role="tabpanel" aria-labelledby={`dns-tab-${tab}`}>
+    {#if tab === 'provider'}
+      <fieldset>
+        <legend>{t('dns-provider')}</legend>
+        {#each DNS_PROVIDERS as provider (provider.id)}
+          <label class="option">
+            <input
+              type="radio"
+              name="dns-provider"
+              value={provider.id}
+              checked={choice.provider === provider.id}
+              onchange={() => pickProvider(provider.id)}
+            />
+            <span>
+              <strong>{t(`dns-provider-${provider.id}`)}</strong>
+              <span class="muted">
+                {t('dns-jurisdiction', { code: provider.jurisdiction })} · {t(
+                  `dns-provider-${provider.id}-logs`,
+                )}
+              </span>
             </span>
-          </span>
-        </label>
-      {/each}
-    </fieldset>
-
-    <label class="field">
-      <span>{t('dns-transport')}</span>
-      <select bind:value={choice.transport}>
-        {#each transports as transport (transport)}
-          <option value={transport as DnsTransport}>{t(`dns-transport-${transport}`)}</option>
+          </label>
         {/each}
-      </select>
-    </label>
+      </fieldset>
 
-    <label class="field">
-      <span>{t('dns-list')}</span>
-      <select bind:value={choice.list}>
-        <option value="none">{t('dns-list-none')}</option>
-        {#each DNS_LISTS as list (list)}
-          <option value={list}>{t(`dns-list-${list}`)}</option>
-        {/each}
-      </select>
-    </label>
-
-    <label class="check">
-      <input type="checkbox" bind:checked={choice.enforcement} />
-      <span>
-        <strong>{t('dns-enforcement')}</strong>
-        <span class="muted">{t('dns-enforcement-body')}</span>
-      </span>
-    </label>
-    <label class="check">
-      <input type="checkbox" bind:checked={choice.blockDoh} />
-      <span>
-        <strong>{t('dns-block-doh')}</strong>
-        <span class="muted">{t('dns-block-doh-body')}</span>
-      </span>
-    </label>
-    <label class="check">
-      <input type="checkbox" bind:checked={choice.browserPolicies} />
-      <span>
-        <strong>{t('dns-browser-policy')}</strong>
-        <span class="muted">{t('dns-browser-policy-body')}</span>
-      </span>
-    </label>
-  </section>
-
-  <section class="card" aria-labelledby="dns-own">
-    <h2 id="dns-own">{t('dns-own-title')}</h2>
-    <p class="muted">{t('dns-own-body')}</p>
-
-    {#if networkServers.length > 0}
-      <div class="note" role="note">
-        <strong>{t('dns-network-title')}</strong>
-        <p class="muted">{t('dns-network-body')}</p>
-        <ul class="servers">
-          {#each networkServers as address (address)}
-            <li>
-              <code>{address}</code>
-              <button type="button" class="link" onclick={() => useNetworkServer(address)}>
-                {t('dns-network-use', { address })}
-              </button>
-            </li>
+      <label class="field">
+        <span>{t('dns-transport')}</span>
+        <select bind:value={choice.transport}>
+          {#each transports as transport (transport)}
+            <option value={transport as DnsTransport}>{t(`dns-transport-${transport}`)}</option>
           {/each}
-        </ul>
-      </div>
-    {/if}
-    {#if plainServers}
-      <p class="warn" role="status">{t('dns-plain-warning', { servers: plainServers })}</p>
-    {/if}
+        </select>
+      </label>
+    {:else if tab === 'lists'}
+      <label class="field">
+        <span>{t('dns-list')}</span>
+        <select bind:value={choice.list}>
+          <option value="none">{t('dns-list-none')}</option>
+          {#each DNS_LISTS as list (list)}
+            <option value={list}>{t(`dns-list-${list}`)}</option>
+          {/each}
+        </select>
+      </label>
+    {:else if tab === 'protection'}
+      <label class="check">
+        <input type="checkbox" bind:checked={choice.enforcement} />
+        <span>
+          <strong>{t('dns-enforcement')}</strong>
+          <span class="muted">{t('dns-enforcement-body')}</span>
+        </span>
+      </label>
+      <label class="check">
+        <input type="checkbox" bind:checked={choice.blockDoh} />
+        <span>
+          <strong>{t('dns-block-doh')}</strong>
+          <span class="muted">{t('dns-block-doh-body')}</span>
+        </span>
+      </label>
+      <label class="check">
+        <input type="checkbox" bind:checked={choice.browserPolicies} />
+        <span>
+          <strong>{t('dns-browser-policy')}</strong>
+          <span class="muted">{t('dns-browser-policy-body')}</span>
+        </span>
+      </label>
+    {:else}
+      <h2 id="dns-own">{t('dns-own-title')}</h2>
+      <p class="muted">{t('dns-own-body')}</p>
 
-    <label class="check">
-      <input type="checkbox" bind:checked={choice.own.enabled} />
-      <span><strong>{t('dns-own-enable')}</strong></span>
-    </label>
-
-    {#if choice.own.enabled}
-      <div class="row">
-        <label class="field">
-          <span>{t('dns-own-primary')}</span>
-          <input
-            type="text"
-            bind:value={choice.own.primary}
-            autocomplete="off"
-            spellcheck="false"
-          />
-        </label>
-        <label class="field">
-          <span>{t('dns-own-transport')}</span>
-          <select bind:value={choice.own.primaryTransport}>
-            <option value="plain">{t('dns-own-plain')}</option>
-            <option value="tls">{t('dns-own-tls')}</option>
-          </select>
-        </label>
-      </div>
-      <div class="row">
-        <label class="field">
-          <span>{t('dns-own-secondary')}</span>
-          <input
-            type="text"
-            bind:value={choice.own.secondary}
-            autocomplete="off"
-            spellcheck="false"
-          />
-        </label>
-        <label class="field">
-          <span>{t('dns-own-transport')}</span>
-          <select bind:value={choice.own.secondaryTransport}>
-            <option value="plain">{t('dns-own-plain')}</option>
-            <option value="tls">{t('dns-own-tls')}</option>
-          </select>
-        </label>
-      </div>
-      {#if choice.own.primaryTransport === 'tls' || choice.own.secondaryTransport === 'tls'}
-        <label class="field">
-          <span>{t('dns-own-name')}</span>
-          <input type="text" bind:value={choice.own.serverName} autocomplete="off" />
-        </label>
+      {#if networkServers.length > 0}
+        <div class="note" role="note">
+          <strong>{t('dns-network-title')}</strong>
+          <p class="muted">{t('dns-network-body')}</p>
+          <ul class="servers">
+            {#each networkServers as address (address)}
+              <li>
+                <code>{address}</code>
+                <button type="button" class="link" onclick={() => useNetworkServer(address)}>
+                  {t('dns-network-use', { address })}
+                </button>
+              </li>
+            {/each}
+          </ul>
+        </div>
       {/if}
-      <p class="muted">{t('dns-own-order')}</p>
+      {#if plainServers}
+        <p class="warn" role="status">{t('dns-plain-warning', { servers: plainServers })}</p>
+      {/if}
 
-      <h3>{t('dns-own-split-title')}</h3>
-      <p class="muted">{t('dns-own-split-body')}</p>
-      <div class="row">
-        <label class="field">
-          <span>{t('dns-own-domains')}</span>
-          <input type="text" bind:value={choice.own.domains} autocomplete="off" />
-        </label>
-        <label class="field">
-          <span>{t('dns-own-route')}</span>
-          <input type="text" bind:value={choice.own.routeServer} autocomplete="off" />
-        </label>
-      </div>
+      <label class="check">
+        <input type="checkbox" bind:checked={choice.own.enabled} />
+        <span><strong>{t('dns-own-enable')}</strong></span>
+      </label>
 
-      {#if problems.length > 0}
-        <ul class="problems" role="alert">
-          {#each problems as key (key)}
-            <li>{t(key)}</li>
-          {/each}
-        </ul>
+      {#if choice.own.enabled}
+        <div class="row">
+          <label class="field">
+            <span>{t('dns-own-primary')}</span>
+            <input
+              type="text"
+              bind:value={choice.own.primary}
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </label>
+          <label class="field">
+            <span>{t('dns-own-transport')}</span>
+            <select bind:value={choice.own.primaryTransport}>
+              <option value="plain">{t('dns-own-plain')}</option>
+              <option value="tls">{t('dns-own-tls')}</option>
+            </select>
+          </label>
+        </div>
+        <div class="row">
+          <label class="field">
+            <span>{t('dns-own-secondary')}</span>
+            <input
+              type="text"
+              bind:value={choice.own.secondary}
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </label>
+          <label class="field">
+            <span>{t('dns-own-transport')}</span>
+            <select bind:value={choice.own.secondaryTransport}>
+              <option value="plain">{t('dns-own-plain')}</option>
+              <option value="tls">{t('dns-own-tls')}</option>
+            </select>
+          </label>
+        </div>
+        {#if choice.own.primaryTransport === 'tls' || choice.own.secondaryTransport === 'tls'}
+          <label class="field">
+            <span>{t('dns-own-name')}</span>
+            <input type="text" bind:value={choice.own.serverName} autocomplete="off" />
+          </label>
+        {/if}
+        <p class="muted">{t('dns-own-order')}</p>
+
+        <h3>{t('dns-own-split-title')}</h3>
+        <p class="muted">{t('dns-own-split-body')}</p>
+        <div class="row">
+          <label class="field">
+            <span>{t('dns-own-domains')}</span>
+            <input type="text" bind:value={choice.own.domains} autocomplete="off" />
+          </label>
+          <label class="field">
+            <span>{t('dns-own-route')}</span>
+            <input type="text" bind:value={choice.own.routeServer} autocomplete="off" />
+          </label>
+        </div>
+
+        {#if problems.length > 0}
+          <ul class="problems" role="alert">
+            {#each problems as key (key)}
+              <li>{t(key)}</li>
+            {/each}
+          </ul>
+        {/if}
       {/if}
     {/if}
-  </section>
+  </div>
 
   {#if counters}
     <section class="card" aria-labelledby="dns-counters">
@@ -322,18 +402,45 @@
       <p class="muted">{t('dns-counters-privacy')}</p>
     </section>
   {/if}
-
-  <section class="card">
-    <p class="muted">{t('dns-review-note')}</p>
-    {#if problems.length === 0}
-      <ChangeFlow plugin="net.dns" patch={dnsPatch(choice)} />
-    {:else}
-      <p class="muted">{t('dns-own-fix-first')}</p>
-    {/if}
-  </section>
 {/if}
 
 <style>
+  .tabs {
+    display: flex;
+    gap: var(--space-1);
+    margin-bottom: var(--space-4);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .tab {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--target);
+    padding: 0 var(--space-4);
+    border: 0;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -1px;
+    background: transparent;
+    color: var(--muted);
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .tab:hover {
+    color: var(--text);
+  }
+  .tab[aria-selected='true'] {
+    color: var(--primary-strong);
+    border-bottom-color: var(--primary);
+    font-weight: 600;
+  }
+  .dirty {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--primary);
+  }
   .row {
     display: grid;
     grid-template-columns: 2fr 1fr;

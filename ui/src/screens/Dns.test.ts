@@ -1,5 +1,5 @@
 import { renderScreen } from '../test-utils';
-import { fireEvent, screen } from '@testing-library/svelte';
+import { fireEvent, screen, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../lib/app.svelte';
 import { DNS_DEFAULTS, DNS_PROVIDERS, dnsPatch, transportFor } from '../lib/dns';
@@ -7,6 +7,8 @@ import { FixtureTransport } from '../lib/fixtures';
 import { TransportError } from '../lib/transport';
 import { i18n } from '../lib/i18n.svelte';
 import Dns from './Dns.svelte';
+
+const openTab = (name: RegExp) => fireEvent.click(screen.getByRole('tab', { name }));
 
 describe('Dns screen', () => {
   beforeEach(() => i18n.set('en'));
@@ -22,7 +24,7 @@ describe('Dns screen', () => {
     expect(screen.getByRole('switch', { name: /off/i })).toBeVisible();
   });
 
-  it('sends exactly the chosen settings when simulating', async () => {
+  it('queues what is changed in any tab as one bar and plans exactly those settings', async () => {
     const transport = new FixtureTransport('attention');
     const plan = vi.spyOn(transport, 'planChange');
     app.useTransport(transport);
@@ -32,19 +34,25 @@ describe('Dns screen', () => {
     await fireEvent.change(screen.getByLabelText(/how lookups are encrypted/i), {
       target: { value: 'https' },
     });
-    await fireEvent.change(screen.getByLabelText(/block list/i), {
+    await openTab(/block lists/i);
+    await fireEvent.change(screen.getByRole('combobox', { name: /^block list/i }), {
       target: { value: 'hagezi-pro' },
     });
+    await openTab(/protection/i);
     await fireEvent.click(screen.getByRole('checkbox', { name: /refuse unencrypted dns/i }));
+    // Provider, transport, list and one protection: four changes in one bar.
+    expect(await screen.findByText('4 changes ready')).toBeVisible();
     await fireEvent.click(screen.getByRole('button', { name: /review and apply/i }));
-    expect(plan).toHaveBeenCalledWith('net.dns', {
-      provider: 'cloudflare',
-      transport: 'https',
-      lists: [{ id: 'hagezi-pro' }],
-      enforcement: false,
-      block_doh: true,
-      browser_policies: false,
-    });
+    await vi.waitFor(() =>
+      expect(plan).toHaveBeenCalledWith('net.dns', {
+        provider: 'cloudflare',
+        transport: 'https',
+        lists: [{ id: 'hagezi-pro' }],
+        enforcement: false,
+        block_doh: true,
+        browser_policies: false,
+      }),
+    );
     expect(await screen.findByText('/etc/sysctl.d/90-ibexwall.conf')).toBeVisible();
   });
 
@@ -93,6 +101,7 @@ describe('Dns screen', () => {
     app.useTransport(transport);
     renderScreen(Dns);
     await app.refresh();
+    await fireEvent.click(await screen.findByRole('radio', { name: /cloudflare/i }));
     await fireEvent.click(await screen.findByRole('button', { name: /review and apply/i }));
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('could not proceed');
@@ -119,6 +128,7 @@ describe('Dns screen: your own servers', () => {
     app.useTransport(new FixtureTransport('attention'));
     renderScreen(Dns);
     await app.refresh();
+    await openTab(/own servers/i);
     expect(await screen.findByText(/your network offers dns servers/i)).toBeVisible();
     await fireEvent.click(screen.getByRole('button', { name: 'Use 192.168.1.1' }));
     expect(screen.getByLabelText(/first server/i)).toHaveValue('192.168.1.1');
@@ -132,12 +142,34 @@ describe('Dns screen: your own servers', () => {
     app.useTransport(new FixtureTransport('attention'));
     renderScreen(Dns);
     await app.refresh();
+    await openTab(/own servers/i);
     await fireEvent.click(await screen.findByLabelText(/use my own servers/i));
     await fireEvent.input(screen.getByLabelText(/first server/i), { target: { value: '8.8.8.8' } });
     expect(await screen.findByRole('alert')).toHaveTextContent(
       /only allowed for addresses on your own network/i,
     );
-    expect(screen.getByText(/fix the points above/i)).toBeVisible();
+    // A half-filled server is not queued: the bar stays away until it is valid.
+    expect(screen.queryByRole('region', { name: /changes ready/i })).toBeNull();
+  });
+});
+
+describe('Dns tabs', () => {
+  beforeEach(() => i18n.set('en'));
+
+  it('marks a tab that holds a change, and moves between tabs with the arrow keys', async () => {
+    app.useTransport(new FixtureTransport('attention'));
+    renderScreen(Dns);
+    await app.refresh();
+    const first = await screen.findByRole('tab', { name: /provider/i });
+    expect(first).toHaveAttribute('aria-selected', 'true');
+    await fireEvent.click(screen.getByRole('radio', { name: /cloudflare/i }));
+    expect(within(first).getByLabelText('Changed, not applied yet')).toBeVisible();
+    await fireEvent.keyDown(first, { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { name: /block lists/i })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByRole('tabpanel')).toBeVisible();
   });
 });
 

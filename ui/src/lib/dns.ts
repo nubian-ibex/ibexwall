@@ -192,7 +192,7 @@ export function dnsPatch(choice: DnsChoice): Record<string, unknown> {
   };
 }
 
-function ownPatch(own: OwnDns): Record<string, unknown> {
+export function ownPatch(own: OwnDns): Record<string, unknown> {
   if (!own.enabled || ownProblems(own).length > 0) return {};
   const server = (ip: string, transport: 'plain' | 'tls') =>
     transport === 'plain'

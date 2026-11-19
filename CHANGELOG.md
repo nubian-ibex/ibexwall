@@ -6,6 +6,21 @@
 Versions follow [Semantic Versioning](https://semver.org). The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## Unreleased
+
+### Changed
+
+- The app queues changes in one place. A bar at the bottom of the window
+  shows how many are ready ("3 changes ready") with Discard and "Review and
+  apply"; the review opens in a panel with three numbered steps, Review,
+  Apply and Keep, replacing the Simulate, Apply and Confirm buttons that each
+  screen had. Hardening and Secure DNS add what you choose to the bar; the
+  Firewall, Apps, Plugins and Assistant open the panel from their own action.
+- Secure DNS is split into tabs (Provider, Block lists, Protection, Own
+  servers), with a dot on a tab that holds a change.
+- The sidebar shows the version, every screen uses the same width, and the
+  window opens at 700 px so it fits an 800 px screen.
+
 ## 0.2.1 (2026-11-18)
 
 ### Fixed

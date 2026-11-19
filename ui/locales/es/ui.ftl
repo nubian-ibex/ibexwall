@@ -115,10 +115,37 @@ plugins-no-findings = Sin hallazgos abiertos
 plugins-locked = Establecido por tu organización
 plugins-incompatible = No es compatible con este sistema
 
-change-start = Aplicar
-change-start-hint = Aún no cambia nada: verás exactamente qué cambiaría y luego confirmas.
-change-confirm = Confirmar
-change-confirm-hint = Esto realiza los cambios mostrados arriba.
+change-review = Revisar y aplicar
+change-review-hint = Aún no cambia nada: primero revisas los cambios exactos.
+changebar-label = Cambios listos
+changebar-title =
+    { $count ->
+        [one] 1 cambio listo
+       *[other] { $count } cambios listos
+    }
+changebar-note = Nada cambia en tu sistema hasta que apliques.
+changebar-discard = Descartar
+changebar-review = Revisar y aplicar
+panel-title-review = Revisar cambios
+panel-title-applying = Aplicando
+panel-title-keep = Mantener o deshacer
+panel-title-done = Hecho
+panel-step-review = Revisar
+panel-step-apply = Aplicar
+panel-step-keep = Mantener
+panel-steps-label = Pasos
+panel-close = Cerrar
+panel-planning = Preparando la lista exacta de cambios…
+panel-review-note = Esta es la lista exacta de lo que va a cambiar. Todavía no se ha cambiado nada.
+panel-apply =
+    { $count ->
+        [one] Aplicar 1 cambio
+       *[other] Aplicar { $count } cambios
+    }
+panel-applying-note = Aplicando los cambios. Si el sistema pide una contraseña, introdúcela en su ventana.
+panel-keep-note = Los cambios están activos. Si todo sigue funcionando, mantenlos; si no, deshazlos.
+panel-expired = Se acabó el tiempo, así que los cambios se deshicieron.
+panel-stopped = No se mantuvo nada.
 applying = Aplicando…
 confirm-title = ¿Mantener los cambios?
 plan-expires = Esta vista previa caduca { $when }
@@ -316,7 +343,6 @@ firewall-status-inactive = El cortafuegos está desactivado
 firewall-status-unknown = Se desconoce el estado del cortafuegos
 firewall-switch-on = El cortafuegos está activado: desactivarlo
 firewall-switch-off = El cortafuegos está desactivado: activarlo
-firewall-cancel = Cancelar
 firewall-own-off-hint = Esta es la protección propia de IbexWall. Para desactivarla, deshaz en el Historial el cambio que la activó.
 firewall-zone = Zona: { $zone }
 firewall-inactive-body = Nada filtra las conexiones que llegan desde otros equipos.
@@ -361,7 +387,6 @@ firewall-kind-wifi_open = Wi-Fi abierta
 firewall-kind-other = Otra
 firewall-warning-open-network = Esta red es abierta: cualquiera cercano puede unirse. Viaje mantiene todo cerrado.
 firewall-warning-unknown-network = IbexWall no conoce este tipo de red. Viaje mantiene todo cerrado.
-firewall-review-note = Pulsa Aplicar para ver exactamente qué cambiaría. Nada cambia hasta que confirmes, y puedes deshacerlo desde el Historial.
 
 prompt-title = { $app } quiere acceder a internet
 prompt-destination = Destino
@@ -508,13 +533,7 @@ hardening-risk-high = Puede romper cosas
 hardening-breaks = Puede romper:
 hardening-sources = Fuente:
 hardening-more = Más sobre este ajuste
-hardening-review-title = Revisar { $count } seleccionados
-hardening-risky = { $count } de los ajustes seleccionados pueden afectar a programas que usas. Lee lo que puede romper cada uno antes de aplicar.
-hardening-review = Revisar el cambio
-hardening-apply = Aplicar { $count } ajustes
 hardening-applied = Aplicado. { $count } cambios están en vigor.
-hardening-keep-body = Algunos cambios necesitan tu confirmación para mantenerse.
-hardening-keep = Mantener los cambios
 hardening-undo = Deshacer todo
 hardening-undone = Se deshicieron todos los cambios.
 hardening-stopped = El cambio de { $plugin } no se mantuvo, así que no se aplicó el resto.

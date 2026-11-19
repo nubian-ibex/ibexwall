@@ -4,6 +4,9 @@
   import { t } from '../lib/i18n.svelte';
   import Icon from './Icon.svelte';
   import ChangeStatus from './ChangeStatus.svelte';
+  import ChangeBar from './ChangeBar.svelte';
+  import ChangeLayer from './ChangeLayer.svelte';
+  import { changes } from '../lib/changes.svelte';
   import logo from '../assets/logo.png';
 
   let { children }: { children: Snippet } = $props();
@@ -46,6 +49,14 @@
             >
               <Icon name={item.icon} size={20} />
               {t(item.key)}
+              {#if changes.countFor(item.route) > 0}
+                <span
+                  class="badge"
+                  title={t('changebar-title', { count: changes.countFor(item.route) })}
+                >
+                  {changes.countFor(item.route)}
+                </span>
+              {/if}
             </button>
           </li>
         {/each}
@@ -64,8 +75,13 @@
     </footer>
   </aside>
   <main id="content" tabindex="-1">
-    <div class="content"><ChangeStatus />{@render children()}</div>
+    <div class="content">
+      <ChangeStatus />
+      {@render children()}
+      <ChangeBar />
+    </div>
   </main>
+  <ChangeLayer />
 </div>
 
 <style>
@@ -141,6 +157,19 @@
   }
   nav button:hover {
     background: var(--surface-2);
+  }
+  nav .badge {
+    margin-left: auto;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 var(--space-2);
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    background: var(--primary);
+    color: var(--on-primary);
+    font-size: 12px;
+    font-weight: 700;
   }
   nav button.active {
     background: var(--primary-soft);

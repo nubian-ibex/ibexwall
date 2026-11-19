@@ -20,6 +20,7 @@
   import CircleQuestionMark from '@lucide/svelte/icons/circle-question-mark';
   import BadgeCheck from '@lucide/svelte/icons/badge-check';
   import Building2 from '@lucide/svelte/icons/building-2';
+  import X from '@lucide/svelte/icons/x';
 
   const icons = {
     bot: Bot,
@@ -43,6 +44,7 @@
     check: Check,
     'triangle-alert': TriangleAlert,
     'circle-question-mark': CircleQuestionMark,
+    x: X,
   } as const;
 
   // Icons are decorative: meaning is always carried by text, never colour or

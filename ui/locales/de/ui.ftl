@@ -115,10 +115,37 @@ plugins-no-findings = Keine offenen Befunde
 plugins-locked = Von Ihrer Organisation festgelegt
 plugins-incompatible = Mit diesem System nicht kompatibel
 
-change-start = Anwenden
-change-start-hint = Noch ändert sich nichts: Sie sehen genau, was sich ändern würde, und bestätigen dann.
-change-confirm = Bestätigen
-change-confirm-hint = Das führt die oben gezeigten Änderungen aus.
+change-review = Prüfen und anwenden
+change-review-hint = Noch ändert sich nichts: Sie prüfen zuerst die genauen Änderungen.
+changebar-label = Änderungen bereit
+changebar-title =
+    { $count ->
+        [one] 1 Änderung bereit
+       *[other] { $count } Änderungen bereit
+    }
+changebar-note = Auf Ihrem System ändert sich nichts, bis Sie anwenden.
+changebar-discard = Verwerfen
+changebar-review = Prüfen und anwenden
+panel-title-review = Änderungen prüfen
+panel-title-applying = Wird angewendet
+panel-title-keep = Behalten oder rückgängig
+panel-title-done = Fertig
+panel-step-review = Prüfen
+panel-step-apply = Anwenden
+panel-step-keep = Behalten
+panel-steps-label = Schritte
+panel-close = Schließen
+panel-planning = Die genaue Liste der Änderungen wird vorbereitet…
+panel-review-note = Das ist die genaue Liste dessen, was sich ändert. Es wurde noch nichts geändert.
+panel-apply =
+    { $count ->
+        [one] 1 Änderung anwenden
+       *[other] { $count } Änderungen anwenden
+    }
+panel-applying-note = Die Änderungen werden angewendet. Fragt das System nach einem Passwort, geben Sie es in dessen Fenster ein.
+panel-keep-note = Die Änderungen sind aktiv. Funktioniert noch alles, behalten Sie sie; sonst machen Sie sie rückgängig.
+panel-expired = Die Zeit ist abgelaufen, die Änderungen wurden daher rückgängig gemacht.
+panel-stopped = Nichts wurde behalten.
 applying = Wird angewendet…
 confirm-title = Änderungen behalten?
 plan-expires = Diese Vorschau läuft { $when } ab
@@ -316,7 +343,6 @@ firewall-status-inactive = Die Firewall ist aus
 firewall-status-unknown = Der Zustand der Firewall ist unbekannt
 firewall-switch-on = Die Firewall ist an: ausschalten
 firewall-switch-off = Die Firewall ist aus: einschalten
-firewall-cancel = Abbrechen
 firewall-own-off-hint = Das ist der eigene Schutz von IbexWall. Um ihn auszuschalten, machen Sie im Verlauf die Änderung rückgängig, die ihn eingeschaltet hat.
 firewall-zone = Zone: { $zone }
 firewall-inactive-body = Nichts filtert Verbindungen, die von anderen Computern hereinkommen.
@@ -361,7 +387,6 @@ firewall-kind-wifi_open = Offenes WLAN
 firewall-kind-other = Andere
 firewall-warning-open-network = Dieses Netzwerk ist offen: Jeder in der Nähe kann beitreten. „Unterwegs“ hält alles geschlossen.
 firewall-warning-unknown-network = IbexWall kennt diese Art von Netzwerk nicht. „Unterwegs“ hält alles geschlossen.
-firewall-review-note = Drücken Sie Anwenden, um genau zu sehen, was sich ändern würde. Nichts ändert sich, bevor Sie bestätigen, und Sie können es im Verlauf rückgängig machen.
 
 prompt-title = { $app } möchte auf das Internet zugreifen
 prompt-destination = Ziel
@@ -508,13 +533,7 @@ hardening-risk-high = Kann Dinge beschädigen
 hardening-breaks = Kann beeinträchtigen:
 hardening-sources = Quellen:
 hardening-more = Mehr zu dieser Einstellung
-hardening-review-title = { $count } ausgewählte prüfen
-hardening-risky = { $count } der ausgewählten Einstellungen können Programme beeinträchtigen, die Sie verwenden. Lesen Sie vor dem Anwenden, was jede beeinträchtigen kann.
-hardening-review = Änderung prüfen
-hardening-apply = { $count } Einstellungen anwenden
 hardening-applied = Angewendet. { $count } Änderungen sind aktiv.
-hardening-keep-body = Einige Änderungen benötigen Ihre Bestätigung, um zu bleiben.
-hardening-keep = Änderungen behalten
 hardening-undo = Alle rückgängig machen
 hardening-undone = Alle Änderungen wurden rückgängig gemacht.
 hardening-stopped = Die Änderung für { $plugin } ist nicht erhalten geblieben, daher wurde der Rest nicht angewendet.

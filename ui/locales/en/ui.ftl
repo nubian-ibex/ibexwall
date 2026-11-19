@@ -115,10 +115,37 @@ plugins-no-findings = No open findings
 plugins-locked = Set by your organization
 plugins-incompatible = Not compatible with this system
 
-change-start = Apply
-change-start-hint = Nothing changes yet: you will see exactly what would change, then confirm.
-change-confirm = Confirm
-change-confirm-hint = This carries out the changes shown above.
+change-review = Review and apply
+change-review-hint = Nothing changes yet: you review the exact changes first.
+changebar-label = Changes ready
+changebar-title =
+    { $count ->
+        [one] 1 change ready
+       *[other] { $count } changes ready
+    }
+changebar-note = Nothing changes on your system until you apply.
+changebar-discard = Discard
+changebar-review = Review and apply
+panel-title-review = Review changes
+panel-title-applying = Applying
+panel-title-keep = Keep or undo
+panel-title-done = Done
+panel-step-review = Review
+panel-step-apply = Apply
+panel-step-keep = Keep
+panel-steps-label = Steps
+panel-close = Close
+panel-planning = Preparing the exact list of changes…
+panel-review-note = This is the exact list of what will change. Nothing has changed yet.
+panel-apply =
+    { $count ->
+        [one] Apply 1 change
+       *[other] Apply { $count } changes
+    }
+panel-applying-note = Applying the changes. If your system asks for a password, enter it in its dialog.
+panel-keep-note = The changes are active. If everything still works, keep them; otherwise undo.
+panel-expired = Time ran out, so the changes were undone.
+panel-stopped = Nothing was kept.
 applying = Applying…
 confirm-title = Keep the changes?
 plan-expires = This preview expires { $when }
@@ -316,7 +343,6 @@ firewall-status-inactive = The firewall is off
 firewall-status-unknown = The state of the firewall is unknown
 firewall-switch-on = The firewall is on: switch it off
 firewall-switch-off = The firewall is off: switch it on
-firewall-cancel = Cancel
 firewall-own-off-hint = This is IbexWall's own protection. To turn it off, undo the change that turned it on, in History.
 firewall-zone = Zone: { $zone }
 firewall-inactive-body = Nothing is filtering connections that come in from other computers.
@@ -361,7 +387,6 @@ firewall-kind-wifi_open = Open Wi-Fi
 firewall-kind-other = Other
 firewall-warning-open-network = This network is open: anyone nearby can join it. Travel keeps everything closed.
 firewall-warning-unknown-network = IbexWall does not know this kind of network. Travel keeps everything closed.
-firewall-review-note = Press Apply to see exactly what would change. Nothing changes until you confirm, and you can undo it from History.
 
 prompt-title = { $app } wants to access the internet
 prompt-destination = Destination
@@ -508,13 +533,7 @@ hardening-risk-high = Can break things
 hardening-breaks = May break:
 hardening-sources = From:
 hardening-more = More about this setting
-hardening-review-title = Review { $count } selected
-hardening-risky = { $count } of the selected settings can affect programs you use. Read what each may break before you apply.
-hardening-review = Review the change
-hardening-apply = Apply { $count } settings
 hardening-applied = Applied. { $count } changes are in place.
-hardening-keep-body = Some changes need your confirmation to stay.
-hardening-keep = Keep the changes
 hardening-undo = Undo all
 hardening-undone = All changes were undone.
 hardening-stopped = The change for { $plugin } did not stay, so the rest was not applied.

@@ -115,10 +115,37 @@ plugins-no-findings = Aucun constat ouvert
 plugins-locked = Défini par votre organisation
 plugins-incompatible = Non compatible avec ce système
 
-change-start = Appliquer
-change-start-hint = Rien ne change encore : vous verrez exactement ce qui changerait, puis vous confirmez.
-change-confirm = Confirmer
-change-confirm-hint = Cela effectue les modifications affichées ci-dessus.
+change-review = Vérifier et appliquer
+change-review-hint = Rien ne change encore : vous vérifiez d’abord les modifications exactes.
+changebar-label = Modifications prêtes
+changebar-title =
+    { $count ->
+        [one] 1 modification prête
+       *[other] { $count } modifications prêtes
+    }
+changebar-note = Rien ne change sur votre système tant que vous n’appliquez pas.
+changebar-discard = Abandonner
+changebar-review = Vérifier et appliquer
+panel-title-review = Vérifier les modifications
+panel-title-applying = Application
+panel-title-keep = Conserver ou annuler
+panel-title-done = Terminé
+panel-step-review = Vérifier
+panel-step-apply = Appliquer
+panel-step-keep = Conserver
+panel-steps-label = Étapes
+panel-close = Fermer
+panel-planning = Préparation de la liste exacte des modifications…
+panel-review-note = Voici la liste exacte de ce qui va changer. Rien n’a encore changé.
+panel-apply =
+    { $count ->
+        [one] Appliquer 1 modification
+       *[other] Appliquer { $count } modifications
+    }
+panel-applying-note = Application des modifications. Si le système demande un mot de passe, saisissez-le dans sa fenêtre.
+panel-keep-note = Les modifications sont actives. Si tout fonctionne encore, conservez-les ; sinon, annulez.
+panel-expired = Le délai est écoulé, les modifications ont donc été annulées.
+panel-stopped = Rien n’a été conservé.
 applying = Application en cours…
 confirm-title = Conserver les modifications ?
 plan-expires = Cet aperçu expire { $when }
@@ -316,7 +343,6 @@ firewall-status-inactive = Le pare-feu est désactivé
 firewall-status-unknown = L'état du pare-feu est inconnu
 firewall-switch-on = Le pare-feu est activé : le désactiver
 firewall-switch-off = Le pare-feu est désactivé : l’activer
-firewall-cancel = Annuler
 firewall-own-off-hint = C'est la protection propre d'IbexWall. Pour la désactiver, annulez dans l'Historique la modification qui l'a activée.
 firewall-zone = Zone : { $zone }
 firewall-inactive-body = Rien ne filtre les connexions qui arrivent d'autres ordinateurs.
@@ -361,7 +387,6 @@ firewall-kind-wifi_open = Wi-Fi ouvert
 firewall-kind-other = Autre
 firewall-warning-open-network = Ce réseau est ouvert : toute personne à proximité peut le rejoindre. Voyage garde tout fermé.
 firewall-warning-unknown-network = IbexWall ne connaît pas ce type de réseau. Voyage garde tout fermé.
-firewall-review-note = Appuyez sur Appliquer pour voir exactement ce qui changerait. Rien ne change avant votre confirmation, et vous pouvez annuler depuis l'Historique.
 
 prompt-title = { $app } veut accéder à Internet
 prompt-destination = Destination
@@ -508,13 +533,7 @@ hardening-risk-high = Peut casser des choses
 hardening-breaks = Peut casser :
 hardening-sources = Source :
 hardening-more = En savoir plus sur ce réglage
-hardening-review-title = Examiner { $count } sélectionnés
-hardening-risky = { $count } des réglages sélectionnés peuvent affecter des programmes que vous utilisez. Lisez ce que chacun peut casser avant d'appliquer.
-hardening-review = Examiner la modification
-hardening-apply = Appliquer { $count } réglages
 hardening-applied = Appliqué. { $count } modifications sont en place.
-hardening-keep-body = Certaines modifications nécessitent votre confirmation pour rester.
-hardening-keep = Conserver les modifications
 hardening-undo = Tout annuler
 hardening-undone = Toutes les modifications ont été annulées.
 hardening-stopped = La modification pour { $plugin } n'a pas tenu, donc le reste n'a pas été appliqué.

@@ -7,16 +7,14 @@ Last updated: 2026-11-07 (F11b fully delivered; all five distros green)
 
 ## Current phase
 
-**Now: v0.3.0 tagged 2026-11-20, release is a DRAFT** (not published).
-Contents (from the maintainer's feedback and the approved mockup
-mockups/07): the version in the sidebar, one content width, a change bar at
-the bottom with the queued changes, a three step review panel (Review, Apply,
-Keep) replacing Simulate/Apply/Confirm, Secure DNS in four tabs, and the
-window at 700 px so it fits an 800 px screen. Plan: docs/plans/v0.3-change-
-flow-ui.md, branch merged, CI green. The Fedora VM (.107) runs 0.3.0; the
-Ubuntu VM (.106) runs 0.2.1 (updated from 0.2.0 with that draft). Waiting:
-the maintainer's check of 0.2.1 and 0.3.0, then publish both drafts; the
-docs deploy. Postponed: A-10, A-43, A-46, ADR-0048 (proposed).
+**Now: v0.2.1 and v0.3.0 published 2026-11-20.** v0.3.0 is the app rework
+the maintainer asked for (approved mockup mockups/07): version in the
+sidebar, one content width, a change bar, a three step review panel, Secure
+DNS in tabs, and a window that fits an 800 px screen. Both VMs (Fedora .107,
+Ubuntu .106) run 0.3.0, clean installs. The docs were deployed. Open:
+A-10, A-43, A-46 (decision), ADR-0048 (decision, restore points), the A-18
+VM flood check, package publishing (COPR, AUR, PPA, needs accounts), and
+the Dependabot majors.
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

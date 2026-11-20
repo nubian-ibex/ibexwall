@@ -12,7 +12,7 @@
 %global __strip /bin/true
 
 Name:           ibexwall
-Version:        0.2.1
+Version:        0.3.0
 Release:        1%{?dist}
 Summary:        Security center for Linux
 License:        GPL-3.0-or-later
@@ -138,6 +138,10 @@ if [ "$1" -ge 1 ]; then
 fi
 
 %changelog
+* Thu Nov 20 2026 Nubian Ibex <maintainers@nubian-ibex.invalid> - 0.3.0-1
+- The app queues changes in a bar with a three step review panel, Secure DNS
+  in tabs, and the version in the sidebar; see CHANGELOG.md.
+
 * Wed Nov 18 2026 Nubian Ibex <maintainers@nubian-ibex.invalid> - 0.2.1-1
 - Fixes from the 2026-11-15 audit and a full Ask queue that follows the
   fallback; see CHANGELOG.md.

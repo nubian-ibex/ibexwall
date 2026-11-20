@@ -1,3 +1,10 @@
+ibexwall (0.3.0) unstable; urgency=medium
+
+  * The app queues changes in a bar with a three step review panel, Secure
+    DNS in tabs, and the version in the sidebar; see CHANGELOG.md.
+
+ -- Nubian Ibex <maintainers@nubian-ibex.invalid> Thu, 20 Nov 2026 12:00:00 +0000
+
 ibexwall (0.2.1) unstable; urgency=medium
 
   * Fixes from the 2026-11-15 audit and a full Ask queue that follows the

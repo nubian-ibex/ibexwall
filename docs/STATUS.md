@@ -7,15 +7,16 @@ Last updated: 2026-11-07 (F11b fully delivered; all five distros green)
 
 ## Current phase
 
-**Now: v0.2.1 tagged 2026-11-18, release is a DRAFT** (not published).
-Contents: a full Ask queue follows the fallback (ADR-0047, accepted by the
-maintainer's go-ahead; revert `fix(nfq)` to undo), the daemon starts with a
-corrupt config layer, `system.mounts` reads the host mount table, `confirm_keys`
-for SSH, the `--phase audit` VM suite, a real-ufw scenario, UI toolchain bumps.
-CI green. Fedora VM (.107) reinstalled from the draft; the Ubuntu VM (.110)
-was unreachable. Postponed: A-10, A-43, A-46, and ADR-0048 (restore points,
-proposed). Next: check in the app, publish with `gh release edit v0.2.1
---draft=false`, deploy `ibexwall-docs`.
+**Now: v0.3.0 tagged 2026-11-20, release is a DRAFT** (not published).
+Contents (from the maintainer's feedback and the approved mockup
+mockups/07): the version in the sidebar, one content width, a change bar at
+the bottom with the queued changes, a three step review panel (Review, Apply,
+Keep) replacing Simulate/Apply/Confirm, Secure DNS in four tabs, and the
+window at 700 px so it fits an 800 px screen. Plan: docs/plans/v0.3-change-
+flow-ui.md, branch merged, CI green. The Fedora VM (.107) runs 0.3.0; the
+Ubuntu VM (.106) runs 0.2.1 (updated from 0.2.0 with that draft). Waiting:
+the maintainer's check of 0.2.1 and 0.3.0, then publish both drafts; the
+docs deploy. Postponed: A-10, A-43, A-46, ADR-0048 (proposed).
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

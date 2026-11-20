@@ -7,13 +7,14 @@ Last updated: 2026-11-07 (F11b fully delivered; all five distros green)
 
 ## Current phase
 
-**Now: v0.4.0 published 2026-11-20 (latest release).** It carries restore
-points (ADR-0048, accepted; CLI and History card) plus the accepted
-dependency majors (argon2 0.6, jsdom 31, astro 7 on the site). The decisions of 2026-11-20 are registered in
-planning/15 and 16: A-46 stays a warning, A-10 and A-43 accepted as they
-are, the admins polkit rule stays, COPR and AUR first for packages
-(planning/16 has the runbook; accounts are the maintainer's). Both VMs run
-0.4.0.
+**Now: v0.4.1 tagged 2026-11-20, release is a DRAFT** (not published).
+It fixes what the maintainer reported: after choosing a hardening change
+the screen kept it queued and 'not applied', because the stored findings
+of the plugin were refreshed only by the next explicit check. Apply,
+Confirm, Rollback, the automatic timeout and a restore re-check the plugin
+now (verified on the Fedora VM: the finding follows the apply without an
+explicit check). Both VMs get the draft next. Open: ADR-0049 (proposed,
+below), the COPR/AUR accounts, the Ask flood check.
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

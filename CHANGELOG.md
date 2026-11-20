@@ -6,6 +6,16 @@
 Versions follow [Semantic Versioning](https://semver.org). The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## 0.4.1 (2026-11-20)
+
+### Fixed
+
+- After a change was applied, kept or undone, the screen could still show it
+  as pending: the stored findings of the affected plugin were refreshed only
+  by the next explicit check. Apply, Confirm, Rollback, the automatic
+  timeout and a restore now re-check the plugin, so Hardening (and every
+  other screen) reflects the machine right away.
+
 ## 0.4.0 (2026-11-20)
 
 ### Added

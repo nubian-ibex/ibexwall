@@ -384,23 +384,39 @@ impl Core {
     /// machine: a screen that re-reads right after applying must not show
     /// yesterday's state. Best effort: a failure is logged, the change
     /// that triggered it is not undone.
-    pub fn refresh_plugin_findings(self: &Arc<Self>, plugin: &str) {
+    /// Re-runs the checks so the stored findings follow the machine: a
+    /// screen that re-reads right after applying must not show yesterday's
+    /// state. `Some(plugin)` refreshes one; `None` refreshes every enabled
+    /// plugin, because a check plugin such as `system.hardening` observes
+    /// the targets of another plugin's change. Best effort: a failure is
+    /// logged, the change that triggered it is not undone.
+    pub fn refresh_plugin_findings(self: &Arc<Self>, plugin: Option<&str>) {
         let core = Arc::clone(self);
-        let plugin = plugin.to_string();
+        let plugins: Vec<String> = match plugin {
+            Some(one) => vec![one.to_string()],
+            None => core
+                .plugins
+                .plugins()
+                .map(|e| e.manifest.id.clone())
+                .collect(),
+        };
         tokio::spawn(async move {
-            if !core.state.plugin_enabled(&plugin).unwrap_or(false) {
-                return;
-            }
-            match core.plugins.check(&plugin, serde_json::Value::Null).await {
-                Ok(report) => {
-                    let checked_at = ibexwall_sys::RealClock.rfc3339_now();
-                    if let Err(error) = core.state.replace_check_run(&plugin, &report, &checked_at)
-                    {
-                        tracing::warn!(%error, plugin, "refreshing findings failed");
-                    }
+            for plugin in plugins {
+                if !core.state.plugin_enabled(&plugin).unwrap_or(false) {
+                    continue;
                 }
-                Err(error) => {
-                    tracing::warn!(plugin, error = %format!("{error:#}"), "re-checking after a change failed");
+                match core.plugins.check(&plugin, serde_json::Value::Null).await {
+                    Ok(report) => {
+                        let checked_at = ibexwall_sys::RealClock.rfc3339_now();
+                        if let Err(error) =
+                            core.state.replace_check_run(&plugin, &report, &checked_at)
+                        {
+                            tracing::warn!(%error, plugin, "refreshing findings failed");
+                        }
+                    }
+                    Err(error) => {
+                        tracing::warn!(plugin, error = %format!("{error:#}"), "re-checking after a change failed");
+                    }
                 }
             }
         });

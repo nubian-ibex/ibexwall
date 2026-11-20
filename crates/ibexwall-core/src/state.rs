@@ -161,6 +161,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
              value INTEGER NOT NULL
          );",
     ),
+    (
+        "0010_restore_points",
+        "CREATE TABLE restore_points (\n             name TEXT PRIMARY KEY,\n             tx TEXT NOT NULL,\n             created_at INTEGER NOT NULL\n         );",
+    ),
 ];
 
 impl State {
@@ -589,6 +593,82 @@ impl State {
         })
     }
 
+    // restore points ----------------------------------------------------
+    /// Marks the last transaction at this moment under `name`, so going
+    /// back later undoes every committed change made after it (ADR-0048).
+    pub fn create_restore_point(&self, name: &str) -> Result<()> {
+        self.with_conn(|conn| {
+            let exists: bool = conn
+                .query_row(
+                    "SELECT 1 FROM restore_points WHERE name = ?1",
+                    rusqlite::params![name],
+                    |_| Ok(true),
+                )
+                .unwrap_or(false);
+            if exists {
+                return Err(anyhow::anyhow!("restore point `{name}` already exists"));
+            }
+            let tx: String = conn
+                .query_row(
+                    "SELECT id FROM transactions ORDER BY created_at DESC, rowid DESC LIMIT 1",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap_or_default();
+            conn.execute(
+                "INSERT INTO restore_points (name, tx, created_at) VALUES (?1, ?2, ?3)",
+                rusqlite::params![name, tx, ibexwall_sys::RealClock.unix_now()],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn list_restore_points(&self) -> Result<Vec<(String, String, i64)>> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT name, tx, created_at FROM restore_points ORDER BY created_at DESC",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            })?;
+            rows.collect::<Result<Vec<_>, _>>().map_err(From::from)
+        })
+    }
+
+    /// The committed transactions to undo for `name`, newest first: what
+    /// was inserted into the log after the marker's transaction. Insertion
+    /// order (`rowid`), not the timestamp: several changes can land in the
+    /// same second, and the timestamp cannot say which came first.
+    pub fn restore_set(&self, name: &str) -> Result<Vec<(String, String, String)>> {
+        self.with_conn(|conn| {
+            let marker: String = conn
+                .query_row(
+                    "SELECT tx FROM restore_points WHERE name = ?1",
+                    rusqlite::params![name],
+                    |row| row.get(0),
+                )
+                .map_err(|e| anyhow::anyhow!("restore point `{name}`: {e}"))?;
+            let mut stmt = conn.prepare(
+                "SELECT id, plugin, state FROM transactions \
+                 WHERE rowid > COALESCE((SELECT rowid FROM transactions WHERE id = ?1), 0) \
+                 AND id != ?1 AND state IN ('committed', 'pending_confirm') \
+                 ORDER BY rowid DESC",
+            )?;
+            let rows = stmt.query_map(rusqlite::params![marker], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })?;
+            rows.collect::<Result<Vec<_>, _>>().map_err(From::from)
+        })
+    }
+
     // findings / events / plugins --------------------------------------
 
     pub fn list_findings(&self, plugin: Option<&str>) -> Result<Vec<serde_json::Value>> {
@@ -904,6 +984,57 @@ mod tests {
         let (dir, state) = temp_state();
         drop(state);
         State::open(&dir).unwrap(); // second open must not re-apply
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn restore_points_keep_the_marker_and_the_set_after_it() {
+        let (dir, state) = temp_state();
+        let row = |id: &str| TxRow {
+            id: id.into(),
+            plan_id: format!("plan-{id}"),
+            plugin: "dev.echo".into(),
+            state: TransactionState::Committed,
+            restore_point: String::new(),
+        };
+        state
+            .insert_transaction(&row("tx-1"), "2026-11-01T12:00:00Z")
+            .unwrap();
+        state.create_restore_point("calm").unwrap();
+        state
+            .insert_transaction(&row("tx-2"), "2026-11-01T12:05:00Z")
+            .unwrap();
+        state
+            .insert_transaction(&row("tx-3"), "2026-11-01T12:10:00Z")
+            .unwrap();
+        // Newest first, and only what was committed after the marker.
+        assert_eq!(
+            state.restore_set("calm").unwrap(),
+            [
+                ("tx-3".into(), "dev.echo".into(), "committed".into()),
+                ("tx-2".into(), "dev.echo".into(), "committed".into()),
+            ]
+        );
+        state
+            .mark_transaction("tx-3", TxStatus::RolledBack)
+            .unwrap();
+        assert_eq!(state.restore_set("calm").unwrap()[0].0, "tx-2".to_string());
+        assert!(state.restore_set("nope").is_err());
+        // Same-second transactions are told apart by insertion order.
+        let row2 = |id: &str| TxRow {
+            id: id.into(),
+            plan_id: format!("plan-{id}"),
+            plugin: "dev.echo".into(),
+            state: TransactionState::Committed,
+            restore_point: String::new(),
+        };
+        state
+            .insert_transaction(&row2("tx-4"), "2026-11-01T12:10:00Z")
+            .unwrap();
+        assert_eq!(state.restore_set("calm").unwrap()[0].0, "tx-4".to_string());
+        let points = state.list_restore_points().unwrap();
+        assert_eq!(points.len(), 1);
+        assert_eq!(points[0].0, "calm");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

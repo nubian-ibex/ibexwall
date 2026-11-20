@@ -87,6 +87,11 @@ enum Command {
     Rollback { target: String },
     /// Recent transactions.
     History,
+    /// Restore points: a marker in the log, and going back to it (ADR-0048).
+    RestorePoint {
+        #[command(subcommand)]
+        action: RestorePointAction,
+    },
     /// Audit chain operations.
     Audit {
         #[command(subcommand)]
@@ -133,6 +138,20 @@ enum Command {
     Policy {
         #[command(subcommand)]
         action: PolicyCmd,
+    },
+}
+#[derive(Debug, Clone, clap::Subcommand)]
+enum RestorePointAction {
+    /// Mark the current state so going back undoes everything after it.
+    Create { name: String },
+    /// List the restore points.
+    List,
+    /// Undo every change committed after a restore point, newest first.
+    Go {
+        name: String,
+        /// Undo without asking first.
+        #[arg(long)]
+        yes: bool,
     },
 }
 
@@ -572,6 +591,9 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
             }
             Ok(Finish::Done)
         }
+        Command::RestorePoint { action } => {
+            restore_point_action(client, action.clone(), json).await
+        }
         Command::History => {
             let value = client
                 .call("com.ibexwall.Core.History", serde_json::json!({}))
@@ -640,6 +662,106 @@ fn default_socket() -> PathBuf {
 
 #[cfg(test)]
 mod tests;
+
+async fn restore_point_action(
+    client: &mut ibexwall_varlink::Client,
+    action: RestorePointAction,
+    json: bool,
+) -> Result<Finish, CliError> {
+    match action {
+        RestorePointAction::Create { name } => {
+            client
+                .call(
+                    "com.ibexwall.Core.CreateRestorePoint",
+                    ask(serde_json::json!({ "name": name })),
+                )
+                .await?;
+            emit(serde_json::json!({}), json);
+            if !json {
+                println!(
+                    "restore point `{name}` created; `ibexctl restore-point go {name}` undoes every change committed after it"
+                );
+            }
+        }
+        RestorePointAction::List => {
+            let value = client
+                .call(
+                    "com.ibexwall.Core.ListRestorePoints",
+                    ask(serde_json::json!({})),
+                )
+                .await?;
+            emit(value.clone(), json);
+            if let (false, Some(points)) = (json, value["points"].as_array()) {
+                for p in points {
+                    println!(
+                        "{}   after {}",
+                        p["name"].as_str().unwrap_or("?"),
+                        p["tx"].as_str().unwrap_or("(nothing applied yet)")
+                    );
+                }
+                if points.is_empty() {
+                    println!("none yet; create one with `ibexctl restore-point create NAME`");
+                }
+            }
+            return Ok(Finish::Done);
+        }
+        RestorePointAction::Go { name, yes } => {
+            let plan = client
+                .call(
+                    "com.ibexwall.Core.RestorePoint",
+                    ask(serde_json::json!({ "name": name, "apply": false })),
+                )
+                .await?;
+            let rows = plan["plan"].as_array().cloned().unwrap_or_default();
+            if !json {
+                if rows.is_empty() {
+                    println!("nothing to undo: no change was committed after `{name}`");
+                    return Ok(Finish::Done);
+                }
+                println!("going back to `{name}` undoes, newest first:");
+                for row in &rows {
+                    println!(
+                        "  {}  {}  ({})",
+                        row["transaction"].as_str().unwrap_or("?"),
+                        row["plugin"].as_str().unwrap_or("?"),
+                        row["state"].as_str().unwrap_or("?")
+                    );
+                }
+                if !yes {
+                    print!("proceed? [y/N] ");
+                    use std::io::Write as _;
+                    std::io::stdout().flush().ok();
+                    let mut line = String::new();
+                    std::io::stdin()
+                        .read_line(&mut line)
+                        .map_err(|e| CliError::Other(e.into()))?;
+                    if !line.trim().eq_ignore_ascii_case("y")
+                        && !line.trim().eq_ignore_ascii_case("yes")
+                    {
+                        println!("cancelled; nothing was changed");
+                        return Ok(Finish::Done);
+                    }
+                }
+            }
+            let value = client
+                .call(
+                    "com.ibexwall.Core.RestorePoint",
+                    ask(serde_json::json!({ "name": name, "apply": true })),
+                )
+                .await?;
+            emit(value.clone(), json);
+            if !json {
+                match value["undone"].as_array() {
+                    Some(list) if !list.is_empty() => {
+                        println!("undone {} change(s); they stay in the History", list.len())
+                    }
+                    _ => println!("nothing was undone"),
+                }
+            }
+        }
+    }
+    Ok(Finish::Done)
+}
 
 #[cfg(test)]
 mod ask_tests {

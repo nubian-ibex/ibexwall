@@ -245,7 +245,7 @@ async fn dispatch(
     peer: Peer,
     cancel: &Cancel,
 ) -> Result<Reply, VarlinkError> {
-    let action = polkit_action(method).ok_or_else(|| {
+    let action = polkit_action(method, &parameters).ok_or_else(|| {
         VarlinkError::new(
             ibexwall_varlink::service_errors::METHOD_NOT_FOUND,
             json!({ "method": method }),
@@ -570,6 +570,9 @@ async fn dispatch(
         "Apply" => apply(core, &parameters, &actor).await,
         "Confirm" => confirm(core, &parameters, &actor).await,
         "Rollback" => rollback(core, &parameters, &actor).await,
+        "CreateRestorePoint" => create_restore_point(core, &parameters, &actor).await,
+        "ListRestorePoints" => list_restore_points(core).await,
+        "RestorePoint" => restore_point(core, &parameters, &actor).await,
         "History" => {
             let limit = parameters
                 .get("limit")
@@ -995,7 +998,9 @@ async fn dispatch_policy(
     }
 }
 
-fn polkit_action(method: &str) -> Option<&'static str> {
+/// The action a call needs. `RestorePoint` reads with `apply=false` and
+/// needs the rollback action to actually undo (ADR-0048).
+fn polkit_action(method: &str, parameters: &Value) -> Option<&'static str> {
     Some(match method {
         "GetInfo"
         | "GetPosture"
@@ -1025,6 +1030,14 @@ fn polkit_action(method: &str) -> Option<&'static str> {
         "DecideProposal" => names::POLKIT_PROPOSALS_DECIDE,
         "Apply" | "Confirm" => names::POLKIT_APPLY,
         "Rollback" => names::POLKIT_ROLLBACK,
+        "RestorePoint" => {
+            if parameters.get("apply").and_then(Value::as_bool) == Some(true) {
+                names::POLKIT_ROLLBACK
+            } else {
+                names::POLKIT_READ
+            }
+        }
+        "CreateRestorePoint" | "ListRestorePoints" => names::POLKIT_READ,
         "SetAttestation" | "SetException" => names::POLKIT_POLICY_PROVIDER,
         _ => return None,
     })

@@ -257,3 +257,109 @@ pub(crate) fn spawn_confirmation_watchdog(
         }
     });
 }
+
+/// Restore points (ADR-0048): a named marker in the transaction log, and
+/// going back by undoing every committed transaction made after it, newest
+/// first. Creating and listing are reads; applying needs the rollback
+/// authorization, is audited before anything moves (A-13), and a failure
+/// part-way stops and names the transaction, leaving what is undone
+/// accurate for a retry.
+pub(crate) async fn create_restore_point(
+    core: &Arc<Core>,
+    parameters: &Value,
+    actor: &str,
+) -> Result<Reply, VarlinkError> {
+    let name = str_field(parameters, "name")?;
+    core.state.create_restore_point(&name).map_err(|e| {
+        err(
+            "InvalidArgument",
+            json!({ "field": "name", "reason": e.to_string() }),
+        )
+    })?;
+    core.try_audit(actor, "core", None, "", "restore-point-created")
+        .map_err(internal)?;
+    Ok(Reply::result(Value::Null))
+}
+
+pub(crate) async fn list_restore_points(core: &Arc<Core>) -> Result<Reply, VarlinkError> {
+    let points: Vec<Value> = core
+        .state
+        .list_restore_points()
+        .map_err(internal)?
+        .into_iter()
+        .map(|(name, tx, created_at)| json!({ "name": name, "tx": tx, "created_at": created_at }))
+        .collect();
+    Ok(Reply::result(json!({ "points": points })))
+}
+
+pub(crate) async fn restore_point(
+    core: &Arc<Core>,
+    parameters: &Value,
+    actor: &str,
+) -> Result<Reply, VarlinkError> {
+    let name = str_field(parameters, "name")?;
+    let apply = parameters.get("apply").and_then(Value::as_bool) == Some(true);
+    let rows = core
+        .state
+        .restore_set(&name)
+        .map_err(|e| not_found("restore_point", &e.to_string()))?;
+    if !apply {
+        return Ok(Reply::result(json!({
+            "plan": rows.iter().map(|(id, plugin, state)| json!({
+                "transaction": id, "plugin": plugin, "state": state,
+            })).collect::<Vec<_>>(),
+        })));
+    }
+    let _permit = core
+        .tx_sem
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(internal)?;
+    core.try_audit(actor, "core", None, "", "restore-point-started")
+        .map_err(internal)?;
+    let mut undone: Vec<String> = Vec::new();
+    let remaining = rows.len();
+    for (tx, plugin, _) in rows {
+        let row = match core.state.get_transaction(&tx).map_err(internal)? {
+            Some(row) => row,
+            None => continue,
+        };
+        let plan = match core.state.load_plan(&row.plan_id).map_err(internal)? {
+            Some(plan) => plan,
+            None => continue,
+        };
+        let ops: Vec<Op> = serde_json::from_str(&plan.ops_json).map_err(internal)?;
+        if let Err(error) = core.rollback_transaction_blocking(&tx, &ops).await {
+            return Err(err(
+                "Conflict",
+                json!({
+                    "reason": format!("restoring to `{name}` stopped at transaction {tx}: {error}; {} change(s) after it are still in place", remaining - undone.len()),
+                }),
+            ));
+        }
+        core.state
+            .mark_transaction(&tx, TxStatus::RolledBack)
+            .map_err(internal)?;
+        core.audit(
+            actor,
+            &plugin,
+            Some(&tx),
+            &crate::audit::ops_digest(&ops),
+            "rolled-back",
+        );
+        core.publish_transaction_event(&Transaction {
+            id: tx.clone(),
+            plan_id: row.plan_id.clone(),
+            state: TransactionState::RolledBack,
+            started_at: ibexwall_sys::RealClock.rfc3339_now(),
+            confirm_deadline: None,
+            restore_point: String::new(),
+        });
+        undone.push(tx);
+    }
+    if let Err(error) = core.state.prune(ibexwall_sys::RealClock.unix_now()) {
+        tracing::warn!(%error, "pruning after a restore failed");
+    }
+    Ok(Reply::result(json!({ "undone": undone })))
+}

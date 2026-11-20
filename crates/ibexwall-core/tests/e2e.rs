@@ -234,6 +234,94 @@ async fn plan_with(client: &mut Client, template: &str) -> serde_json::Value {
 }
 
 #[tokio::test]
+async fn a_restore_point_undoes_every_change_after_it_newest_first() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let (core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+    client
+        .call(
+            "com.ibexwall.Core.SetPluginEnabled",
+            json!({ "id": "dev.echo", "enabled": true }),
+        )
+        .await
+        .unwrap();
+    async fn apply_one(client: &mut Client, template: &str) -> String {
+        let plan = plan_with(client, template).await;
+        let value = client
+            .call("com.ibexwall.Core.Apply", json!({ "plan_id": plan["id"] }))
+            .await
+            .unwrap();
+        value["transaction"]["id"].as_str().unwrap().to_string()
+    }
+    let first = apply_one(&mut client, "dropin").await;
+    client
+        .call(
+            "com.ibexwall.Core.CreateRestorePoint",
+            json!({ "name": "calm" }),
+        )
+        .await
+        .unwrap();
+    let second = apply_one(&mut client, "dropin").await;
+    let third = apply_one(&mut client, "dropin_file").await;
+
+    // A duplicate name is refused, and the plan lists what would be undone.
+    let err = client
+        .call(
+            "com.ibexwall.Core.CreateRestorePoint",
+            json!({ "name": "calm" }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.name, "com.ibexwall.Core.InvalidArgument");
+    let plan = client
+        .call("com.ibexwall.Core.RestorePoint", json!({ "name": "calm" }))
+        .await
+        .unwrap();
+    let listed: Vec<String> = plan["plan"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["transaction"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(listed, [third.clone(), second.clone()]);
+
+    // Going back undoes newest first and marks each rolled back.
+    let value = client
+        .call(
+            "com.ibexwall.Core.RestorePoint",
+            json!({ "name": "calm", "apply": true }),
+        )
+        .await
+        .unwrap();
+    let undone: Vec<String> = value["undone"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r.as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(undone, [third, second]);
+    let after = core.state.get_transaction(&first).unwrap().unwrap();
+    assert_eq!(after.state, TransactionState::Committed);
+
+    // A marker before anything: the plan is empty, not an error.
+    client
+        .call(
+            "com.ibexwall.Core.CreateRestorePoint",
+            json!({ "name": "fresh" }),
+        )
+        .await
+        .unwrap();
+    let plan = client
+        .call("com.ibexwall.Core.RestorePoint", json!({ "name": "fresh" }))
+        .await
+        .unwrap();
+    assert_eq!(plan["plan"].as_array().map(Vec::len), Some(0));
+}
+
+#[tokio::test]
 async fn full_flow_plan_apply_rollback_confirm_and_gates() {
     if plugin_binary().is_none() {
         eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");

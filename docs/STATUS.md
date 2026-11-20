@@ -7,14 +7,13 @@ Last updated: 2026-11-07 (F11b fully delivered; all five distros green)
 
 ## Current phase
 
-**Now: v0.2.1, v0.3.0 published; v0.4.0 tagged 2026-11-20, release is a
-DRAFT** (not published). v0.4.0: restore points (ADR-0048, accepted; CLI and
-History card) plus the accepted dependency majors (argon2 0.6, jsdom 31,
-astro 7 on the site). The decisions of 2026-11-20 are registered in
+**Now: v0.4.0 published 2026-11-20 (latest release).** It carries restore
+points (ADR-0048, accepted; CLI and History card) plus the accepted
+dependency majors (argon2 0.6, jsdom 31, astro 7 on the site). The decisions of 2026-11-20 are registered in
 planning/15 and 16: A-46 stays a warning, A-10 and A-43 accepted as they
 are, the admins polkit rule stays, COPR and AUR first for packages
 (planning/16 has the runbook; accounts are the maintainer's). Both VMs run
-0.4.0. Waiting: the maintainer's check, then publish.
+0.4.0.
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

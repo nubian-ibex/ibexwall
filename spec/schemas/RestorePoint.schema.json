@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A named marker in the transaction log (ADR-0048).",
+  "properties": {
+    "created_at": {
+      "format": "int64",
+      "type": "integer"
+    },
+    "name": {
+      "type": "string"
+    },
+    "tx": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "tx",
+    "created_at"
+  ],
+  "title": "RestorePoint",
+  "type": "object"
+}

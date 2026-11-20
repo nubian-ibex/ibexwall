@@ -175,6 +175,20 @@ posture-checks = Prüfungen
 posture-open-findings = Offene Befunde ({ $count })
 
 history-title = Verlauf
+history-rp-title = Wiederherstellungspunkte
+history-rp-body = Eine Marke, zu der Sie zurückkehren: Alles, was IbexWall danach geändert hat, wird rückgängig gemacht, vom Neuesten abwärts.
+history-rp-go = Zurück
+history-rp-after = nach
+history-rp-plan = Wird gleich rückgängig gemacht
+history-rp-plan-count =
+    { $count ->
+        [one] Zurück zu „{ $name }“ macht 1 Änderung rückgängig:
+       *[other] Zurück zu „{ $name }“ macht { $count } Änderungen rückgängig, vom Neuesten abwärts:
+    }
+history-rp-name = Name
+history-rp-name-hint = zum Beispiel vor-experiment
+history-rp-create = Erstellen
+history-rp-empty = Noch keine Punkte. Erstellen Sie einen, bevor Sie etwas Großes versuchen.
 history-subtitle = Jede Änderung, wer sie genehmigt hat und was geschehen ist
 history-actor-user = { $actor }
 history-actor-system = IbexWall selbst

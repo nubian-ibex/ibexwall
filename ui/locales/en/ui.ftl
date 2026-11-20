@@ -175,6 +175,20 @@ posture-checks = Checks
 posture-open-findings = Open findings ({ $count })
 
 history-title = History
+history-rp-title = Restore points
+history-rp-body = A marker you can go back to: everything IbexWall changed after it is undone, newest first.
+history-rp-go = Go back
+history-rp-after = after
+history-rp-plan = About to be undone
+history-rp-plan-count =
+    { $count ->
+        [one] Going back to "{ $name }" undoes 1 change:
+       *[other] Going back to "{ $name }" undoes { $count } changes, newest first:
+    }
+history-rp-name = Name
+history-rp-name-hint = for example before-experiment
+history-rp-create = Create
+history-rp-empty = No restore points yet. Create one before you try something big.
 history-subtitle = Every change, who approved it and what happened
 history-actor-user = { $actor }
 history-actor-system = IbexWall itself

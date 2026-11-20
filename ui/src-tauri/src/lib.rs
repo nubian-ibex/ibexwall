@@ -17,6 +17,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 /// The methods that change the machine. The app is a person at their
 /// desktop, so it lets the daemon ask for their password (ADR-0045).
 const ASKS_FOR_PASSWORD: &[&str] = &[
+    "RestorePoint",
     "SetPluginEnabled",
     "SetMonitorEnabled",
     "Apply",
@@ -78,6 +79,10 @@ command!(list_plugins, "ListPlugins");
 command!(list_findings, "ListFindings");
 command!(run_checks, "RunChecks");
 command!(history, "History");
+command!(list_restore_points, "ListRestorePoints");
+command!(create_restore_point, "CreateRestorePoint");
+command!(restore_point_plan, "RestorePointPlan");
+command!(restore_point_apply, "RestorePointApply");
 command!(list_prompts, "ListPrompts");
 command!(list_compliance_profiles, "ListComplianceProfiles");
 
@@ -203,6 +208,28 @@ async fn confirm(transaction_id: String) -> Result<Value, Value> {
 #[tauri::command]
 async fn rollback(target: String) -> Result<Value, Value> {
     core("Rollback", json!({ "target": target }))
+        .await
+        .map_err(|e| err_text(&e))
+}
+
+#[tauri::command]
+async fn create_restore_point(name: String) -> Result<Value, Value> {
+    core("CreateRestorePoint", json!({ "name": name }))
+        .await
+        .map_err(|e| err_text(&e))
+}
+
+/// The plan (apply=false) is a read; going back needs the rollback action.
+#[tauri::command]
+async fn restore_point_plan(name: String) -> Result<Value, Value> {
+    core("RestorePoint", json!({ "name": name, "apply": false }))
+        .await
+        .map_err(|e| err_text(&e))
+}
+
+#[tauri::command]
+async fn restore_point_apply(name: String) -> Result<Value, Value> {
+    core("RestorePoint", json!({ "name": name, "apply": true }))
         .await
         .map_err(|e| err_text(&e))
 }
@@ -370,6 +397,10 @@ pub fn run() {
             list_findings,
             run_checks,
             history,
+            list_restore_points,
+            create_restore_point,
+            restore_point_plan,
+            restore_point_apply,
             list_proposals,
             decide_proposal,
             set_plugin_enabled,

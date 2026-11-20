@@ -175,6 +175,20 @@ posture-checks = Verificações
 posture-open-findings = Achados abertos ({ $count })
 
 history-title = Histórico
+history-rp-title = Pontos de restauração
+history-rp-body = Uma marca para voltar: tudo o que o IbexWall mudou depois dela é desfeito, do mais recente para o mais antigo.
+history-rp-go = Voltar
+history-rp-after = depois de
+history-rp-plan = A ponto de ser desfeito
+history-rp-plan-count =
+    { $count ->
+        [one] Voltar a "{ $name }" desfaz 1 mudança:
+       *[other] Voltar a "{ $name }" desfaz { $count } mudanças, da mais recente para a mais antiga:
+    }
+history-rp-name = Nome
+history-rp-name-hint = por exemplo antes-do-experimento
+history-rp-create = Criar
+history-rp-empty = Nenhum ponto ainda. Crie um antes de experimentar algo grande.
 history-subtitle = Cada alteração, quem aprovou e o que aconteceu
 history-actor-user = { $actor }
 history-actor-system = O próprio IbexWall

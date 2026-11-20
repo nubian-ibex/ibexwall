@@ -10,6 +10,8 @@ import type {
   ComplianceReport,
   Finding,
   HistoryEntry,
+  RestorePoint,
+  RestorePointPlanEntry,
   Info,
   Plan,
   PluginInfo,
@@ -686,6 +688,31 @@ export class FixtureTransport implements Transport {
       started_at: '2026-11-01T12:00:00Z',
       restore_point: `snapshots/${target}`,
     }));
+  }
+
+  private points: RestorePoint[] = [{ name: 'calm', tx: 'tx-fixture-1', created_at: 1 }];
+
+  listRestorePoints() {
+    return this.gate((): RestorePoint[] => [...this.points]);
+  }
+
+  async createRestorePoint(name: string) {
+    await this.gate(() => undefined);
+    this.points = [...this.points, { name, tx: 'tx-fixture-1', created_at: Date.now() }];
+  }
+
+  restorePointPlan(name: string) {
+    return this.gate((): RestorePointPlanEntry[] =>
+      this.points.some((p) => p.name === name)
+        ? [{ transaction: 'tx-fixture-1', plugin: 'system.posture', state: 'committed' }]
+        : [],
+    );
+  }
+
+  async restorePointApply(name: string) {
+    await this.gate(() => undefined);
+    this.points = this.points.filter((p) => p.name !== name);
+    return { undone: ['tx-fixture-1'] };
   }
 
   history() {

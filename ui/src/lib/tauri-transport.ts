@@ -6,6 +6,8 @@ import type {
   DnsStatus,
   Finding,
   HistoryEntry,
+  RestorePoint,
+  RestorePointPlanEntry,
   Info,
   ComplianceReport,
   Plan,
@@ -182,6 +184,22 @@ export class TauriTransport implements Transport {
 
   async decideProposal(id: string, decision: 'approve' | 'reject'): Promise<void> {
     await invoke('decide_proposal', { id, decision });
+  }
+
+  listRestorePoints() {
+    return unwrapped<RestorePoint[]>('list_restore_points', 'points');
+  }
+
+  async createRestorePoint(name: string) {
+    await invoke('create_restore_point', { name });
+  }
+
+  restorePointPlan(name: string) {
+    return unwrapped<RestorePointPlanEntry[]>('restore_point_plan', 'plan', { name });
+  }
+
+  restorePointApply(name: string) {
+    return unwrapped<{ undone: string[] }>('restore_point_apply', 'undone', { name });
   }
 
   history(): Promise<HistoryEntry[]> {

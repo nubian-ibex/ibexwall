@@ -194,6 +194,8 @@ export interface AllContracts {
   Report?: Report;
   ReportSpec?: ReportSpec1;
   Requires?: Requires1;
+  RestorePoint?: RestorePoint;
+  RestorePointPlanEntry?: RestorePointPlanEntry;
   Reversible?: Reversible;
   RiskFlag?: RiskFlag;
   RiskInfo?: RiskInfo;
@@ -796,6 +798,22 @@ export interface Requires1 {
   packages?: {
     [k: string]: string[];
   };
+}
+/**
+ * A named marker in the transaction log (ADR-0048).
+ */
+export interface RestorePoint {
+  created_at: number;
+  name: string;
+  tx: string;
+}
+/**
+ * One transaction a restore would undo, from the dry run.
+ */
+export interface RestorePointPlanEntry {
+  plugin: string;
+  state: string;
+  transaction: string;
 }
 /**
  * A transaction (apply) of a plan.

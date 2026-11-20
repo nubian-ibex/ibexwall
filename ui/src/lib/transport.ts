@@ -3,6 +3,8 @@
 // design work use the fixture implementation.
 import type {
   AppDestination,
+  RestorePoint,
+  RestorePointPlanEntry,
   FirewallState,
   AppEntry,
   ComplianceReport,
@@ -128,6 +130,12 @@ export interface Transport {
   confirm(transactionId: string): Promise<void>;
   rollback(target: string): Promise<Transaction>;
   history(limit?: number): Promise<HistoryEntry[]>;
+  /** Restore points (ADR-0048): what is queued, applied, kept and undone. */
+  listRestorePoints(): Promise<RestorePoint[]>;
+  createRestorePoint(name: string): Promise<void>;
+  /** The plan is the list of transactions going back would undo. */
+  restorePointPlan(name: string): Promise<RestorePointPlanEntry[]>;
+  restorePointApply(name: string): Promise<{ undone: string[] }>;
   /** Changes an AI assistant proposed, newest first. */
   listProposals(status?: Proposal['status']): Promise<Proposal[]>;
   /** Approving applies the reviewed plan; the core refuses it if the plan changed. */

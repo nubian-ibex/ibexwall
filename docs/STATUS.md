@@ -7,14 +7,14 @@ Last updated: 2026-11-07 (F11b fully delivered; all five distros green)
 
 ## Current phase
 
-**Now: v0.2.1 and v0.3.0 published 2026-11-20.** v0.3.0 is the app rework
-the maintainer asked for (approved mockup mockups/07): version in the
-sidebar, one content width, a change bar, a three step review panel, Secure
-DNS in tabs, and a window that fits an 800 px screen. Both VMs (Fedora .107,
-Ubuntu .106) run 0.3.0, clean installs. The docs were deployed. Open:
-A-10, A-43, A-46 (decision), ADR-0048 (decision, restore points), the A-18
-VM flood check, package publishing (COPR, AUR, PPA, needs accounts), and
-the Dependabot majors.
+**Now: v0.2.1, v0.3.0 published; v0.4.0 tagged 2026-11-20, release is a
+DRAFT** (not published). v0.4.0: restore points (ADR-0048, accepted; CLI and
+History card) plus the accepted dependency majors (argon2 0.6, jsdom 31,
+astro 7 on the site). The decisions of 2026-11-20 are registered in
+planning/15 and 16: A-46 stays a warning, A-10 and A-43 accepted as they
+are, the admins polkit rule stays, COPR and AUR first for packages
+(planning/16 has the runbook; accounts are the maintainer's). Both VMs run
+0.4.0. Waiting: the maintainer's check, then publish.
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

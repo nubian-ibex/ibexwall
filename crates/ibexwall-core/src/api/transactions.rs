@@ -42,6 +42,7 @@ pub(crate) async fn confirm(
         .mark_transaction(&tx_id, TxStatus::Committed)
         .map_err(internal)?;
     core.audit(actor, &row.plugin, Some(&tx_id), "", "confirmed");
+    core.refresh_plugin_findings(&row.plugin);
     core.publish_transaction_event(&Transaction {
         id: tx_id.clone(),
         plan_id: row.plan_id.clone(),
@@ -133,6 +134,7 @@ pub(crate) async fn rollback(
         &crate::audit::ops_digest(&ops),
         "rolled-back",
     );
+    core.refresh_plugin_findings(&row.plugin);
     core.publish_transaction_event(&Transaction {
         id: target.clone(),
         plan_id: row.plan_id.clone(),
@@ -254,6 +256,9 @@ pub(crate) fn spawn_confirmation_watchdog(
                 confirm_deadline: None,
                 restore_point: String::new(),
             });
+            if final_state == TransactionState::RolledBack {
+                core.refresh_plugin_findings(&row.plugin);
+            }
         }
     });
 }
@@ -356,6 +361,7 @@ pub(crate) async fn restore_point(
             confirm_deadline: None,
             restore_point: String::new(),
         });
+        core.refresh_plugin_findings(&plugin);
         undone.push(tx);
     }
     if let Err(error) = core.state.prune(ibexwall_sys::RealClock.unix_now()) {

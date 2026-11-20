@@ -380,6 +380,32 @@ impl Core {
         Ok(self.plugins.manifest(plugin)?.clone())
     }
 
+    /// Re-runs one plugin's check so the stored findings follow the
+    /// machine: a screen that re-reads right after applying must not show
+    /// yesterday's state. Best effort: a failure is logged, the change
+    /// that triggered it is not undone.
+    pub fn refresh_plugin_findings(self: &Arc<Self>, plugin: &str) {
+        let core = Arc::clone(self);
+        let plugin = plugin.to_string();
+        tokio::spawn(async move {
+            if !core.state.plugin_enabled(&plugin).unwrap_or(false) {
+                return;
+            }
+            match core.plugins.check(&plugin, serde_json::Value::Null).await {
+                Ok(report) => {
+                    let checked_at = ibexwall_sys::RealClock.rfc3339_now();
+                    if let Err(error) = core.state.replace_check_run(&plugin, &report, &checked_at)
+                    {
+                        tracing::warn!(%error, plugin, "refreshing findings failed");
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(plugin, error = %format!("{error:#}"), "re-checking after a change failed");
+                }
+            }
+        });
+    }
+
     /// Re-reads the configuration so a change on disk (an organization
     /// lock, a user setting) takes effect without a restart. Called
     /// before planning and applying; a broken new file keeps the last

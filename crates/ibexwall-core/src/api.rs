@@ -1522,6 +1522,7 @@ async fn apply(core: &Arc<Core>, parameters: &Value, actor: &str) -> Result<Repl
             restore_point,
         }
     };
+    core.refresh_plugin_findings(&plan.plugin);
     core.publish_transaction_event(&transaction);
     Ok(Reply::result(json!({ "transaction": transaction })))
 }

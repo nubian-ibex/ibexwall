@@ -384,6 +384,24 @@ pub struct Transaction {
     pub restore_point: String,
 }
 
+/// A named marker in the transaction log (ADR-0048).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RestorePoint {
+    pub name: String,
+    pub tx: String,
+    pub created_at: i64,
+}
+
+/// One transaction a restore would undo, from the dry run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RestorePointPlanEntry {
+    pub transaction: String,
+    pub plugin: String,
+    pub state: String,
+}
+
 /// Audit/history row.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

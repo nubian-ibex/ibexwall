@@ -80,9 +80,6 @@ command!(list_findings, "ListFindings");
 command!(run_checks, "RunChecks");
 command!(history, "History");
 command!(list_restore_points, "ListRestorePoints");
-command!(create_restore_point, "CreateRestorePoint");
-command!(restore_point_plan, "RestorePointPlan");
-command!(restore_point_apply, "RestorePointApply");
 command!(list_prompts, "ListPrompts");
 command!(list_compliance_profiles, "ListComplianceProfiles");
 

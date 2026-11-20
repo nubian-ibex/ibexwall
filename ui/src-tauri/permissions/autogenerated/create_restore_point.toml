@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-create-restore-point"
+description = "Enables the create_restore_point command without any pre-configured scope."
+commands.allow = ["create_restore_point"]
+
+[[permission]]
+identifier = "deny-create-restore-point"
+description = "Denies the create_restore_point command without any pre-configured scope."
+commands.deny = ["create_restore_point"]

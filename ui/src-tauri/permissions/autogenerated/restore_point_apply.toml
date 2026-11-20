@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-restore-point-apply"
+description = "Enables the restore_point_apply command without any pre-configured scope."
+commands.allow = ["restore_point_apply"]
+
+[[permission]]
+identifier = "deny-restore-point-apply"
+description = "Denies the restore_point_apply command without any pre-configured scope."
+commands.deny = ["restore_point_apply"]

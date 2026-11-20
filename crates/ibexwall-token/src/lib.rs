@@ -10,7 +10,8 @@
 //! scopes it gets and an optional expiry.
 
 use argon2::Argon2;
-use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
+use argon2::password_hash::{PasswordHasher, PasswordVerifier};
+use argon2::password_hash::phc::PasswordHash;
 
 pub const PREFIX: &str = "ibx_";
 /// Shortest secret a person may choose, and how varied it has to be.
@@ -78,10 +79,13 @@ pub fn check_chosen_secret(secret: &str) -> Result<(), String> {
 }
 
 pub fn hash(secret: &str) -> Result<String, String> {
-    let salt = SaltString::encode_b64(&random_bytes(16).map_err(|e| e.to_string())?)
-        .map_err(|e| e.to_string())?;
+    // argon2 0.6 dropped SaltString: hash_password_with_salt takes the raw
+    // bytes and does the PHC encoding.
     Argon2::default()
-        .hash_password(secret.as_bytes(), &salt)
+        .hash_password_with_salt(
+            secret.as_bytes(),
+            &random_bytes(16).map_err(|e| e.to_string())?,
+        )
         .map(|h| h.to_string())
         .map_err(|e| e.to_string())
 }

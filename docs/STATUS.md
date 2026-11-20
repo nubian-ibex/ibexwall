@@ -15,7 +15,7 @@ was re-checked. A change now re-runs the checks of every enabled plugin
 (Hardening observes system.sysctl's targets on its own); verified on the
 Fedora VM. Both VMs run 0.4.1. Open: ADR-0049 (export of IbexWall's state
 as one JSON file, proposed for B-03 follow-up), COPR/AUR accounts, the Ask
-flood check.
+flood check. Session memory saved to ai-memory (decisions and gotchas).
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

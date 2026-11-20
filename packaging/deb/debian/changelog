@@ -1,3 +1,10 @@
+ibexwall (0.4.0) unstable; urgency=medium
+
+  * Restore points: name the state now, undo everything committed after it
+    later; see CHANGELOG.md.
+
+ -- Nubian Ibex <maintainers@nubian-ibex.invalid> Thu, 20 Nov 2026 12:00:00 +0000
+
 ibexwall (0.3.0) unstable; urgency=medium
 
   * The app queues changes in a bar with a three step review panel, Secure

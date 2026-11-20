@@ -6,6 +6,21 @@
 Versions follow [Semantic Versioning](https://semver.org). The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## 0.4.0 (2026-11-20)
+
+### Added
+
+- Restore points (ADR-0048): name the state now, and later undo every change
+  IbexWall committed after it, newest first. `ibexctl restore-point
+  create|list|go`, and a card on History in the app. A failure part-way stops
+  and names the transaction; a retry repeats only what is still in place. The
+  undo set follows insertion order, because several changes can land in the
+  same second.
+
+### Changed
+
+- argon2 0.6 and jsdom 31, major bumps the maintainer accepted.
+
 ## 0.3.0 (2026-11-20)
 
 ### Changed

@@ -10,8 +10,8 @@
 //! scopes it gets and an optional expiry.
 
 use argon2::Argon2;
-use argon2::password_hash::{PasswordHasher, PasswordVerifier};
 use argon2::password_hash::phc::PasswordHash;
+use argon2::password_hash::{PasswordHasher, PasswordVerifier};
 
 pub const PREFIX: &str = "ibx_";
 /// Shortest secret a person may choose, and how varied it has to be.

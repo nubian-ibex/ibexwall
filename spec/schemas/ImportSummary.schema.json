@@ -1,0 +1,70 @@
+{
+  "$defs": {
+    "PluginStateEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "enabled"
+      ],
+      "type": "object"
+    },
+    "SettingChange": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "plugin": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "plugin",
+        "key"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What an import would write, before it does (ADR-0049: the machine never\nchanges; the person then reviews and applies).",
+  "properties": {
+    "dry_run": {
+      "type": "boolean"
+    },
+    "locked": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "plugins": {
+      "items": {
+        "$ref": "#/$defs/PluginStateEntry"
+      },
+      "type": "array"
+    },
+    "settings": {
+      "items": {
+        "$ref": "#/$defs/SettingChange"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "dry_run",
+    "settings",
+    "plugins",
+    "locked"
+  ],
+  "title": "ImportSummary",
+  "type": "object"
+}

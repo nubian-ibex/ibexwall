@@ -1,0 +1,108 @@
+{
+  "$defs": {
+    "ExportedLayers": {
+      "additionalProperties": false,
+      "properties": {
+        "profile": {
+          "additionalProperties": true,
+          "default": {},
+          "type": "object"
+        },
+        "user": {
+          "additionalProperties": true,
+          "default": {},
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "PluginStateEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "enabled"
+      ],
+      "type": "object"
+    },
+    "RestorePointEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "tx": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "tx",
+        "created_at"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The portable state file (ADR-0049). The digest covers the canonical\nform of everything else, so a truncated or hand-edited file is caught.",
+  "properties": {
+    "digest": {
+      "type": "string"
+    },
+    "effective": {
+      "additionalProperties": true,
+      "description": "Merged settings per plugin, for reading only; the import never uses\nthis section (the layers are the truth).",
+      "type": "object"
+    },
+    "exported_at": {
+      "type": "string"
+    },
+    "ibexwall": {
+      "type": "string"
+    },
+    "layers": {
+      "$ref": "#/$defs/ExportedLayers"
+    },
+    "plugins": {
+      "items": {
+        "$ref": "#/$defs/PluginStateEntry"
+      },
+      "type": "array"
+    },
+    "restore_points": {
+      "items": {
+        "$ref": "#/$defs/RestorePointEntry"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema",
+    "ibexwall",
+    "exported_at",
+    "layers",
+    "effective",
+    "plugins",
+    "restore_points",
+    "digest"
+  ],
+  "title": "StateFile",
+  "type": "object"
+}

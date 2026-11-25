@@ -675,14 +675,17 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
                     }
                 }
             }
-            if apply && !*dry_run && value["dry_run"].as_bool() == Some(true) {
+            if apply && !*dry_run {
                 let value = client
                     .call(
                         "com.ibexwall.Core.ImportState",
                         ask(serde_json::json!({ "file": text, "apply": true })),
                     )
                     .await?;
-                summarize(&value);
+                emit(value.clone(), json);
+                if !json {
+                    summarize(&value);
+                }
             }
             Ok(Finish::Done)
         }

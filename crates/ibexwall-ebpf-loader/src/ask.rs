@@ -214,6 +214,7 @@ pub fn start(
         loop {
             let wanted = serving.fail_open.load(std::sync::atomic::Ordering::SeqCst);
             if wanted != fail_open {
+                eprintln!("ibexwall-ebpf-loader: ask queue fail_open -> {wanted}");
                 match serving.queue.set_fail_open(wanted) {
                     Ok(()) => fail_open = wanted,
                     Err(error) => eprintln!(

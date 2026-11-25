@@ -822,6 +822,9 @@ fn read_core(
                     .and_then(ask::Decision::parse)
                     .unwrap_or(ask::Decision::Allow);
                 let timeout = policy.ask_timeout_secs.unwrap_or(30).clamp(1, 600);
+                eprintln!(
+                    "ibexwall-ebpf-loader: ask configure timeout={timeout} fallback={fallback:?}"
+                );
                 ask.configure(std::time::Duration::from_secs(timeout), fallback);
             }
             if policies.send(policy).is_err() {

@@ -466,8 +466,165 @@ ID=$(wait_prompt) || fail "NO QUESTION BEFORE STOPPING THE DAEMON"
 N=$(lines)
 sudo systemctl stop ibexwalld.service ibexwalld.socket
 wait_lines $((N + 1)) 120 || fail "STOPPING THE DAEMON LEFT THE CONNECTION HELD"
-[ "$(last_rc)" = 0 ] && [ "$(last_ms)" -lt 20000 ] || fail "AFTER THE DAEMON STOPPED: rc=$(last_rc) after $(last_ms) ms"
-echo "METRIC: daemon stopped, connection completed after $(last_ms) ms"
+# A-06: the loader no longer exits when the core does, it keeps the rules
+# attached and reconnects; a held connection opens when its ask window
+# expires, so this is fail open within the window, not instantly.
+[ "$(last_rc)" = 0 ] && [ "$(last_ms)" -lt 45000 ] || fail "AFTER THE DAEMON STOPPED: rc=$(last_rc) after $(last_ms) ms"
+echo "METRIC: daemon stopped, connection completed after $(last_ms) ms (within the ask window)"
+"#
+    );
+
+    scenario!(
+        "m5 a full Ask queue follows the fallback (ADR-0047): 5000 new flows, nobody answers",
+        r#"
+set -e
+HOST_IP=$(ip -4 -o addr show scope global | awk 'NR==1{split($4,a,"/"); print a[1]}')
+sudo pkill -x python3 2>/dev/null || true
+sudo systemctl start ibexwall-monitor.service
+# A server that accepts thousands of concurrent connections.
+cat > /tmp/m5-serve.py <<'EOF'
+import asyncio
+async def handle(reader, writer):
+    try:
+        await reader.read(1024)
+        writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+        await writer.drain()
+    except Exception:
+        pass
+    finally:
+        try: writer.close()
+        except Exception: pass
+async def main():
+    server = await asyncio.start_server(handle, "0.0.0.0", 8081, backlog=8192)
+    async with server: await server.serve_forever()
+asyncio.run(main())
+EOF
+sudo sh -c "nohup python3 /tmp/m5-serve.py >/dev/null 2>&1 &"
+trap 'sudo ibexctl apps default allow 2>/dev/null || true; sudo systemctl stop ibx-m5 2>/dev/null || true; sudo pkill -f m5-serve.py 2>/dev/null || true; sudo pkill -f m5-flood.py 2>/dev/null || true' EXIT
+sleep 2
+# The fallback is a policy setting in the core's database: block, then a
+# restart rebuilds the policy with it.
+sudo python3 - <<'EOF'
+import sqlite3
+conn = sqlite3.connect("/var/lib/ibexwall/state.db")
+conn.execute("INSERT OR REPLACE INTO net_settings (key, value) VALUES ('ask_fallback','block')")
+conn.commit()
+EOF
+sudo systemctl restart ibexwalld
+# The loader reconnects with a backoff of up to 30 s (A-06); the fallback
+# only reaches the queue when it does. Wait for the flip it reports.
+wait_flip() { for i in $(seq 1 120); do sudo journalctl -u ibexwall-monitor -b --no-pager -o cat | grep -q "fail_open -> $1" && return 0; sleep 0.5; done; return 1; }
+wait_flip false || { echo "THE LOADER NEVER GOT fallback=block"; sudo journalctl -u ibexwall-monitor -b --no-pager -o cat | grep -E "ask configure|fail_open" | tail -5; exit 1; }
+# One process opens 5000 connections at once: above the queue bound (4096),
+# so the kernel queue fills and the overflow hits the flag under test.
+cat > /tmp/m5-flood.py <<'EOF'
+import asyncio, json, os, sys, time, traceback
+host, port, n, gate = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4]
+# The unit starts before the test puts it in Ask mode: wait for the gate so
+# no connection leaves before the mode is in force.
+while not os.path.exists(gate):
+    time.sleep(0.05)
+out = open("/tmp/m5-flood.out", "w", buffering=1)
+ok = fail = 0
+async def one():
+    global ok, fail
+    try:
+        r, w = await asyncio.wait_for(asyncio.open_connection(host, port), 120)
+        w.close()
+        ok += 1
+        out.write("ok\n")
+    except Exception:
+        fail += 1
+        out.write("fail\n")
+    if (ok + fail) % 500 == 0:
+        out.write(f"progress {ok+fail}\n")
+async def main():
+    try:
+        await asyncio.gather(*[one() for _ in range(n)])
+    except Exception:
+        out.write(traceback.format_exc() + "\n")
+    out.write(json.dumps({"ok": ok, "fail": fail}) + "\n")
+    out.write("done\n")
+    out.close()
+asyncio.run(main())
+EOF
+cat > /tmp/m5.sh <<'EOF'
+while true; do
+  sleep 2
+  curl -s -o /dev/null --max-time 90 "http://$(ip -4 -o addr show scope global | awk 'NR==1{split($4,a,"/"); print a[1]}'):8081/"
+done
+EOF
+sudo rm -f /tmp/m5.log; sudo sh -c ': > /tmp/m5.log'
+sudo systemctl reset-failed ibx-m5 2>/dev/null || true
+sudo systemd-run --quiet --unit=ibx-m5 sh /tmp/m5.sh
+APP=service:ibx-m5.service
+for i in $(seq 1 60); do sudo ibexctl apps list | grep -q "$APP" && break; sleep 0.5; done
+sudo ibexctl apps list | grep -q "$APP" || { echo "SERVICE NEVER APPEARED"; exit 1; }
+# The app asks; the first question appears, so the queue is bound and held.
+sudo ibexctl apps set $APP ask
+for i in $(seq 1 60); do sudo ibexctl prompts list 2>/dev/null | grep -q . && break; sleep 0.5; done
+sudo ibexctl prompts list | grep -q . || { echo "NO QUESTION APPEARED"; exit 1; }
+echo "METRIC: ask_fallback=block is in force, and one connection is being asked"
+
+# The flood: 5000 new flows with nobody answering, launched inside its own
+# transient unit and put in Ask mode (flows from outside the unit are not
+# the app's). With block, a full queue drops the overflow and the timeout
+# refuses what it held: nothing gets out unasked. (With the old fail-open
+# flag, the ~900 over the bound went out.)
+sudo rm -f /tmp/m5-flood.out
+sudo systemd-run --quiet --unit=ibx-m5flood --setenv=PYTHONUNBUFFERED=1 -p LimitNOFILE=20000 python3 /tmp/m5-flood.py "$HOST_IP" 8081 5000 /tmp/m5-go 2>/tmp/m5-sd.err || { cat /tmp/m5-sd.err; exit 1; }
+# The default mode covers every process, so the flood is asked without
+# depending on the enforcer's cgroup rescan of a brand new unit.
+sudo ibexctl apps default ask
+# The policy push reaches the marking map a moment later: give it time, or
+# the first connections leave before anything is marked.
+sleep 8
+for i in $(seq 1 60); do sudo ibexctl prompts list 2>/dev/null | grep -q . && break; sleep 0.5; done
+sudo ibexctl prompts list | grep -q . || { echo "THE FLOOD WAS NOT ASKED"; exit 1; }
+# Open the gate, then the flood runs.
+sudo sh -c ": > /tmp/m5-go"
+for i in $(seq 1 300); do grep -q "^done" /tmp/m5-flood.out 2>/dev/null && break; sleep 1; done
+grep -q "^done" /tmp/m5-flood.out || { echo "THE FLOOD DID NOT FINISH"; tail -3 /tmp/m5-flood.out; sudo systemctl status ibx-m5flood --no-pager | head -5; exit 1; }
+OK=$(grep -o '"ok": [0-9]*' /tmp/m5-flood.out | head -1 | cut -d' ' -f2 || echo 0)
+echo "flood result: $(tail -2 /tmp/m5-flood.out | head -1)"
+[ -n "$OK" ] || OK=0
+if [ "$OK" -gt 50 ]; then
+  echo "LEAK: $OK of 5000 connections went out unasked with fallback=block"
+  echo "-- loader journal:"
+  sudo journalctl -u ibexwall-monitor -b --no-pager -o cat | grep -E "ask configure|fail_open|Ask unavailable" | tail -8
+  echo "-- net_settings:"
+  sudo python3 -c "import sqlite3;print(sqlite3.connect('/var/lib/ibexwall/state.db').execute('SELECT key,value FROM net_settings').fetchall())"
+  exit 1
+fi
+echo "METRIC: with fallback=block, $OK of 5000 connections leaked above the full queue (expected ~0)"
+sudo ibexctl apps default allow
+# Back to per-app ask for the allow phase: the flood unit keeps running.
+sudo ibexctl apps set service:ibx-m5.service ask 2>/dev/null || true
+
+# With the fallback back to allow, the same flood all succeeds: the queue
+# accepts the overflow (fail open) and the timeout lets the held ones go.
+sudo python3 - <<'EOF'
+import sqlite3
+conn = sqlite3.connect("/var/lib/ibexwall/state.db")
+conn.execute("INSERT OR REPLACE INTO net_settings (key, value) VALUES ('ask_fallback','allow')")
+conn.commit()
+EOF
+sudo systemctl restart ibexwalld
+wait_flip true || { echo "THE LOADER NEVER GOT fallback=allow"; exit 1; }
+sudo ibexctl apps default ask
+sleep 8
+sudo rm -f /tmp/m5-flood.out /tmp/m5-go
+sudo systemd-run --quiet --unit=ibx-m5flood --setenv=PYTHONUNBUFFERED=1 -p LimitNOFILE=20000 python3 /tmp/m5-flood.py "$HOST_IP" 8081 5000 /tmp/m5-go 2>/tmp/m5-sd.err || { cat /tmp/m5-sd.err; exit 1; }
+for i in $(seq 1 60); do sudo ibexctl prompts list 2>/dev/null | grep -q . && break; sleep 0.5; done
+sudo sh -c ": > /tmp/m5-go"
+for i in $(seq 1 300); do grep -q "^done" /tmp/m5-flood.out 2>/dev/null && break; sleep 1; done
+grep -q "^done" /tmp/m5-flood.out || { echo "THE SECOND FLOOD DID NOT FINISH"; tail -3 /tmp/m5-flood.out; exit 1; }
+OK=$(grep -o '"ok": [0-9]*' /tmp/m5-flood.out | head -1 | cut -d' ' -f2)
+[ "$OK" -ge 4900 ] || { echo "ALLOW BROKE: only $OK of 5000 succeeded"; exit 1; }
+echo "METRIC: with fallback=allow, all 5000 connections succeed"
+
+# Leave the machine as it was: the default mode back to allow.
+sudo ibexctl apps default allow
 "#
     );
 

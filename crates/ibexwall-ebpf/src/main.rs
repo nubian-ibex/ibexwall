@@ -158,10 +158,16 @@ pub fn ibexwall_sendmsg6(_ctx: SockAddrContext) -> i32 {
 }
 
 /// Flow id to the process that made it, for the Ask queue: the packet
-/// carries only the mark, and the mark carries the id.
+/// carries only the mark, and the mark carries the id. The size is the
+/// whole 16-bit id space, so a held flow's entry is never evicted: an
+/// eviction made the queue verdict its packet "unknown" and accept it
+/// unasked (the flood test found ~2% of 5000 leaking this way).
+/// shortcut: two flows can still draw the same id (birthday over 65536);
+/// an answer then releases both, and the fallback decides for both.
+/// Upgrade: derive the id from the flow tuple instead of prandom.
 #[map(name = "IBEXWALL_ASK_FLOWS")]
 static mut ASK_FLOWS: LruHashMap<u32, [u8; ibexwall_net_common::ASK_FLOW_LEN]> =
-    LruHashMap::with_max_entries(4096, 0);
+    LruHashMap::with_max_entries(65536, 0);
 
 const SOL_SOCKET: i32 = 1;
 const SO_MARK: i32 = 36;

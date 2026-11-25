@@ -1,3 +1,10 @@
+ibexwall (0.5.0) unstable; urgency=medium
+
+  * The portable state file: export and import what was chosen; see
+    CHANGELOG.md.
+
+ -- Nubian Ibex <maintainers@nubian-ibex.invalid> Tue, 25 Nov 2026 12:00:00 +0000
+
 ibexwall (0.4.1) unstable; urgency=medium
 
   * The screen reflects an applied change right away; see CHANGELOG.md.

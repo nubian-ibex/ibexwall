@@ -12,7 +12,7 @@
 %global __strip /bin/true
 
 Name:           ibexwall
-Version:        0.4.1
+Version:        0.5.0
 Release:        1%{?dist}
 Summary:        Security center for Linux
 License:        GPL-3.0-or-later
@@ -138,6 +138,10 @@ if [ "$1" -ge 1 ]; then
 fi
 
 %changelog
+* Tue Nov 25 2026 Nubian Ibex <maintainers@nubian-ibex.invalid> - 0.5.0-1
+- The portable state file: export and import what was chosen; see
+  CHANGELOG.md.
+
 * Thu Nov 20 2026 Nubian Ibex <maintainers@nubian-ibex.invalid> - 0.4.1-1
 - The screen reflects an applied change right away; see CHANGELOG.md.
 

@@ -21,6 +21,7 @@ use ibexwall_varlink::{Call, Cancel, Handler, Peer, Reply, futures_handle};
 use crate::state::TxStatus;
 use crate::{Core, TxRow};
 
+mod state_file;
 mod transactions;
 mod views;
 
@@ -570,6 +571,8 @@ async fn dispatch(
         "Apply" => apply(core, &parameters, &actor).await,
         "Confirm" => confirm(core, &parameters, &actor).await,
         "Rollback" => rollback(core, &parameters, &actor).await,
+        "ExportState" => state_file::export(core).await,
+        "ImportState" => state_file::import(core, &parameters, &actor).await,
         "CreateRestorePoint" => create_restore_point(core, &parameters, &actor).await,
         "ListRestorePoints" => list_restore_points(core).await,
         "RestorePoint" => restore_point(core, &parameters, &actor).await,
@@ -1037,7 +1040,8 @@ fn polkit_action(method: &str, parameters: &Value) -> Option<&'static str> {
                 names::POLKIT_READ
             }
         }
-        "CreateRestorePoint" | "ListRestorePoints" => names::POLKIT_READ,
+        "CreateRestorePoint" | "ListRestorePoints" | "ExportState" => names::POLKIT_READ,
+        "ImportState" => names::POLKIT_PLUGINS_MANAGE,
         "SetAttestation" | "SetException" => names::POLKIT_POLICY_PROVIDER,
         _ => return None,
     })

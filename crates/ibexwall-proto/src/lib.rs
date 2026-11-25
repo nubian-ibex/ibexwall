@@ -100,6 +100,8 @@ pub mod export {
         "Transaction" => crate::types::Transaction,
         "HistoryEntry" => crate::types::HistoryEntry,
         "RestorePoint" => crate::types::RestorePoint,
+        "StateFile" => crate::types::StateFile,
+        "ImportSummary" => crate::types::ImportSummary,
         "RestorePointPlanEntry" => crate::types::RestorePointPlanEntry,
         "Event" => crate::types::Event,
         "ProposalStatus" => crate::types::ProposalStatus,

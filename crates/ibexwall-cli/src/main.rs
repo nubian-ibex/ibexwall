@@ -87,6 +87,21 @@ enum Command {
     Rollback { target: String },
     /// Recent transactions.
     History,
+    /// The portable state file: export what was chosen, import it back
+    /// (ADR-0049). The machine never changes on an import.
+    Export {
+        /// Where to write the file (default `ibexwall-state.json`).
+        file: Option<String>,
+    },
+    Import {
+        file: String,
+        /// Write the layers and plugin states without asking.
+        #[arg(long)]
+        yes: bool,
+        /// Print what would change, write nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Restore points: a marker in the log, and going back to it (ADR-0048).
     RestorePoint {
         #[command(subcommand)]
@@ -588,6 +603,86 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
             emit(value, json);
             if !json {
                 println!("rolled back {target}");
+            }
+            Ok(Finish::Done)
+        }
+        Command::Export { file } => {
+            let value = client
+                .call("com.ibexwall.Core.ExportState", serde_json::json!({}))
+                .await?;
+            let text = serde_json::to_string_pretty(&value["file"]).context("serializing")?;
+            let path = file.clone().unwrap_or_else(|| "ibexwall-state.json".into());
+            std::fs::write(&path, text + "\n").with_context(|| format!("writing {path}"))?;
+            emit(value, json);
+            if !json {
+                println!("wrote {path}");
+            }
+            Ok(Finish::Done)
+        }
+        Command::Import { file, yes, dry_run } => {
+            let text = std::fs::read_to_string(file.as_str())
+                .with_context(|| format!("reading {file}"))?;
+            let apply = !dry_run;
+            let params = serde_json::json!({ "file": text, "apply": apply });
+            let value = client
+                .call("com.ibexwall.Core.ImportState", ask(params))
+                .await?;
+            emit(value.clone(), json);
+            if json {
+                return Ok(Finish::Done);
+            }
+            let summarize = |v: &serde_json::Value| {
+                println!(
+                    "settings: {} · plugin states: {} · kept locked: {}",
+                    v["settings"].as_u64().unwrap_or(0),
+                    v["plugins"].as_u64().unwrap_or(0),
+                    v["locked_kept"].as_u64().unwrap_or(0),
+                );
+            };
+            if *dry_run || value["dry_run"].as_bool() == Some(true) {
+                summarize(&value);
+                for row in value["settings"].as_array().cloned().unwrap_or_default() {
+                    println!(
+                        "  {} · {}",
+                        row["plugin"].as_str().unwrap_or("?"),
+                        row["key"].as_str().unwrap_or("?")
+                    );
+                }
+                for row in value["plugins"].as_array().cloned().unwrap_or_default() {
+                    println!(
+                        "  {} -> {}",
+                        row["id"].as_str().unwrap_or("?"),
+                        if row["enabled"].as_bool() == Some(true) {
+                            "on"
+                        } else {
+                            "off"
+                        }
+                    );
+                }
+                if !*dry_run && !yes {
+                    print!("proceed? [y/N] ");
+                    use std::io::Write as _;
+                    std::io::stdout().flush().ok();
+                    let mut line = String::new();
+                    std::io::stdin()
+                        .read_line(&mut line)
+                        .map_err(|e| CliError::Other(e.into()))?;
+                    if !line.trim().eq_ignore_ascii_case("y")
+                        && !line.trim().eq_ignore_ascii_case("yes")
+                    {
+                        println!("cancelled; nothing was written");
+                        return Ok(Finish::Done);
+                    }
+                }
+            }
+            if apply && !*dry_run && value["dry_run"].as_bool() == Some(true) {
+                let value = client
+                    .call(
+                        "com.ibexwall.Core.ImportState",
+                        ask(serde_json::json!({ "file": text, "apply": true })),
+                    )
+                    .await?;
+                summarize(&value);
             }
             Ok(Finish::Done)
         }

@@ -669,6 +669,29 @@ impl State {
         })
     }
 
+    /// Writes the exported layers back (ADR-0049): a whole-file replace of
+    /// the user and profile layers, atomically. The organization layer is
+    /// untouched, and its locks still win at read time.
+    /// `config_dir` is the root's `/etc/ibexwall` (the caller has the root).
+    pub fn import_layers(
+        &self,
+        config_dir: &std::path::Path,
+        user: &crate::config::LayerFile,
+        profile: &crate::config::LayerFile,
+    ) -> Result<()> {
+        std::fs::create_dir_all(config_dir.join("profiles.d"))
+            .context("creating the profiles directory")?;
+        crate::config::write_atomic(
+            &config_dir.join("config.toml"),
+            &toml::to_string_pretty(user)?,
+        )?;
+        crate::config::write_atomic(
+            &config_dir.join("profiles.d/active.toml"),
+            &toml::to_string_pretty(profile)?,
+        )?;
+        Ok(())
+    }
+
     // findings / events / plugins --------------------------------------
 
     pub fn list_findings(&self, plugin: Option<&str>) -> Result<Vec<serde_json::Value>> {

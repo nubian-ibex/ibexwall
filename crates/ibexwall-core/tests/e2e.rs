@@ -322,6 +322,106 @@ async fn a_restore_point_undoes_every_change_after_it_newest_first() {
 }
 
 #[tokio::test]
+async fn the_state_file_round_trips_and_refuses_edits_and_org_layers() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let (core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+    client
+        .call(
+            "com.ibexwall.Core.SetPluginEnabled",
+            json!({ "id": "dev.echo", "enabled": true }),
+        )
+        .await
+        .unwrap();
+
+    // Export: schema, digest over the content, the plugin state in it.
+    let file = client
+        .call("com.ibexwall.Core.ExportState", json!({}))
+        .await
+        .unwrap()["file"]
+        .clone();
+    assert_eq!(file["schema"], 1);
+    assert!(!file["digest"].as_str().unwrap().is_empty());
+    assert_eq!(
+        file["plugins"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["id"] == "dev.echo")
+            .and_then(|p| p["enabled"].as_bool()),
+        Some(true)
+    );
+
+    // The dry run says what it would write and that the machine stays.
+    client
+        .call(
+            "com.ibexwall.Core.SetPluginEnabled",
+            json!({ "id": "dev.echo", "enabled": false }),
+        )
+        .await
+        .unwrap();
+    let text = serde_json::to_string(&file).unwrap();
+    let run = client
+        .call(
+            "com.ibexwall.Core.ImportState",
+            json!({ "file": text, "apply": false }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(run["dry_run"], true);
+    assert_eq!(
+        run["plugins"][0],
+        json!({ "id": "dev.echo", "enabled": true })
+    );
+
+    // A truncated digest is refused.
+    let mut edited = file.clone();
+    edited["ibexwall"] = json!("9.9.9-tampered");
+    let err = client
+        .call(
+            "com.ibexwall.Core.ImportState",
+            json!({ "file": serde_json::to_string(&edited).unwrap(), "apply": false }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.name, "com.ibexwall.Core.InvalidArgument");
+
+    // An organization layer in the file is refused outright.
+    let mut org = file.clone();
+    org["layers"]["org"] = json!({ "lock": ["net.dns.*"] });
+    let err = client
+        .call(
+            "com.ibexwall.Core.ImportState",
+            json!({ "file": serde_json::to_string(&org).unwrap(), "apply": false }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.name, "com.ibexwall.Core.InvalidArgument");
+
+    // Applying writes the layer back and the plugin state follows.
+    client
+        .call(
+            "com.ibexwall.Core.ImportState",
+            json!({ "file": text, "apply": true }),
+        )
+        .await
+        .unwrap();
+    let state = core.state.plugin_enabled("dev.echo").unwrap();
+    assert!(state);
+    let audit = client
+        .call("com.ibexwall.Core.ListAudit", json!({ "limit": 5 }))
+        .await
+        .unwrap();
+    assert!(
+        audit.to_string().contains("state-imported"),
+        "the import is audited: {audit}"
+    );
+}
+
+#[tokio::test]
 async fn full_flow_plan_apply_rollback_confirm_and_gates() {
     if plugin_binary().is_none() {
         eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");

@@ -384,6 +384,65 @@ pub struct Transaction {
     pub restore_point: String,
 }
 
+/// The portable state file (ADR-0049). The digest covers the canonical
+/// form of everything else, so a truncated or hand-edited file is caught.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct StateFile {
+    pub schema: u64,
+    pub ibexwall: String,
+    pub exported_at: String,
+    pub layers: ExportedLayers,
+    /// Merged settings per plugin, for reading only; the import never uses
+    /// this section (the layers are the truth).
+    pub effective: std::collections::BTreeMap<String, Value>,
+    pub plugins: Vec<PluginStateEntry>,
+    pub restore_points: Vec<RestorePointEntry>,
+    pub digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ExportedLayers {
+    #[serde(default)]
+    pub user: std::collections::BTreeMap<String, Value>,
+    #[serde(default)]
+    pub profile: std::collections::BTreeMap<String, Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PluginStateEntry {
+    pub id: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RestorePointEntry {
+    pub name: String,
+    pub tx: String,
+    pub created_at: i64,
+}
+
+/// What an import would write, before it does (ADR-0049: the machine never
+/// changes; the person then reviews and applies).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ImportSummary {
+    pub dry_run: bool,
+    pub settings: Vec<SettingChange>,
+    pub plugins: Vec<PluginStateEntry>,
+    pub locked: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SettingChange {
+    pub plugin: String,
+    pub key: String,
+}
+
 /// A named marker in the transaction log (ADR-0048).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

@@ -7,14 +7,16 @@ Last updated: 2026-11-07 (F11b fully delivered; all five distros green)
 
 ## Current phase
 
-**Now: v0.5.0 in progress on `main` (2026-11-25): the state file.**
-ADR-0049 approved and implemented: `ibexctl export [FILE]` and
-`ibexctl import FILE [--dry-run|--yes]`, one readable JSON with the
-settings layers, plugin states and restore point names, a digest over the
-canonical content, org layers refused, the import never touching the
-machine (audited, dry run first). Plan: docs/plans/v0.5-state-export.md.
-The maintainer added an EndeavourOS VM (172.22.2.113; needs a passwordless
-sudoers entry for the tests). Next: bump, tag v0.5.0, draft, VMs.
+**Now: v0.5.0 tagged 2026-11-25, release is a DRAFT** (not published).
+Contents: the state file (ADR-0049, approved and implemented: `ibexctl
+export [FILE]`, `import FILE [--dry-run|--yes]`; digest-checked, org layer
+refused, the import audited and never touching the machine) plus cookie
+0.18.3 and url 2.5.9 from cargo-deny advisories. Verified on the Fedora VM
+(export, dry run, import flips a plugin state back) and on the Ubuntu VM.
+The maintainer's new EndeavourOS VM (172.22.2.113) is reachable but its
+sudo asks for a password, so packages cannot be installed there until a
+passwordless sudoers entry exists. Left: the maintainer's check, publish,
+the app's Settings section (M3), the Ask flood VM check.
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

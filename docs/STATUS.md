@@ -11,12 +11,12 @@ Last updated: 2026-11-07 (F11b fully delivered; all five distros green)
 Contents: the state file (ADR-0049, approved and implemented: `ibexctl
 export [FILE]`, `import FILE [--dry-run|--yes]`; digest-checked, org layer
 refused, the import audited and never touching the machine) plus cookie
-0.18.3 and url 2.5.9 from cargo-deny advisories. Verified on the Fedora VM
-(export, dry run, import flips a plugin state back) and on the Ubuntu VM.
-The maintainer's new EndeavourOS VM (172.22.2.113) is reachable but its
-sudo asks for a password, so packages cannot be installed there until a
-passwordless sudoers entry exists. Left: the maintainer's check, publish,
-the app's Settings section (M3), the Ask flood VM check.
+0.18.3 and url 2.5.9 from cargo-deny advisories. Verified on all three
+maintainer VMs (Fedora .107, Ubuntu .106, EndeavourOS .113), including the
+import flipping a plugin state back with its summary. A CLI double-apply
+was caught on .113 and fixed (one dry run, one apply, each with its own
+summary). Left: the maintainer's check, publish, the app's Settings
+section (M3), the Ask flood VM check.
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

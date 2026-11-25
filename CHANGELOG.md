@@ -6,6 +6,18 @@
 Versions follow [Semantic Versioning](https://semver.org). The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## 0.5.0 (2026-11-25)
+
+### Added
+
+- The portable state file (ADR-0049, approved): `ibexctl export [FILE]`
+  writes one readable JSON with the settings layers, which plugins are
+  enabled, the restore point names and a digest that catches edits.
+  `ibexctl import FILE` shows a dry run first (what differs, what the
+  organization keeps locked), writes the layers and plugin states, and
+  never changes the machine: the person then reviews and applies as
+  usual. The organization layer and its locks are refused in the file.
+
 ## 0.4.1 (2026-11-20)
 
 ### Fixed

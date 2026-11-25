@@ -7,15 +7,14 @@ Last updated: 2026-11-07 (F11b fully delivered; all five distros green)
 
 ## Current phase
 
-**Now: v0.4.1 published 2026-11-20 (latest release).** It fixes the
-maintainer's report: after choosing a hardening change the screen kept it
-queued and 'not applied', because the stored findings were refreshed only
-by the next explicit check, and only the plugin that applied the change
-was re-checked. A change now re-runs the checks of every enabled plugin
-(Hardening observes system.sysctl's targets on its own); verified on the
-Fedora VM. Both VMs run 0.4.1. Open: ADR-0049 (export of IbexWall's state
-as one JSON file, proposed for B-03 follow-up), COPR/AUR accounts, the Ask
-flood check. Session memory saved to ai-memory (decisions and gotchas).
+**Now: v0.5.0 in progress on `main` (2026-11-25): the state file.**
+ADR-0049 approved and implemented: `ibexctl export [FILE]` and
+`ibexctl import FILE [--dry-run|--yes]`, one readable JSON with the
+settings layers, plugin states and restore point names, a digest over the
+canonical content, org layers refused, the import never touching the
+machine (audited, dry run first). Plan: docs/plans/v0.5-state-export.md.
+The maintainer added an EndeavourOS VM (172.22.2.113; needs a passwordless
+sudoers entry for the tests). Next: bump, tag v0.5.0, draft, VMs.
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

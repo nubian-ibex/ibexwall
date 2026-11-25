@@ -622,15 +622,6 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
         Command::Import { file, yes, dry_run } => {
             let text = std::fs::read_to_string(file.as_str())
                 .with_context(|| format!("reading {file}"))?;
-            let apply = !dry_run;
-            let params = serde_json::json!({ "file": text, "apply": apply });
-            let value = client
-                .call("com.ibexwall.Core.ImportState", ask(params))
-                .await?;
-            emit(value.clone(), json);
-            if json {
-                return Ok(Finish::Done);
-            }
             let summarize = |v: &serde_json::Value| {
                 println!(
                     "settings: {} · plugin states: {} · kept locked: {}",
@@ -638,17 +629,14 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
                     v["plugins"].as_u64().unwrap_or(0),
                     v["locked_kept"].as_u64().unwrap_or(0),
                 );
-            };
-            if *dry_run || value["dry_run"].as_bool() == Some(true) {
-                summarize(&value);
-                for row in value["settings"].as_array().cloned().unwrap_or_default() {
+                for row in v["settings"].as_array().cloned().unwrap_or_default() {
                     println!(
                         "  {} · {}",
                         row["plugin"].as_str().unwrap_or("?"),
                         row["key"].as_str().unwrap_or("?")
                     );
                 }
-                for row in value["plugins"].as_array().cloned().unwrap_or_default() {
+                for row in v["plugins"].as_array().cloned().unwrap_or_default() {
                     println!(
                         "  {} -> {}",
                         row["id"].as_str().unwrap_or("?"),
@@ -659,33 +647,48 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
                         }
                     );
                 }
-                if !*dry_run && !yes {
-                    print!("proceed? [y/N] ");
-                    use std::io::Write as _;
-                    std::io::stdout().flush().ok();
-                    let mut line = String::new();
-                    std::io::stdin()
-                        .read_line(&mut line)
-                        .map_err(|e| CliError::Other(e.into()))?;
-                    if !line.trim().eq_ignore_ascii_case("y")
-                        && !line.trim().eq_ignore_ascii_case("yes")
-                    {
-                        println!("cancelled; nothing was written");
-                        return Ok(Finish::Done);
-                    }
+            };
+            // The dry run is always the first thing: what differs, what the
+            // organization keeps locked, and that the machine stays.
+            let value = client
+                .call(
+                    "com.ibexwall.Core.ImportState",
+                    ask(serde_json::json!({ "file": text, "apply": false })),
+                )
+                .await?;
+            emit(value.clone(), json);
+            if json {
+                return Ok(Finish::Done);
+            }
+            summarize(&value);
+            if *dry_run {
+                println!("dry run: nothing was written");
+                return Ok(Finish::Done);
+            }
+            if !*yes {
+                print!("proceed? [y/N] ");
+                use std::io::Write as _;
+                std::io::stdout().flush().ok();
+                let mut line = String::new();
+                std::io::stdin()
+                    .read_line(&mut line)
+                    .map_err(|e| CliError::Other(e.into()))?;
+                if !line.trim().eq_ignore_ascii_case("y")
+                    && !line.trim().eq_ignore_ascii_case("yes")
+                {
+                    println!("cancelled; nothing was written");
+                    return Ok(Finish::Done);
                 }
             }
-            if apply && !*dry_run {
-                let value = client
-                    .call(
-                        "com.ibexwall.Core.ImportState",
-                        ask(serde_json::json!({ "file": text, "apply": true })),
-                    )
-                    .await?;
-                emit(value.clone(), json);
-                if !json {
-                    summarize(&value);
-                }
+            let value = client
+                .call(
+                    "com.ibexwall.Core.ImportState",
+                    ask(serde_json::json!({ "file": text, "apply": true })),
+                )
+                .await?;
+            emit(value.clone(), json);
+            if !json {
+                summarize(&value);
             }
             Ok(Finish::Done)
         }

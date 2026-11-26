@@ -26,55 +26,56 @@
   </div>
 </header>
 
-<section class="card">
-  <label>
-    <span>{t('language-label')}</span>
-    <select value={i18n.chosen ? i18n.locale : ''} onchange={onLocale}>
-      <option value="">{t('language-system', { language: languageName(i18n.locale) })}</option>
-      {#each LOCALES as locale (locale)}
-        <option value={locale}>{languageName(locale)}</option>
-      {/each}
-    </select>
-  </label>
-  <label>
-    <span>{t('theme-label')}</span>
-    <select value={theme} onchange={onTheme}>
-      {#each THEMES as option (option)}
-        <option value={option}>{t(`theme-${option}`)}</option>
-      {/each}
-    </select>
-  </label>
-</section>
+<div class="cards">
+  <section class="card">
+    <label>
+      <span>{t('language-label')}</span>
+      <select value={i18n.chosen ? i18n.locale : ''} onchange={onLocale}>
+        <option value="">{t('language-system', { language: languageName(i18n.locale) })}</option>
+        {#each LOCALES as locale (locale)}
+          <option value={locale}>{languageName(locale)}</option>
+        {/each}
+      </select>
+    </label>
+    <label>
+      <span>{t('theme-label')}</span>
+      <select value={theme} onchange={onTheme}>
+        {#each THEMES as option (option)}
+          <option value={option}>{t(`theme-${option}`)}</option>
+        {/each}
+      </select>
+    </label>
+  </section>
 
-<SystemSnapshotsCard />
+  <SystemSnapshotsCard />
 
-<StateFileCard />
+  <StateFileCard />
 
-<section class="card" aria-labelledby="welcome-again-title">
-  <h2 id="welcome-again-title">{t('settings-welcome-title')}</h2>
-  <p class="muted">{t('settings-welcome-body')}</p>
-  <div>
-    <Button onclick={() => (app.route = 'welcome')}>{t('settings-welcome-open')}</Button>
-  </div>
-</section>
-
-<section class="card" aria-labelledby="managed-title">
-  <h2 id="managed-title">{t('settings-managed-title')}</h2>
-  {#if app.managed}
-    <p>{t('settings-managed-yes')}</p>
+  <section class="card" aria-labelledby="welcome-again-title">
+    <h2 id="welcome-again-title">{t('settings-welcome-title')}</h2>
+    <p class="muted">{t('settings-welcome-body')}</p>
     <div>
-      <Button onclick={() => (app.route = 'organisation')}>{t('settings-managed-open')}</Button>
+      <Button onclick={() => (app.route = 'welcome')}>{t('settings-welcome-open')}</Button>
     </div>
-  {:else}
-    <p class="muted">{t('settings-managed-no')}</p>
-  {/if}
-</section>
+  </section>
+
+  <section class="card" aria-labelledby="managed-title">
+    <h2 id="managed-title">{t('settings-managed-title')}</h2>
+    {#if app.managed}
+      <p>{t('settings-managed-yes')}</p>
+      <div>
+        <Button onclick={() => (app.route = 'organisation')}>{t('settings-managed-open')}</Button>
+      </div>
+    {:else}
+      <p class="muted">{t('settings-managed-no')}</p>
+    {/if}
+  </section>
+</div>
 
 <style>
-  .card + .card,
-  .card + :global(.card),
-  :global(.card) + .card {
-    margin-top: var(--space-6);
+  .cards {
+    display: grid;
+    gap: var(--space-6);
   }
   h2 {
     margin: 0;

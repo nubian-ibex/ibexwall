@@ -6,6 +6,14 @@
 Versions follow [Semantic Versioning](https://semver.org). The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## Unreleased
+
+### Fixed
+
+- Desktop app: the History screen failed to load, and restore points could
+  not be used from it, since 0.4.0: the window was never allowed to call the
+  restore point commands.
+
 ## 0.5.0 (2026-11-26)
 
 ### Added

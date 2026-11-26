@@ -281,6 +281,17 @@ impl Vm {
         cmd
     }
 
+    /// `ssh_base` killed after `seconds` (exit status 124): the keepalives
+    /// miss a guest that answers while its script hangs.
+    pub(crate) fn ssh_within(&self, seconds: u64) -> Command {
+        let ssh = self.ssh_base();
+        let mut cmd = Command::new("timeout");
+        cmd.arg(seconds.to_string())
+            .arg(ssh.get_program())
+            .args(ssh.get_args());
+        cmd
+    }
+
     pub(crate) fn ssh(&self, command: &str) -> Result<String> {
         let output = self
             .ssh_base()

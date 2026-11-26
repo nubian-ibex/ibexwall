@@ -349,9 +349,12 @@ pub(crate) fn pipe_data(vm: &Vm, data: &str, remote_cmd: &str) -> Result<()> {
     Ok(())
 }
 
+/// Longer than the slowest scenario, which builds the packages in the VM.
+const SCENARIO_LIMIT_SECS: u64 = 30 * 60;
+
 pub(crate) fn run_script(vm: &Vm, name: &str, script: &str) -> bool {
     let mut child = match vm
-        .ssh_base()
+        .ssh_within(SCENARIO_LIMIT_SECS)
         .arg("bash -s")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())

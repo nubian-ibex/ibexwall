@@ -3,54 +3,38 @@
 
 # STATUS
 
-Last updated: 2026-11-26 (v0.5.1 published; v0.6 on a branch; VM freezes open)
+Last updated: 2026-11-26 (releasing v0.6.0)
 
 ## Current phase
 
-**Now: v0.5.1 published 2026-11-26** (latest release). Verified before
-publishing: CI, `f10` and `desktop` green on five distros, release checksums
-and signatures, reinstall on the three maintainer VMs with no refusal and
-nothing degraded, and the History screen opened from the released package on
-the Ubuntu VM. Public docs deployed. What it fixed and added over 0.5.0:
+**Now: releasing v0.6.0** (2026-11-26). Over the published v0.5.1:
 
-- The app's History screen did not load since 0.4.0: the restore point
-  commands were never granted to the window. A UI test now checks that every
-  command is handled, granted and covers the app's calls. Seen failing and
-  then fixed on the Ubuntu maintainer VM.
-- The import dry run missed profile changes and removed settings, wrote
-  locked keys into the user layer, and `ibexctl` counted it as zero.
-- v0.5 M3: "Settings file" section in the app (export to the home folder,
-  import with preview). Exercised in the real app on the Ubuntu VM.
-- Packages draw no AppArmor refusal on install and no SELinux refusal on
-  removal; `f10` now fails on either (seen failing first; green on five
-  distros after).
-- `xtask` ends a scenario whose guest went silent (SSH keepalives) or that
-  runs past thirty minutes.
+- System snapshots with snapper around risky changes (ADR-0050), off by
+  default: `docs/plans/v0.6-system-snapshots.md`.
+- The app no longer opens a white window in VMware and VirtualBox guests
+  under X11 (seen on the EndeavourOS maintainer VM; 0.5.1 has the defect).
+- Where Secure DNS cannot manage the machine (no systemd-resolved), the
+  screen says so up front.
+- Removing the packages no longer logs an AppArmor refusal.
+
+The maintainer tested the branch build on the Fedora, Ubuntu and
+EndeavourOS VMs, Secure DNS included.
 
 **Open:**
 
-- v0.6, system snapshots with snapper (approved 2026-11-26): on the local
-  branch `v0.6-snapshots`, not merged, installed on the three maintainer VMs
-  and checked there (real snapper on btrfs, the app on Ubuntu). Details in
-  its plan. Left: the maintainer's check, then merge and release.
-- The published v0.5.1 app shows a white window in a VirtualBox or VMware
-  guest under X11 (seen on the EndeavourOS maintainer VM). Fixed on local
-  `main` (unpushed) and checked there; ships with the next release. The
-  maintainer's tests on the Fedora and Ubuntu VMs passed (2026-11-26).
-- Secure DNS needs systemd-resolved. On NetworkManager-only machines (the
-  EndeavourOS VM) v0.6 says so before anything is chosen; support is proposed
-  for v0.7 (plan on the v0.6 branch) and awaits approval. The EndeavourOS VM
-  was moved to systemd-resolved by hand on 2026-11-26.
+- Secure DNS needs systemd-resolved; NetworkManager without it is proposed
+  for v0.7 (`docs/plans/v0.7-dns-networkmanager.md`), not approved. The
+  EndeavourOS VM was moved to systemd-resolved by hand.
 - The Hardening screen can show stale findings right after "Undo" (the core
   re-runs the checks in the background and the app reads at once); reopening
-  the screen shows the right state. It predates v0.6.
-- **Test VMs fail without a known cause** (2026-11-25/26): on Arch 7.3.4 a
-  kernel panic (double fault) and a hang during `f6`; on Fedora 45 a guest
-  that stopped answering during `snapshots`; on Debian 13 a guest that reset
-  mid-scenario with nothing on the console. Eight later `f6` runs on Arch
-  passed. Three kernels and different tests point at the host (Ryzen 9
-  3900X, VirtualBox loaded next to KVM) more than at IbexWall, unproven.
-  Panic console:
+  the screen shows the right state.
+- AppArmor with a btrfs root was checked on one Ubuntu machine; Debian with
+  btrfs is not verified.
+- **Test VMs fail without a known cause** (2026-11-25/26): a kernel panic and
+  a hang on Arch, a silent guest on Fedora and a silent reset on Debian, in
+  about 4 of 70 runs. Three kernels and different tests point at the host
+  (Ryzen 9 3900X, VirtualBox loaded next to KVM) more than at IbexWall,
+  unproven. Panic console:
   `~/.cache/ibexwall/vm/work-1795658638/serial.log`.
 - COPR and AUR publishing waits for the maintainer's accounts.
 

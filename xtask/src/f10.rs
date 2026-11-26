@@ -30,6 +30,15 @@ aa_dump() { sudo journalctl --no-pager 2>/dev/null | grep 'apparmor="DENIED"' | 
 # And what SELinux refused.
 sel_dump() { sudo grep -h 'type=AVC' /var/log/audit/audit.log 2>/dev/null | grep -E 'ibexwall' | tail -40 | sed -E 's/.*avc: *//' | sed -E 's/ pid=[0-9]+//; s/ ino=[0-9]+//; s/ dev="[^"]*"//; s/ tclass=/ class=/' | cut -c1-300; }
 trap 'rc=$?; [ $rc = 0 ] || { aa_dump; sel_dump; }' EXIT
+# Installing and removing must not draw a refusal from either system: mark the
+# moment, then fail on anything that names IbexWall after it.
+mark_refusals() { MARKED=$(date '+%F %T'); }
+no_refusals() {
+  sleep 5
+  # -o cat: the line prefix carries the host name, which may match too.
+  FOUND=$(sudo journalctl --since "$MARKED" --no-pager -o cat 2>/dev/null | grep -E 'apparmor="DENIED"|avc: +denied' | grep ibexwall | head -5 || true)
+  [ -z "$FOUND" ] || { echo "REFUSED WHILE $1:"; echo "$FOUND" | cut -c1-300; exit 1; }
+}
 apply_change() {
   PLUGIN=$1; shift
   P=$(sudo ibexctl plan "$PLUGIN" "$@" --json 2>/dev/null | python3 -c 'import json,sys;t=sys.stdin.read();i=t.find("{");d=json.JSONDecoder().raw_decode(t[i:])[0];print(d["plan"]["id"] if "plan" in d else d["id"])') || return 1
@@ -86,6 +95,7 @@ ls -la out1
 /// installed files are as packaged.
 const INSTALL: &str = r#"
 cd /tmp/ibx
+mark_refusals
 case $FAM in
 rpm) sudo dnf install -y -q out1/*.rpm >/tmp/install.log 2>&1 || { tail -20 /tmp/install.log; exit 1; } ;;
 deb) sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install -y -qq ./out1/*.deb >/tmp/install.log 2>&1 || { tail -20 /tmp/install.log; exit 1; } ;;
@@ -95,6 +105,7 @@ for b in ibexwalld ibexctl ibexwall-exec ibexwall-dns ibexwall-mcp ibexwall-desk
   [ -x /usr/bin/$b ] || { echo "MISSING /usr/bin/$b"; exit 1; }
 done
 [ -x /usr/libexec/ibexwall/ibexwall-plugins ] || { echo "MISSING THE PLUGIN BINARY"; exit 1; }
+no_refusals INSTALLING
 
 # Nothing the package installed differs from what it shipped.
 case $FAM in
@@ -409,12 +420,14 @@ echo "METRIC: upgraded in place: the daemon restarted on the new files, the chan
 /// Removal: the changes are undone, the units go, the user's data stays.
 const REMOVE: &str = r#"
 cd /tmp/ibx
+mark_refusals
 case $FAM in
 rpm) sudo dnf remove -y -q ibexwall ibexwall-desktop ibexwall-mcp >/tmp/remove.log 2>&1 || { tail -20 /tmp/remove.log; exit 1; } ;;
 deb) sudo DEBIAN_FRONTEND=noninteractive apt-get remove -y -qq ibexwall ibexwall-desktop ibexwall-mcp >/tmp/remove.log 2>&1 || { tail -20 /tmp/remove.log; exit 1; } ;;
 arch) sudo pacman -Rns --noconfirm ibexwall-mcp ibexwall-desktop ibexwall >/tmp/remove.log 2>&1 || { tail -20 /tmp/remove.log; exit 1; } ;;
 esac
 cat /tmp/remove.log | grep -i "undid\|could not undo" || true
+no_refusals REMOVING
 
 # The machine is as it was.
 [ "$(cat /proc/sys/net/ipv4/tcp_rfc1337)" = "$(cat /tmp/rfc-before)" ] || { echo "THE KERNEL SETTING WAS NOT PUT BACK: $(cat /proc/sys/net/ipv4/tcp_rfc1337)"; exit 1; }

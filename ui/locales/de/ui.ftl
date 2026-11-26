@@ -659,3 +659,6 @@ change-snapshot-failed-partial = Der Systemschnappschuss ist fehlgeschlagen ({ $
 change-snapshot-after-failed = Die Änderung ist erfolgt, aber der Schnappschuss danach ist fehlgeschlagen: { $reason }
 history-snapshot = Systemschnappschüsse { $pre } und { $post }
 history-snapshot-open = Systemschnappschuss { $pre }, der danach ist fehlgeschlagen
+dns-unsupported-title = Sicheres DNS kann auf diesem Computer noch nicht angewendet werden
+dns-unsupported-body = Es arbeitet mit systemd-resolved, und dieser Computer behandelt DNS anders. IbexWall stellt das nicht für Sie um. Die Anleitung erklärt, wie Sie systemd-resolved einschalten.
+dns-unsupported-recheck = Erneut prüfen

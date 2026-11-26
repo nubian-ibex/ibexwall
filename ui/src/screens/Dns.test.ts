@@ -121,6 +121,43 @@ describe('Dns screen', () => {
   });
 });
 
+describe('Dns screen: a stack Secure DNS cannot manage', () => {
+  beforeEach(() => i18n.set('en'));
+
+  const finding = (stack: string) => ({
+    id: 'detect.dns',
+    plugin: 'net.dns',
+    severity: 'info' as const,
+    title_key: 'detect-dns-title',
+    summary_key: `detect-dns-${stack}`,
+    args: { case: stack, stack: 'NetworkManager', servers: '192.0.2.1' },
+    references: [],
+    status: 'open' as const,
+    detected_at: '2026-11-26T12:00:00Z',
+  });
+
+  it('says so before anything is chosen, and checks again on request', async () => {
+    const transport = new FixtureTransport('attention');
+    let stack = 'other';
+    transport.listFindings = () => Promise.resolve([finding(stack)]);
+    transport.runChecks = () => {
+      stack = 'resolved-plain';
+      return Promise.resolve([]);
+    };
+    app.useTransport(transport);
+    renderScreen(Dns);
+    await app.refresh();
+    expect(
+      await screen.findByRole('heading', { name: /cannot be applied on this computer yet/i }),
+    ).toBeVisible();
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(screen.queryByRole('radio')).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
+    expect(await screen.findByRole('tablist')).toBeVisible();
+    expect(screen.queryByRole('heading', { name: /cannot be applied/i })).toBeNull();
+  });
+});
+
 describe('Dns screen: your own servers', () => {
   beforeEach(() => i18n.set('en'));
 

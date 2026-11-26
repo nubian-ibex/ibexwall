@@ -16,6 +16,9 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
   reason is shown. Turn it on in Settings or with `ibexctl snapshots on`;
   History shows the snapshot numbers. IbexWall never configures snapper,
   deletes a snapshot or restores one.
+- Desktop app: where Secure DNS cannot manage the machine's DNS setup (for
+  example NetworkManager without systemd-resolved), the screen says so before
+  anything is chosen, points to the guide and offers to check again.
 
 ### Fixed
 

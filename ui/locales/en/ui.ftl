@@ -659,3 +659,6 @@ change-snapshot-failed-partial = The system snapshot failed ({ $reason }), so th
 change-snapshot-after-failed = The change is in place, but the snapshot after it failed: { $reason }
 history-snapshot = System snapshots { $pre } and { $post }
 history-snapshot-open = System snapshot { $pre }, the one after it failed
+dns-unsupported-title = Secure DNS cannot be applied on this computer yet
+dns-unsupported-body = It works with systemd-resolved, and this computer handles DNS another way. IbexWall does not switch that for you. The guide explains how to turn systemd-resolved on.
+dns-unsupported-recheck = Check again

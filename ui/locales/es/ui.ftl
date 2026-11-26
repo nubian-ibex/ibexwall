@@ -659,3 +659,6 @@ change-snapshot-failed-partial = La instantánea del sistema falló ({ $reason }
 change-snapshot-after-failed = El cambio está hecho, pero la instantánea posterior falló: { $reason }
 history-snapshot = Instantáneas del sistema { $pre } y { $post }
 history-snapshot-open = Instantánea del sistema { $pre }; la posterior falló
+dns-unsupported-title = El DNS seguro todavía no se puede aplicar en este equipo
+dns-unsupported-body = Funciona con systemd-resolved, y este equipo gestiona el DNS de otra forma. IbexWall no hace ese cambio por usted. La guía explica cómo activar systemd-resolved.
+dns-unsupported-recheck = Comprobar de nuevo

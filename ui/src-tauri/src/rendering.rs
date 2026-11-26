@@ -3,7 +3,7 @@
 
 //! WebKitGTK's DMABUF renderer draws nothing on the virtual graphics adapter
 //! of VMware and VirtualBox guests in an X11 session: the window stays white
-//! (https://v2.tauri.app/develop/debug/linux-graphics/ describes the symptom).
+//! (<https://v2.tauri.app/develop/debug/linux-graphics/> describes the symptom).
 //! Only there is it turned off; anyone else affected can set the variable.
 
 use std::os::unix::process::CommandExt as _;

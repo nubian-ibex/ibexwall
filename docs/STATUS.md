@@ -3,12 +3,15 @@
 
 # STATUS
 
-Last updated: 2026-11-26 (releasing v0.5.1; Arch VM failures open)
+Last updated: 2026-11-26 (v0.5.1 published; v0.6 on a branch; VM freezes open)
 
 ## Current phase
 
-**Now: releasing v0.5.1** (2026-11-26). Fixes found while finishing v0.5
-M3, on top of the published v0.5.0:
+**Now: v0.5.1 published 2026-11-26** (latest release). Verified before
+publishing: CI, `f10` and `desktop` green on five distros, release checksums
+and signatures, reinstall on the three maintainer VMs with no refusal and
+nothing degraded, and the History screen opened from the released package on
+the Ubuntu VM. Public docs deployed. What it fixed and added over 0.5.0:
 
 - The app's History screen did not load since 0.4.0: the restore point
   commands were never granted to the window. A UI test now checks that every
@@ -33,8 +36,11 @@ M3, on top of the published v0.5.0:
   before `m5` existed, so a host or KVM cause is possible and unproven.
   Serial log of the panic:
   `~/.cache/ibexwall/vm/work-1795658638/serial.log`.
-- snapper/Timeshift (ADR-0048 option 2): proposal to be written and
-  approved before any code.
+- v0.6, system snapshots with snapper (approved 2026-11-26): implemented on
+  the local branch `v0.6-snapshots`, not merged. See
+  `docs/plans/v0.6-system-snapshots.md` on that branch.
+- One Fedora 45 test VM also stopped answering during the `snapshots` phase
+  (no console captured); the SSH keepalive ended the scenario as meant.
 - COPR and AUR publishing waits for the maintainer's accounts.
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:

@@ -27,6 +27,8 @@
     "allow-create-restore-point",
     "allow-restore-point-plan",
     "allow-restore-point-apply",
+    "allow-export-state",
+    "allow-import-state",
     "allow-list-proposals",
     "allow-decide-proposal",
     "allow-set-plugin-enabled",

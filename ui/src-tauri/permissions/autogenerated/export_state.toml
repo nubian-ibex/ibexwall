@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-export-state"
+description = "Enables the export_state command without any pre-configured scope."
+commands.allow = ["export_state"]
+
+[[permission]]
+identifier = "deny-export-state"
+description = "Denies the export_state command without any pre-configured scope."
+commands.deny = ["export_state"]

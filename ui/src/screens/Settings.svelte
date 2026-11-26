@@ -1,6 +1,7 @@
 <script lang="ts">
   import { app } from '../lib/app.svelte';
   import Button from '../components/Button.svelte';
+  import StateFileCard from '../components/StateFileCard.svelte';
   import { i18n, languageName, LOCALES, t } from '../lib/i18n.svelte';
   import { applyTheme, savedTheme, THEMES, type Theme } from '../lib/theme';
 
@@ -44,6 +45,8 @@
   </label>
 </section>
 
+<StateFileCard />
+
 <section class="card" aria-labelledby="welcome-again-title">
   <h2 id="welcome-again-title">{t('settings-welcome-title')}</h2>
   <p class="muted">{t('settings-welcome-body')}</p>
@@ -65,7 +68,9 @@
 </section>
 
 <style>
-  .card + .card {
+  .card + .card,
+  .card + :global(.card),
+  :global(.card) + .card {
     margin-top: var(--space-6);
   }
   h2 {

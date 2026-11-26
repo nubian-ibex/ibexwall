@@ -6,6 +6,7 @@
 //! No remote content, no updater (updates come from the distro).
 
 mod appinfo;
+mod statefile;
 
 use ibexwall_proto::names;
 use serde_json::{Value, json};
@@ -24,6 +25,7 @@ const ASKS_FOR_PASSWORD: &[&str] = &[
     "Confirm",
     "Rollback",
     "DecideProposal",
+    "ImportState",
 ];
 
 async fn core(method: &str, mut parameters: Value) -> Result<Value, String> {
@@ -231,6 +233,27 @@ async fn restore_point_apply(name: String) -> Result<Value, Value> {
         .map_err(|e| err_text(&e))
 }
 
+/// Saves the settings file in the home folder of the person using the app.
+#[tauri::command]
+async fn export_state() -> Result<Value, Value> {
+    let reply = core("ExportState", json!({}))
+        .await
+        .map_err(|e| err_text(&e))?;
+    let fail = |reason: String| json!({ "code": "com.ibexwall.Core.InvalidArgument", "parameters": { "reason": reason } });
+    let home = std::env::var_os("HOME").ok_or_else(|| fail("HOME is not set".into()))?;
+    let path = statefile::save(std::path::Path::new(&home), &reply["file"])
+        .map_err(|e| fail(e.to_string()))?;
+    Ok(json!({ "path": path }))
+}
+
+/// `apply = false` only says what would change.
+#[tauri::command]
+async fn import_state(file: String, apply: bool) -> Result<Value, Value> {
+    core("ImportState", json!({ "file": file, "apply": apply }))
+        .await
+        .map_err(|e| err_text(&e))
+}
+
 /// Tray labels follow the session language, like the UI.
 fn tray_labels() -> (&'static str, &'static str, &'static str) {
     let lang = std::env::var("LC_ALL")
@@ -398,6 +421,8 @@ pub fn run() {
             create_restore_point,
             restore_point_plan,
             restore_point_apply,
+            export_state,
+            import_state,
             list_proposals,
             decide_proposal,
             set_plugin_enabled,

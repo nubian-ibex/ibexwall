@@ -28,6 +28,8 @@ const COMMANDS: &[&str] = &[
     "create_restore_point",
     "restore_point_plan",
     "restore_point_apply",
+    "export_state",
+    "import_state",
     "list_proposals",
     "decide_proposal",
     "set_plugin_enabled",

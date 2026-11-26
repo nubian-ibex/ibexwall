@@ -11,6 +11,7 @@ import type {
   DnsStatus,
   Finding,
   HistoryEntry,
+  ImportSummary,
   Info,
   MonitorStatus,
   Plan,
@@ -136,6 +137,12 @@ export interface Transport {
   /** The plan is the list of transactions going back would undo. */
   restorePointPlan(name: string): Promise<RestorePointPlanEntry[]>;
   restorePointApply(name: string): Promise<{ undone: string[] }>;
+  /** Saves the settings file (ADR-0049) and returns where it went. */
+  exportState(): Promise<string>;
+  /** What importing this file would change; writes nothing. */
+  previewImport(file: string): Promise<ImportSummary>;
+  /** Writes the file's settings; the machine itself does not change. */
+  applyImport(file: string): Promise<void>;
   /** Changes an AI assistant proposed, newest first. */
   listProposals(status?: Proposal['status']): Promise<Proposal[]>;
   /** Approving applies the reviewed plan; the core refuses it if the plan changed. */

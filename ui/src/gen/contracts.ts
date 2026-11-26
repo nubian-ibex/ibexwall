@@ -165,12 +165,14 @@ export interface AllContracts {
   Event?: Event;
   Exception?: Exception;
   ExecAllow?: ExecAllow;
+  ExportedLayers?: ExportedLayers;
   Finding?: Finding;
   FindingStatus?: FindingStatus;
   FirewallNetwork?: FirewallNetwork;
   FirewallPort?: FirewallPort;
   FirewallState?: FirewallState;
   HistoryEntry?: HistoryEntry;
+  ImportSummary?: ImportSummary;
   Info?: Info;
   Manifest?: Manifest;
   MonitorStatus?: MonitorStatus;
@@ -181,6 +183,7 @@ export interface AllContracts {
   PluginInfo?: PluginInfo;
   PluginKind?: PluginKind;
   PluginOrigin?: PluginOrigin;
+  PluginStateEntry?: PluginStateEntry;
   PolicyBundle?: PolicyBundle;
   Posture?: Posture;
   Privileges?: Privileges;
@@ -195,13 +198,16 @@ export interface AllContracts {
   ReportSpec?: ReportSpec1;
   Requires?: Requires1;
   RestorePoint?: RestorePoint;
+  RestorePointEntry?: RestorePointEntry;
   RestorePointPlanEntry?: RestorePointPlanEntry;
   Reversible?: Reversible;
   RiskFlag?: RiskFlag;
   RiskInfo?: RiskInfo;
   Sandbox?: Sandbox;
   SandboxUser?: SandboxUser;
+  SettingChange?: SettingChange;
   Severity?: Severity;
+  StateFile?: StateFile;
   Transaction?: Transaction;
   TransactionState?: TransactionState;
   Ui?: Ui;
@@ -438,6 +444,14 @@ export interface ExecAllow {
    */
   symmetric?: boolean;
 }
+export interface ExportedLayers {
+  profile?: {
+    [k: string]: unknown;
+  };
+  user?: {
+    [k: string]: unknown;
+  };
+}
 /**
  * A network this computer is on and the profile suggested for it.
  */
@@ -514,6 +528,24 @@ export interface HistoryEntry {
   seq: number;
   transaction?: string | null;
   ts: string;
+}
+/**
+ * What an import would write, before it does (ADR-0049: the machine never
+ * changes; the person then reviews and applies).
+ */
+export interface ImportSummary {
+  dry_run: boolean;
+  locked: string[];
+  plugins: PluginStateEntry[];
+  settings: SettingChange[];
+}
+export interface PluginStateEntry {
+  enabled: boolean;
+  id: string;
+}
+export interface SettingChange {
+  key: string;
+  plugin: string;
 }
 /**
  * Daemon and host information (`GetInfo`).
@@ -807,6 +839,11 @@ export interface RestorePoint {
   name: string;
   tx: string;
 }
+export interface RestorePointEntry {
+  created_at: number;
+  name: string;
+  tx: string;
+}
 /**
  * One transaction a restore would undo, from the dry run.
  */
@@ -814,6 +851,26 @@ export interface RestorePointPlanEntry {
   plugin: string;
   state: string;
   transaction: string;
+}
+/**
+ * The portable state file (ADR-0049). The digest covers the canonical
+ * form of everything else, so a truncated or hand-edited file is caught.
+ */
+export interface StateFile {
+  digest: string;
+  /**
+   * Merged settings per plugin, for reading only; the import never uses
+   * this section (the layers are the truth).
+   */
+  effective: {
+    [k: string]: unknown;
+  };
+  exported_at: string;
+  ibexwall: string;
+  layers: ExportedLayers;
+  plugins: PluginStateEntry[];
+  restore_points: RestorePointEntry[];
+  schema: number;
 }
 /**
  * A transaction (apply) of a plan.

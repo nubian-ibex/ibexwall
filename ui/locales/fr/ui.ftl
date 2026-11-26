@@ -202,7 +202,7 @@ history-undo = Annuler cette modification
 history-view = Voir
 
 settings-title = Réglages
-settings-subtitle = Apparence et langue
+settings-subtitle = Apparence, langue et fichier de réglages
 
 nav-dns = DNS sécurisé
 dns-title = DNS sécurisé
@@ -635,3 +635,18 @@ welcome-finish = Terminé
 settings-welcome-title = Bienvenue
 settings-welcome-body = Revoir les premières étapes : la vérification, les protections à activer et ce qui manque.
 settings-welcome-open = Afficher l'accueil
+settings-backup-title = Fichier de réglages
+settings-backup-body = Enregistrez les réglages d’IbexWall dans un fichier, ou lisez-les depuis un fichier. L’importation ne modifie jamais cet ordinateur : vous vérifiez et appliquez sur chaque écran.
+settings-backup-export = Enregistrer dans un fichier
+settings-backup-saved = Enregistré dans { $path }
+settings-backup-choose = Choisir un fichier à importer
+settings-backup-preview = Ce que ce fichier modifierait
+settings-backup-same = Le fichier correspond à cet ordinateur. Il n’y a rien à importer.
+settings-backup-setting = { $plugin } : { $key }
+settings-backup-plugin-on = { $plugin } : activer
+settings-backup-plugin-off = { $plugin } : désactiver
+settings-backup-locked = Verrouillé par votre organisation, conservé tel quel : { $key }
+settings-backup-import = Importer
+settings-backup-done = Importé. Rien n’a encore changé sur cet ordinateur : vérifiez chaque écran et appliquez ce que vous voulez.
+settings-backup-invalid = Ce fichier ne peut pas être importé : { $reason }
+settings-backup-too-large = Ce fichier est trop volumineux pour être un fichier de réglages d’IbexWall.

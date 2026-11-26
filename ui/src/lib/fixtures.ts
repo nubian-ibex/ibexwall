@@ -10,6 +10,7 @@ import type {
   ComplianceReport,
   Finding,
   HistoryEntry,
+  ImportSummary,
   RestorePoint,
   RestorePointPlanEntry,
   Info,
@@ -691,6 +692,23 @@ export class FixtureTransport implements Transport {
   }
 
   private points: RestorePoint[] = [{ name: 'calm', tx: 'tx-fixture-1', created_at: 1 }];
+
+  exportState() {
+    return this.gate(() => '/home/user/ibexwall-state-2026-11-01.json');
+  }
+
+  previewImport() {
+    return this.gate((): ImportSummary => ({
+      dry_run: true,
+      settings: [{ plugin: 'net.dns', key: 'provider' }],
+      plugins: [{ id: 'net.vpn', enabled: false }],
+      locked: ['net.firewall.mode (net.firewall.*)'],
+    }));
+  }
+
+  applyImport() {
+    return this.gate(() => undefined);
+  }
 
   listRestorePoints() {
     return this.gate((): RestorePoint[] => [...this.points]);

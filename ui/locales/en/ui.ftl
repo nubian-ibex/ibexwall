@@ -202,7 +202,7 @@ history-undo = Undo this change
 history-view = View
 
 settings-title = Settings
-settings-subtitle = Appearance and language
+settings-subtitle = Appearance, language and settings file
 
 nav-dns = Secure DNS
 dns-title = Secure DNS
@@ -635,3 +635,18 @@ welcome-finish = Done
 settings-welcome-title = Welcome
 settings-welcome-body = See the first steps again: the check, the protections to turn on and what is missing.
 settings-welcome-open = Show the welcome
+settings-backup-title = Settings file
+settings-backup-body = Save IbexWall's settings to a file, or read them from one. Importing never changes this computer: you review and apply on each screen.
+settings-backup-export = Save to a file
+settings-backup-saved = Saved to { $path }
+settings-backup-choose = Choose a file to import
+settings-backup-preview = What this file would change
+settings-backup-same = The file matches this computer. There is nothing to import.
+settings-backup-setting = { $plugin }: { $key }
+settings-backup-plugin-on = { $plugin }: turn on
+settings-backup-plugin-off = { $plugin }: turn off
+settings-backup-locked = Locked by your organisation, kept as it is: { $key }
+settings-backup-import = Import
+settings-backup-done = Imported. Nothing on this computer changed yet: review each screen and apply what you want.
+settings-backup-invalid = This file cannot be imported: { $reason }
+settings-backup-too-large = This file is too large to be an IbexWall settings file.

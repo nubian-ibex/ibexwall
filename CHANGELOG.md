@@ -8,6 +8,12 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
 
 ## Unreleased
 
+### Added
+
+- Desktop app: a "Settings file" section in Settings saves IbexWall's own
+  settings to a file in your home folder, and imports one after showing what
+  it would change.
+
 ### Fixed
 
 - Desktop app: the History screen failed to load, and restore points could

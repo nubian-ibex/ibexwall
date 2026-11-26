@@ -32,7 +32,12 @@ sel_dump() { sudo grep -h 'type=AVC' /var/log/audit/audit.log 2>/dev/null | grep
 trap 'rc=$?; [ $rc = 0 ] || { aa_dump; sel_dump; }' EXIT
 # Installing and removing must not draw a refusal from either system: mark the
 # moment, then fail on anything that names IbexWall after it.
-mark_refusals() { MARKED=$(date '+%F %T'); }
+mark_refusals() {
+  # The kernel drops refusal messages in bursts, which let a real one through
+  # now and then.
+  sudo sysctl -qw kernel.printk_ratelimit=0
+  MARKED=$(date '+%F %T')
+}
 no_refusals() {
   sleep 5
   # -o cat: the line prefix carries the host name, which may match too.

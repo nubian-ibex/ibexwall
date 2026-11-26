@@ -37,6 +37,10 @@ the Ubuntu VM. Public docs deployed. What it fixed and added over 0.5.0:
   guest under X11 (seen on the EndeavourOS maintainer VM). Fixed on local
   `main` (unpushed) and checked there; ships with the next release. The
   maintainer's tests on the Fedora and Ubuntu VMs passed (2026-11-26).
+- Secure DNS needs systemd-resolved. On NetworkManager-only machines (the
+  EndeavourOS VM) v0.6 says so before anything is chosen; support is proposed
+  for v0.7 (plan on the v0.6 branch) and awaits approval. The EndeavourOS VM
+  was moved to systemd-resolved by hand on 2026-11-26.
 - The Hardening screen can show stale findings right after "Undo" (the core
   re-runs the checks in the background and the app reads at once); reopening
   the screen shows the right state. It predates v0.6.

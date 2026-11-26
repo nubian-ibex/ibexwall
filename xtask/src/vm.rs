@@ -120,11 +120,12 @@ pub fn run(distro: &str, phase: Option<&str>) -> Result<()> {
         Some("desktop") => crate::desktop::run(&vm, &workspace, entry.install),
         Some("firewall-on") => crate::firewall_on::run(&vm, &workspace, entry.install),
         Some("audit") => crate::audit::run(&vm, &workspace, entry.install),
+        Some("snapshots") => crate::snapshots::run(&vm, &workspace),
         Some("selinux") => crate::f10::run_selinux_build(&vm, &workspace, entry.install),
         Some("fixtures") => crate::fixtures::run(&vm, &workspace, entry.id),
         Some(other) => {
             bail!(
-                "unknown phase `{other}` (supported: f0 to f10, f11a, f11b, desktop, firewall-on, audit, fixtures)"
+                "unknown phase `{other}` (supported: f0 to f10, f11a, f11b, desktop, firewall-on, audit, snapshots, fixtures)"
             )
         }
     }

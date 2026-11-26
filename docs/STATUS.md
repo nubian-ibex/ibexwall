@@ -22,6 +22,11 @@ audit chain valid, the 65536-entry map loaded, export and import dry run.
 VM matrix 16 of 16 green (it ran with a faulty uncommitted `ibexwall-nfq`
 debug change, since reverted).
 
+Since the release: `xtask` gives up on a test VM that stops answering (SSH
+keepalives, two minutes; checked by freezing a guest mid-scenario, the run
+gave up after 135 s). It does not cover a script that hangs inside a guest
+that still answers.
+
 **Open:**
 
 - `f6` on Arch (7.3.4-arch1-2) failed 2 of 14 runs on the committed code:
@@ -31,7 +36,6 @@ debug change, since reverted).
   45 test VMs logged double faults on 2026-11-10, before `m5` existed, so a
   host or KVM cause is possible and unproven. Serial log of the panic:
   `~/.cache/ibexwall/vm/work-1795658638/serial.log`.
-- `xtask` has no SSH keepalive: a dead guest hangs the run.
 - Package install and removal each log one transient denial: AppArmor
   `change_onexec` "label not found" on Ubuntu while the profile is not yet
   loaded, and an SELinux `remove_name` on `core.sock` on Fedora while

@@ -87,6 +87,11 @@ enum Command {
     Rollback { target: String },
     /// Recent transactions.
     History,
+    /// System snapshots (snapper) taken before risky changes (ADR-0050).
+    Snapshots {
+        #[command(subcommand)]
+        action: SnapshotsAction,
+    },
     /// The portable state file: export what was chosen, import it back
     /// (ADR-0049). The machine never changes on an import.
     Export {
@@ -155,6 +160,15 @@ enum Command {
         action: PolicyCmd,
     },
 }
+#[derive(Debug, Clone, clap::Subcommand)]
+enum SnapshotsAction {
+    /// Whether they are on, and whether this machine can take them.
+    Status,
+    /// Take one before and after every risky change.
+    On,
+    Off,
+}
+
 #[derive(Debug, Clone, clap::Subcommand)]
 enum RestorePointAction {
     /// Mark the current state so going back undoes everything after it.
@@ -557,6 +571,9 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
                     plan["plugin"],
                     plan["ops"].as_array().map(Vec::len).unwrap_or(0)
                 );
+                if plan["system_snapshot"] == true {
+                    println!("a system snapshot is taken first; if it fails, nothing changes");
+                }
                 println!("apply with: ibexctl apply {}", plan["id"]);
             }
             Ok(Finish::Done)
@@ -578,6 +595,12 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
                 .as_str()
                 .unwrap_or_default()
                 .to_string();
+            if !json {
+                print!("{}", render_apply_snapshot(&value));
+                if let Some(warning) = value["warning"].as_str() {
+                    eprintln!("ibexctl: warning: {}", clean(warning));
+                }
+            }
             emit(value, json);
             if state == "pending_confirm" {
                 Ok(Finish::AwaitingConfirm(id))
@@ -664,6 +687,27 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
             if !json {
                 print!("{}", import_summary(&value));
             }
+            Ok(Finish::Done)
+        }
+        Command::Snapshots { action } => {
+            let enabled = match action {
+                SnapshotsAction::Status => None,
+                SnapshotsAction::On => Some(true),
+                SnapshotsAction::Off => Some(false),
+            };
+            if let Some(enabled) = enabled {
+                let params = serde_json::json!({ "enabled": enabled });
+                client
+                    .call("com.ibexwall.Core.SetSystemSnapshots", ask(params))
+                    .await?;
+            }
+            let value = client
+                .call(
+                    "com.ibexwall.Core.GetSystemSnapshots",
+                    serde_json::json!({}),
+                )
+                .await?;
+            show(&value, json, render_snapshots);
             Ok(Finish::Done)
         }
         Command::RestorePoint { action } => {

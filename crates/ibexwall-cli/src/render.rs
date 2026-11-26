@@ -342,14 +342,51 @@ pub(crate) fn render_history(value: &serde_json::Value) -> String {
     }
     let mut out = format!("{:<26}  {:<22}  {}\n", "TRANSACTION", "PLUGIN", "RESULT");
     for e in &all {
+        let snapshot = match snapshot_numbers(&e["system_snapshot"]) {
+            Some(numbers) => format!("  snapshot {numbers}"),
+            None => String::new(),
+        };
         out.push_str(&format!(
-            "{:<26}  {:<22}  {}\n",
+            "{:<26}  {:<22}  {}{snapshot}\n",
             text(&e["transaction"]),
             text(&e["plugin"]),
             text(&e["result"]),
         ));
     }
     out
+}
+
+/// `#4-#5`, or `#4` when the one after the change failed.
+fn snapshot_numbers(value: &serde_json::Value) -> Option<String> {
+    let pre = value["pre"].as_u64()?;
+    Some(match value["post"].as_u64() {
+        Some(post) => format!("#{pre}-#{post}"),
+        None => format!("#{pre}"),
+    })
+}
+
+/// The line after an apply that took system snapshots.
+pub(crate) fn render_apply_snapshot(reply: &serde_json::Value) -> String {
+    match snapshot_numbers(&reply["system_snapshot"]) {
+        Some(numbers) => format!("system snapshot {numbers} (see `snapper list`)\n"),
+        None => String::new(),
+    }
+}
+
+pub(crate) fn render_snapshots(value: &serde_json::Value) -> String {
+    let status = &value["status"];
+    let enabled = if status["enabled"] == true {
+        "on"
+    } else {
+        "off"
+    };
+    match status["reason"].as_str() {
+        Some(reason) => format!(
+            "system snapshots: {enabled}\nnot available here: {}\n",
+            clean(reason)
+        ),
+        None => format!("system snapshots: {enabled}\n"),
+    }
 }
 
 pub(crate) fn render_events(value: &serde_json::Value) -> String {
@@ -437,6 +474,10 @@ fn hint(err: &VarlinkError) -> String {
                 err.parameters["action"]
             )
         }
+        "com.ibexwall.Core.SnapshotFailed" => format!(
+            ": nothing was changed. The system snapshot failed: {}. To apply without one: ibexctl snapshots off",
+            clean(err.parameters["reason"].as_str().unwrap_or("unknown"))
+        ),
         "com.ibexwall.Core.InvalidArgument" => {
             match (
                 err.parameters["field"].as_str(),

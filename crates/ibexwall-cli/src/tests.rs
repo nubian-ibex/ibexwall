@@ -140,3 +140,23 @@ fn the_import_summary_counts_a_dry_run_and_an_apply() {
     let applied = import_summary(&json!({ "settings": 2, "plugins": 0, "locked_kept": 1 }));
     assert_eq!(applied, "settings: 2 · plugin states: 0 · kept locked: 1\n");
 }
+
+#[test]
+fn system_snapshots_are_named_where_they_matter() {
+    use serde_json::json;
+    assert_eq!(
+        render_apply_snapshot(&json!({ "system_snapshot": { "pre": 4, "post": 5 } })),
+        "system snapshot #4-#5 (see `snapper list`)\n"
+    );
+    assert_eq!(render_apply_snapshot(&json!({ "transaction": {} })), "");
+    let history = render_history(&json!({ "entries": [
+        { "transaction": "tx-1", "plugin": "p", "result": "committed", "system_snapshot": { "pre": 7 } },
+    ] }));
+    assert!(history.contains("committed  snapshot #7"));
+    assert_eq!(
+        render_snapshots(&json!({ "status": {
+            "enabled": false, "available": false, "reason": "snapper is not installed",
+        } })),
+        "system snapshots: off\nnot available here: snapper is not installed\n"
+    );
+}

@@ -88,6 +88,7 @@ impl SysBundle {
 pub mod nft;
 pub mod nm;
 pub mod polkit;
+pub mod snapper;
 pub mod sysctl;
 pub mod systemd;
 
@@ -97,6 +98,7 @@ pub use fs::{FakeFs, FileMeta, Fs, RealFs};
 pub use identity::{Identity, current_uid, peer_credentials, proc_start_time};
 pub use nft::{FakeNft, Fragment, Nft, RealNft};
 pub use polkit::{Decision, FakePolkit, Polkit, RealPolkit};
+pub use snapper::{FakeSnapshots, RealSnapper, SnapshotKind, SystemSnapshots};
 pub use sysctl::{FakeSysctl, RealSysctl, Sysctl};
 pub use systemd::{Enabled, FakeSystemd, RealSystemd, Systemd, UnitSnapshot};
 

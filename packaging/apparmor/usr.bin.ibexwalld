@@ -66,6 +66,7 @@ profile ibexwalld flags=(attach_disconnected) {
   /usr/bin/systemd-run ix,
   /usr/{,s}bin/ufw ix,
   /usr/bin/firewall-cmd ix,
+  /usr/bin/snapper ix,
 
   # What the plugins' manifests declare (generated).
   include <ibexwall/plugin-paths>

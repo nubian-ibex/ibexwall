@@ -3,7 +3,7 @@
 
 # STATUS
 
-Last updated: 2026-11-07 (F11b fully delivered; all five distros green)
+Last updated: 2026-11-26 (Ask flood check; one Arch kernel panic open)
 
 ## Current phase
 
@@ -15,8 +15,30 @@ refused, the import audited and never touching the machine) plus cookie
 maintainer VMs (Fedora .107, Ubuntu .106, EndeavourOS .113), including the
 import flipping a plugin state back with its summary. A CLI double-apply
 was caught on .113 and fixed (one dry run, one apply, each with its own
-summary). Left: the maintainer's check, publish, the app's Settings
-section (M3), the Ask flood VM check.
+summary).
+
+**Since the draft (local `main`, not pushed):**
+
+- New VM scenario `f6 m5` (5000 new flows against the Ask queue). It found
+  that `ASK_FLOWS` (4096 LRU entries, random 16-bit ids) let held flows out
+  unasked; fixed in `5ae186f` (65536 entries). The draft predates the fix.
+- Full matrix, 16 of 16 green: `f10` on five distros, `desktop` and
+  `firewall-on`, `f5`, `f3`, `audit`. It ran with a faulty uncommitted
+  debug change in `ibexwall-nfq`, since reverted.
+- `f6` rerun on the committed code: Fedora and Ubuntu 24.04 all green.
+  **Arch (7.3.4-arch1-2) panicked during `m5`** (double fault, stack guard
+  page, in `swapper`) and the run hung until killed. Cause unknown. Two
+  Fedora 45 test VMs (7.2.11) logged double faults on 2026-11-10, before
+  `m5` existed, so a host or KVM cause is possible and unproven. Serial
+  log: `~/.cache/ibexwall/vm/work-1795658638/serial.log`.
+- GitHub shows `v0.4.1` as a draft that was never published (latest
+  published is `v0.4.0`), although earlier notes say it was published.
+
+Next: reproduce or rule out the Arch panic; then push, CI, regenerate the
+`v0.5.0` draft, reinstall the three maintainer VMs (`.113` still has
+hand-copied test binaries, test units and `ask_fallback=block`); the
+maintainer's calls on publishing `v0.4.1` and `v0.5.0`; the app's Settings
+section (M3).
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

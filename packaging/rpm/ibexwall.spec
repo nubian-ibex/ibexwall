@@ -12,7 +12,7 @@
 %global __strip /bin/true
 
 Name:           ibexwall
-Version:        0.5.0
+Version:        0.5.1
 Release:        1%{?dist}
 Summary:        Security center for Linux
 License:        GPL-3.0-or-later
@@ -139,6 +139,10 @@ if [ "$1" -ge 1 ]; then
 fi
 
 %changelog
+* Thu Nov 26 2026 Nubian Ibex <maintainers@nubian-ibex.invalid> - 0.5.1-1
+- The History screen loads again in the app; the settings file in Settings;
+  see CHANGELOG.md.
+
 * Tue Nov 25 2026 Nubian Ibex <maintainers@nubian-ibex.invalid> - 0.5.0-1
 - The portable state file: export and import what was chosen; see
   CHANGELOG.md.

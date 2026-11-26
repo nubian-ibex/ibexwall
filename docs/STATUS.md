@@ -3,47 +3,39 @@
 
 # STATUS
 
-Last updated: 2026-11-26 (v0.5.0 published; Arch VM failures open)
+Last updated: 2026-11-26 (releasing v0.5.1; Arch VM failures open)
 
 ## Current phase
 
-**Now: v0.5.0 published 2026-11-26** (latest release). Contents: the state
-file (ADR-0049: `ibexctl export [FILE]`, `import FILE [--dry-run|--yes]`;
-digest-checked, org layer refused, the import audited and never touching the
-machine), the Ask map fix (`ASK_FLOWS` held 4096 LRU entries for random
-16-bit ids and let held flows out unasked; now 65536; found by the new VM
-scenario `f6 m5`, 5000 flows against the Ask queue) and cookie 0.18.3 and
-url 2.5.9.
+**Now: releasing v0.5.1** (2026-11-26). Fixes found while finishing v0.5
+M3, on top of the published v0.5.0:
 
-Verified before publishing: CI and Scorecard green, release checksums and
-signatures (`xtask verify-release`), and a purge and reinstall on the three
-maintainer VMs (Fedora 45, Ubuntu 26.10, EndeavourOS): nothing degraded,
-audit chain valid, the 65536-entry map loaded, export and import dry run.
-VM matrix 16 of 16 green (it ran with a faulty uncommitted `ibexwall-nfq`
-debug change, since reverted).
-
-Since the release: `xtask` gives up on a test VM that stops answering (SSH
-keepalives, two minutes; checked by freezing a guest mid-scenario, the run
-gave up after 135 s). It does not cover a script that hangs inside a guest
-that still answers.
+- The app's History screen did not load since 0.4.0: the restore point
+  commands were never granted to the window. A UI test now checks that every
+  command is handled, granted and covers the app's calls. Seen failing and
+  then fixed on the Ubuntu maintainer VM.
+- The import dry run missed profile changes and removed settings, wrote
+  locked keys into the user layer, and `ibexctl` counted it as zero.
+- v0.5 M3: "Settings file" section in the app (export to the home folder,
+  import with preview). Exercised in the real app on the Ubuntu VM.
+- Packages draw no AppArmor refusal on install and no SELinux refusal on
+  removal; `f10` now fails on either (seen failing first; green on five
+  distros after).
+- `xtask` ends a scenario whose guest went silent (SSH keepalives) or that
+  runs past thirty minutes.
 
 **Open:**
 
-- `f6` on Arch (7.3.4-arch1-2) failed 2 of 14 runs on the committed code:
-  one guest kernel panic during `m5` (double fault, stack guard page, in
-  `swapper`) and one hang in `m4` with a silent serial console. The last 12
-  runs passed; Fedora and Ubuntu 24.04 passed. **Cause unknown.** Two Fedora
-  45 test VMs logged double faults on 2026-11-10, before `m5` existed, so a
-  host or KVM cause is possible and unproven. Serial log of the panic:
+- `f6` on Arch (7.3.4-arch1-2): one guest kernel panic during `m5` (double
+  fault, stack guard page, in `swapper`) and one hang in `m4`, both on
+  2026-11-25/26; every other run passed (13 in a row afterwards). **Cause
+  unknown.** Two Fedora 45 test VMs logged double faults on 2026-11-10,
+  before `m5` existed, so a host or KVM cause is possible and unproven.
+  Serial log of the panic:
   `~/.cache/ibexwall/vm/work-1795658638/serial.log`.
-- Package install and removal each log one transient denial: AppArmor
-  `change_onexec` "label not found" on Ubuntu while the profile is not yet
-  loaded, and an SELinux `remove_name` on `core.sock` on Fedora while
-  removing. None after a daemon restart.
-- `v0.4.1` is still an unpublished draft (earlier notes said otherwise);
-  0.5.0 contains its fix.
-- The app's Settings section for export and import (v0.5 M3), and the same
-  topic in the public docs.
+- snapper/Timeshift (ADR-0048 option 2): proposal to be written and
+  approved before any code.
+- COPR and AUR publishing waits for the maintainer's accounts.
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

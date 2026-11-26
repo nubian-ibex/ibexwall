@@ -270,6 +270,12 @@ impl Vm {
             "ConnectTimeout=5",
             "-o",
             "BatchMode=yes",
+            // A guest that panics or freezes never closes the session: give up
+            // after two silent minutes instead of waiting forever.
+            "-o",
+            "ServerAliveInterval=15",
+            "-o",
+            "ServerAliveCountMax=8",
             "ibex@127.0.0.1",
         ]);
         cmd

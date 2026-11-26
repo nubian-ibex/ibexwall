@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-system-snapshots"
+description = "Enables the set_system_snapshots command without any pre-configured scope."
+commands.allow = ["set_system_snapshots"]
+
+[[permission]]
+identifier = "deny-set-system-snapshots"
+description = "Denies the set_system_snapshots command without any pre-configured scope."
+commands.deny = ["set_system_snapshots"]

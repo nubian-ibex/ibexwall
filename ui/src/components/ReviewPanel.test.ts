@@ -4,6 +4,7 @@ import { app } from '../lib/app.svelte';
 import { changes } from '../lib/changes.svelte';
 import { FixtureTransport } from '../lib/fixtures';
 import { i18n } from '../lib/i18n.svelte';
+import { TransportError } from '../lib/transport';
 import ChangeLayer from './ChangeLayer.svelte';
 
 const op = { target: '/etc/x', op: 'file_write' };
@@ -179,5 +180,36 @@ describe('ReviewPanel', () => {
     await screen.findByRole('button', { name: 'Apply 1 change' });
     await fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('says a snapshot comes first, and why nothing changed when it fails', async () => {
+    const t = transport();
+    t.planChange = (async () => ({
+      id: 'p1',
+      plugin: 'net.dns',
+      ops: [op],
+      system_snapshot: true,
+    })) as never;
+    t.apply = (async () => {
+      throw new TransportError('com.ibexwall.Core.SnapshotFailed', { reason: 'no space left' });
+    }) as never;
+    await open([{ plugin: 'net.dns' }]);
+    expect(screen.getByText(/A system snapshot is taken first/)).toBeVisible();
+    await fireEvent.click(screen.getByRole('button', { name: /^Apply/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Nothing was changed: the system snapshot failed (no space left)',
+    );
+  });
+
+  it('warns when only the snapshot after the change failed', async () => {
+    const t = transport();
+    t.apply = (async () => ({
+      id: 'tx-1',
+      state: 'committed',
+      warning: 'snapperd went away',
+    })) as never;
+    await open([{ plugin: 'net.dns' }]);
+    await fireEvent.click(screen.getByRole('button', { name: /^Apply/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('snapperd went away');
   });
 });

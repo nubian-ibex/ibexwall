@@ -27,6 +27,7 @@ const ASKS_FOR_PASSWORD: &[&str] = &[
     "Rollback",
     "DecideProposal",
     "ImportState",
+    "SetSystemSnapshots",
 ];
 
 async fn core(method: &str, mut parameters: Value) -> Result<Value, String> {
@@ -74,6 +75,7 @@ macro_rules! command {
 }
 
 command!(get_info, "GetInfo");
+command!(get_system_snapshots, "GetSystemSnapshots");
 command!(get_posture, "GetPosture");
 command!(get_dns_status, "GetDnsStatus");
 command!(list_apps, "ListApps");
@@ -230,6 +232,13 @@ async fn restore_point_plan(name: String) -> Result<Value, Value> {
 #[tauri::command]
 async fn restore_point_apply(name: String) -> Result<Value, Value> {
     core("RestorePoint", json!({ "name": name, "apply": true }))
+        .await
+        .map_err(|e| err_text(&e))
+}
+
+#[tauri::command]
+async fn set_system_snapshots(enabled: bool) -> Result<Value, Value> {
+    core("SetSystemSnapshots", json!({ "enabled": enabled }))
         .await
         .map_err(|e| err_text(&e))
 }
@@ -423,6 +432,8 @@ pub fn run() {
             create_restore_point,
             restore_point_plan,
             restore_point_apply,
+            get_system_snapshots,
+            set_system_snapshots,
             export_state,
             import_state,
             list_proposals,

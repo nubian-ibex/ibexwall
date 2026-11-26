@@ -162,6 +162,16 @@
           <div class="when">
             <strong>{t(`history-result-${entry.result.replace(/_/g, '_')}`)}</strong>
             <span class="mono">{entry.plugin}</span>
+            {#if entry.system_snapshot}
+              <span class="mono">
+                {entry.system_snapshot.post == null
+                  ? t('history-snapshot-open', { pre: entry.system_snapshot.pre })
+                  : t('history-snapshot', {
+                      pre: entry.system_snapshot.pre,
+                      post: entry.system_snapshot.post,
+                    })}
+              </span>
+            {/if}
           </div>
           <div class="who">
             <span

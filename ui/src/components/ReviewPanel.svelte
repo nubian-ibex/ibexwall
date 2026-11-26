@@ -28,6 +28,8 @@
   let applied = $state<Transaction[]>([]);
   let pending = $state<Transaction[]>([]);
   let failure = $state<string | null>(null);
+  /** Changes that are in place but need a word, like a missing snapshot. */
+  let warnings = $state<string[]>([]);
   // Keep and Undo share one in-flight guard against a double click.
   let acting = $state(false);
   let heading: HTMLElement | undefined = $state();
@@ -48,6 +50,9 @@
 
   function describe(error: unknown): string {
     if (error instanceof TransportError) {
+      if (error.code.endsWith('.SnapshotFailed')) {
+        return t('change-snapshot-failed', { reason: String(error.parameters['reason'] ?? '') });
+      }
       const reason = error.parameters['reason'];
       const field = error.parameters['field'];
       if (typeof reason === 'string') {
@@ -92,6 +97,7 @@
       for (const plan of plans) {
         const tx = await app.waiting(() => app.transport.apply(plan.id));
         applied = [...applied, tx];
+        if (tx.warning) warnings = [...warnings, tx.warning];
         if (tx.state === 'pending_confirm') pending = [...pending, tx];
         if (tx.state === 'failed' || tx.state === 'rolled_back') {
           failure = t('hardening-stopped', { plugin: plan.plugin });
@@ -224,6 +230,10 @@
       </p>
     {/if}
 
+    {#each warnings as reason (reason)}
+      <p class="note failure" role="alert">{t('change-snapshot-after-failed', { reason })}</p>
+    {/each}
+
     {#if phase === 'review'}
       {#if planning}
         <p class="muted" role="status">{t('panel-planning')}</p>
@@ -233,6 +243,8 @@
         {/if}
         {#if empty}
           <p class="muted">{t('simulate-empty')}</p>
+        {:else if plans.some((p) => p.system_snapshot)}
+          <p class="note">{t('panel-system-snapshot')}</p>
         {/if}
         {#each plans as plan (plan.id)}
           {#if plan.ops.length > 0}

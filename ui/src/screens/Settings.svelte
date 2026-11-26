@@ -2,6 +2,7 @@
   import { app } from '../lib/app.svelte';
   import Button from '../components/Button.svelte';
   import StateFileCard from '../components/StateFileCard.svelte';
+  import SystemSnapshotsCard from '../components/SystemSnapshotsCard.svelte';
   import { i18n, languageName, LOCALES, t } from '../lib/i18n.svelte';
   import { applyTheme, savedTheme, THEMES, type Theme } from '../lib/theme';
 
@@ -44,6 +45,8 @@
     </select>
   </label>
 </section>
+
+<SystemSnapshotsCard />
 
 <StateFileCard />
 

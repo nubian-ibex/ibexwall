@@ -27,6 +27,8 @@
     "allow-create-restore-point",
     "allow-restore-point-plan",
     "allow-restore-point-apply",
+    "allow-get-system-snapshots",
+    "allow-set-system-snapshots",
     "allow-export-state",
     "allow-import-state",
     "allow-list-proposals",

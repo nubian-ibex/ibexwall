@@ -5,6 +5,7 @@ import type {
   AppDestination,
   RestorePoint,
   RestorePointPlanEntry,
+  SystemSnapshotStatus,
   FirewallState,
   AppEntry,
   ComplianceReport,
@@ -101,6 +102,9 @@ export interface NewTokenRequest {
   secret?: string;
 }
 
+/** An applied change, and what went wrong after it was already in place. */
+export type Applied = Transaction & { warning?: string };
+
 export interface Transport {
   getInfo(): Promise<Info>;
   getPosture(): Promise<Posture>;
@@ -127,7 +131,10 @@ export interface Transport {
   setMonitorEnabled(enabled: boolean): Promise<void>;
   getManifest(id: string): Promise<Record<string, unknown>>;
   planChange(plugin: string, patch: Record<string, unknown>): Promise<Plan>;
-  apply(planId: string, confirmTimeoutSeconds?: number): Promise<Transaction>;
+  apply(planId: string, confirmTimeoutSeconds?: number): Promise<Applied>;
+  /** System snapshots before risky changes (ADR-0050). */
+  getSystemSnapshots(): Promise<SystemSnapshotStatus>;
+  setSystemSnapshots(enabled: boolean): Promise<void>;
   confirm(transactionId: string): Promise<void>;
   rollback(target: string): Promise<Transaction>;
   history(limit?: number): Promise<HistoryEntry[]>;

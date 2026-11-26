@@ -208,6 +208,8 @@ export interface AllContracts {
   SettingChange?: SettingChange;
   Severity?: Severity;
   StateFile?: StateFile;
+  SystemSnapshot?: SystemSnapshot;
+  SystemSnapshotStatus?: SystemSnapshotStatus;
   Transaction?: Transaction;
   TransactionState?: TransactionState;
   Ui?: Ui;
@@ -526,8 +528,19 @@ export interface HistoryEntry {
   plugin: string;
   result: string;
   seq: number;
+  system_snapshot?: SystemSnapshot | null;
   transaction?: string | null;
   ts: string;
+}
+/**
+ * The numbers of the system snapshots taken around one change.
+ */
+export interface SystemSnapshot {
+  /**
+   * Absent when the snapshot after the change failed.
+   */
+  post?: number | null;
+  pre: number;
 }
 /**
  * What an import would write, before it does (ADR-0049: the machine never
@@ -673,6 +686,11 @@ export interface Plan {
   requires_confirm: boolean;
   reversible: Reversible;
   risk?: RiskFlag[];
+  /**
+   * A system snapshot is taken before applying (ADR-0050); if it fails,
+   * nothing is changed.
+   */
+  system_snapshot?: boolean;
 }
 /**
  * Plugin card data.
@@ -871,6 +889,17 @@ export interface StateFile {
   plugins: PluginStateEntry[];
   restore_points: RestorePointEntry[];
   schema: number;
+}
+/**
+ * Whether system snapshots are on, and whether they can be taken here.
+ */
+export interface SystemSnapshotStatus {
+  available: boolean;
+  enabled: boolean;
+  /**
+   * Why they cannot be taken, when they cannot.
+   */
+  reason?: string | null;
 }
 /**
  * A transaction (apply) of a plan.

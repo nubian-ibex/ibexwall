@@ -13,6 +13,7 @@ import type {
   ImportSummary,
   RestorePoint,
   RestorePointPlanEntry,
+  SystemSnapshotStatus,
   Info,
   Plan,
   PluginInfo,
@@ -662,6 +663,7 @@ export class FixtureTransport implements Transport {
       may_affect_keys: this.scenario === 'attention' ? ['posture-may-affect-example'] : [],
       requires_confirm: this.scenario === 'attention',
       expires_at: '2026-11-01T12:10:00Z',
+      system_snapshot: this.snapshots.enabled,
     }));
   }
 
@@ -708,6 +710,17 @@ export class FixtureTransport implements Transport {
 
   applyImport() {
     return this.gate(() => undefined);
+  }
+
+  snapshots: SystemSnapshotStatus = { enabled: false, available: true };
+
+  getSystemSnapshots() {
+    return this.gate((): SystemSnapshotStatus => ({ ...this.snapshots }));
+  }
+
+  async setSystemSnapshots(enabled: boolean) {
+    await this.gate(() => undefined);
+    this.snapshots = { ...this.snapshots, enabled };
   }
 
   listRestorePoints() {

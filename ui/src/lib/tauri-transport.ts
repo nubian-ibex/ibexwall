@@ -9,6 +9,7 @@ import type {
   ImportSummary,
   RestorePoint,
   RestorePointPlanEntry,
+  SystemSnapshotStatus,
   Info,
   ComplianceReport,
   Plan,
@@ -164,11 +165,20 @@ export class TauriTransport implements Transport {
     return unwrapped<Plan>('plan_change', 'plan', { plugin, patch });
   }
 
-  apply(planId: string, confirmTimeoutSeconds?: number) {
-    return unwrapped<Transaction>('apply', 'transaction', {
+  async apply(planId: string, confirmTimeoutSeconds?: number) {
+    const reply = await invoke<{ transaction: Transaction; warning?: string }>('apply', {
       planId,
       confirmTimeoutS: confirmTimeoutSeconds,
     });
+    return { ...reply.transaction, warning: reply.warning };
+  }
+
+  getSystemSnapshots() {
+    return unwrapped<SystemSnapshotStatus>('get_system_snapshots', 'status');
+  }
+
+  async setSystemSnapshots(enabled: boolean) {
+    await invoke('set_system_snapshots', { enabled });
   }
 
   async confirm(transactionId: string): Promise<void> {

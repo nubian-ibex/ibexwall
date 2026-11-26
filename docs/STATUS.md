@@ -31,14 +31,16 @@ summary).
   Fedora 45 test VMs (7.2.11) logged double faults on 2026-11-10, before
   `m5` existed, so a host or KVM cause is possible and unproven. Serial
   log: `~/.cache/ibexwall/vm/work-1795658638/serial.log`.
+- 13 more `f6` runs on Arch on 2026-11-26: 12 passed, the first one hung in
+  `m4` with no panic on the serial console (no guest state captured); the
+  last 12 passed in a row. **Cause of both failures still unknown.** The
+  maintainer chose to publish `v0.5.0` with this open.
 - GitHub shows `v0.4.1` as a draft that was never published (latest
   published is `v0.4.0`), although earlier notes say it was published.
 
-Next: reproduce or rule out the Arch panic; then push, CI, regenerate the
-`v0.5.0` draft, reinstall the three maintainer VMs (`.113` still has
-hand-copied test binaries, test units and `ask_fallback=block`); the
-maintainer's calls on publishing `v0.4.1` and `v0.5.0`; the app's Settings
-section (M3).
+Next: push, CI, regenerate the `v0.5.0` draft, reinstall the three
+maintainer VMs, publish. Open: the Arch panic and hang, the unpublished
+`v0.4.1` draft, the app's Settings section (M3).
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

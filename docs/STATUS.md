@@ -3,44 +3,43 @@
 
 # STATUS
 
-Last updated: 2026-11-26 (Ask flood check; one Arch kernel panic open)
+Last updated: 2026-11-26 (v0.5.0 published; Arch VM failures open)
 
 ## Current phase
 
-**Now: v0.5.0 tagged 2026-11-25, release is a DRAFT** (not published).
-Contents: the state file (ADR-0049, approved and implemented: `ibexctl
-export [FILE]`, `import FILE [--dry-run|--yes]`; digest-checked, org layer
-refused, the import audited and never touching the machine) plus cookie
-0.18.3 and url 2.5.9 from cargo-deny advisories. Verified on all three
-maintainer VMs (Fedora .107, Ubuntu .106, EndeavourOS .113), including the
-import flipping a plugin state back with its summary. A CLI double-apply
-was caught on .113 and fixed (one dry run, one apply, each with its own
-summary).
+**Now: v0.5.0 published 2026-11-26** (latest release). Contents: the state
+file (ADR-0049: `ibexctl export [FILE]`, `import FILE [--dry-run|--yes]`;
+digest-checked, org layer refused, the import audited and never touching the
+machine), the Ask map fix (`ASK_FLOWS` held 4096 LRU entries for random
+16-bit ids and let held flows out unasked; now 65536; found by the new VM
+scenario `f6 m5`, 5000 flows against the Ask queue) and cookie 0.18.3 and
+url 2.5.9.
 
-**Since the draft (local `main`, not pushed):**
+Verified before publishing: CI and Scorecard green, release checksums and
+signatures (`xtask verify-release`), and a purge and reinstall on the three
+maintainer VMs (Fedora 45, Ubuntu 26.10, EndeavourOS): nothing degraded,
+audit chain valid, the 65536-entry map loaded, export and import dry run.
+VM matrix 16 of 16 green (it ran with a faulty uncommitted `ibexwall-nfq`
+debug change, since reverted).
 
-- New VM scenario `f6 m5` (5000 new flows against the Ask queue). It found
-  that `ASK_FLOWS` (4096 LRU entries, random 16-bit ids) let held flows out
-  unasked; fixed in `5ae186f` (65536 entries). The draft predates the fix.
-- Full matrix, 16 of 16 green: `f10` on five distros, `desktop` and
-  `firewall-on`, `f5`, `f3`, `audit`. It ran with a faulty uncommitted
-  debug change in `ibexwall-nfq`, since reverted.
-- `f6` rerun on the committed code: Fedora and Ubuntu 24.04 all green.
-  **Arch (7.3.4-arch1-2) panicked during `m5`** (double fault, stack guard
-  page, in `swapper`) and the run hung until killed. Cause unknown. Two
-  Fedora 45 test VMs (7.2.11) logged double faults on 2026-11-10, before
-  `m5` existed, so a host or KVM cause is possible and unproven. Serial
-  log: `~/.cache/ibexwall/vm/work-1795658638/serial.log`.
-- 13 more `f6` runs on Arch on 2026-11-26: 12 passed, the first one hung in
-  `m4` with no panic on the serial console (no guest state captured); the
-  last 12 passed in a row. **Cause of both failures still unknown.** The
-  maintainer chose to publish `v0.5.0` with this open.
-- GitHub shows `v0.4.1` as a draft that was never published (latest
-  published is `v0.4.0`), although earlier notes say it was published.
+**Open:**
 
-Next: push, CI, regenerate the `v0.5.0` draft, reinstall the three
-maintainer VMs, publish. Open: the Arch panic and hang, the unpublished
-`v0.4.1` draft, the app's Settings section (M3).
+- `f6` on Arch (7.3.4-arch1-2) failed 2 of 14 runs on the committed code:
+  one guest kernel panic during `m5` (double fault, stack guard page, in
+  `swapper`) and one hang in `m4` with a silent serial console. The last 12
+  runs passed; Fedora and Ubuntu 24.04 passed. **Cause unknown.** Two Fedora
+  45 test VMs logged double faults on 2026-11-10, before `m5` existed, so a
+  host or KVM cause is possible and unproven. Serial log of the panic:
+  `~/.cache/ibexwall/vm/work-1795658638/serial.log`.
+- `xtask` has no SSH keepalive: a dead guest hangs the run.
+- Package install and removal each log one transient denial: AppArmor
+  `change_onexec` "label not found" on Ubuntu while the profile is not yet
+  loaded, and an SELinux `remove_name` on `core.sock` on Fedora while
+  removing. None after a daemon restart.
+- `v0.4.1` is still an unpublished draft (earlier notes said otherwise);
+  0.5.0 contains its fix.
+- The app's Settings section for export and import (v0.5 M3), and the same
+  topic in the public docs.
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

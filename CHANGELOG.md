@@ -12,6 +12,8 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
 
 - Packages: removing IbexWall on Debian and Ubuntu no longer logs an
   AppArmor refusal.
+- Desktop app: the window no longer stays white in VMware and VirtualBox
+  guests with an X11 session.
 
 ## 0.5.1 (2026-11-26)
 

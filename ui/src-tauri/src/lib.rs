@@ -6,6 +6,7 @@
 //! No remote content, no updater (updates come from the distro).
 
 mod appinfo;
+mod rendering;
 mod statefile;
 
 use ibexwall_proto::names;
@@ -376,6 +377,7 @@ fn finish_prompt(app: tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    rendering::restart_if_needed();
     tauri::Builder::default()
         .setup(|app| {
             if prompt_mode() {

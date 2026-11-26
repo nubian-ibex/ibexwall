@@ -6,6 +6,13 @@
 Versions follow [Semantic Versioning](https://semver.org). The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## Unreleased
+
+### Fixed
+
+- Packages: removing IbexWall on Debian and Ubuntu no longer logs an
+  AppArmor refusal.
+
 ## 0.5.1 (2026-11-26)
 
 ### Added

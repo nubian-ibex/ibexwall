@@ -8,6 +8,15 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
 
 ## Unreleased
 
+### Added
+
+- System snapshots (ADR-0050), off by default: where snapper has a `root`
+  configuration, IbexWall takes a snapshot before a change marked with risk
+  and another after it. If the first one fails, nothing is changed and the
+  reason is shown. Turn it on in Settings or with `ibexctl snapshots on`;
+  History shows the snapshot numbers. IbexWall never configures snapper,
+  deletes a snapshot or restores one.
+
 ### Fixed
 
 - Packages: removing IbexWall on Debian and Ubuntu no longer logs an
@@ -35,17 +44,6 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
 - Packages: no more AppArmor refusal while installing on Debian and Ubuntu
   (the daemon briefly started unconfined), and no SELinux refusal while
   removing on Fedora.
-
-## Unreleased
-
-### Added
-
-- System snapshots (ADR-0050), off by default: where snapper has a `root`
-  configuration, IbexWall takes a snapshot before a change marked with risk
-  and another after it. If the first one fails, nothing is changed and the
-  reason is shown. Turn it on in Settings or with `ibexctl snapshots on`;
-  History shows the snapshot numbers. IbexWall never configures snapper,
-  deletes a snapshot or restores one.
 
 ## 0.5.0 (2026-11-26)
 

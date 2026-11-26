@@ -9,14 +9,18 @@
 //! refused outright (its locks belong to the organization), and the digest
 //! is checked so a truncated or hand-edited file is caught.
 
+use std::collections::BTreeSet;
+
 use anyhow::{Context as _, Result};
 use serde_json::{Map, Value, json};
 
 use super::*;
+use crate::config::LayerFile;
 
 const SCHEMA: u64 = 1;
 
 pub(crate) async fn export(core: &Arc<Core>) -> Result<Reply, VarlinkError> {
+    reload_config_blocking(core).await;
     let file = build(core).map_err(internal)?;
     Ok(Reply::result(json!({ "file": file })))
 }
@@ -127,38 +131,42 @@ pub(crate) async fn import(
             "the organization layer and its locks are not importable; they belong to the organization".into(),
         ));
     }
-    let user: crate::config::LayerFile =
+    let mut user: LayerFile =
         serde_json::from_value(layers.get("user").cloned().unwrap_or(json!({}))).map_err(|e| {
             invalid_argument("file", format!("the user layer is not readable: {e}"))
         })?;
-    let profile: crate::config::LayerFile = serde_json::from_value(
+    let mut profile: LayerFile = serde_json::from_value(
         layers.get("profile").cloned().unwrap_or(json!({})),
     )
     .map_err(|e| invalid_argument("file", format!("the profile layer is not readable: {e}")))?;
     check_digest(&parsed).map_err(|e| invalid_argument("file", e))?;
 
-    // What differs from this machine, and what the organization keeps locked.
-    let config = core.config.read().expect("config lock poisoned");
-    let mut settings: Vec<Value> = Vec::new();
-    let mut locked: Vec<String> = Vec::new();
-    for (plugin, keys) in &user.plugins {
-        for (key, value) in keys {
-            let same = config
-                .user
-                .plugins
-                .get(plugin)
-                .and_then(|k| k.get(key))
-                .is_some_and(|current| current == value);
-            if same {
-                continue;
-            }
-            match config.is_locked(plugin, key) {
-                Some(pattern) => locked.push(format!("{plugin}.{key} ({pattern})")),
-                None => settings.push(json!({ "plugin": plugin, "key": key })),
+    // What differs from this machine, in both layers and both directions: the
+    // import replaces each layer whole, so a key the file lacks goes away. A
+    // key the organization locks keeps what this machine has.
+    reload_config_blocking(core).await;
+    let mut changed = BTreeSet::new();
+    let mut locked = BTreeSet::new();
+    {
+        let config = core.config.read().expect("config lock poisoned");
+        for (imported, current) in [(&mut user, &config.user), (&mut profile, &config.profile)] {
+            for (plugin, key) in differing(imported, current) {
+                match config.is_locked(&plugin, &key) {
+                    Some(pattern) => {
+                        locked.insert(format!("{plugin}.{key} ({pattern})"));
+                        keep_current(imported, current, &plugin, &key);
+                    }
+                    None => {
+                        changed.insert((plugin, key));
+                    }
+                }
             }
         }
     }
-    drop(config);
+    let settings: Vec<Value> = changed
+        .into_iter()
+        .map(|(plugin, key)| json!({ "plugin": plugin, "key": key }))
+        .collect();
 
     let mut plugin_changes: Vec<Value> = Vec::new();
     if let Some(list) = parsed.get("plugins").and_then(Value::as_array) {
@@ -222,6 +230,29 @@ pub(crate) async fn import(
         "plugins": plugin_changes.len(),
         "locked_kept": locked.len(),
     })))
+}
+
+/// The `(plugin, key)` pairs whose value is not the same in both layers.
+fn differing(a: &LayerFile, b: &LayerFile) -> BTreeSet<(String, String)> {
+    let mut out = BTreeSet::new();
+    for (from, other) in [(a, b), (b, a)] {
+        for (plugin, keys) in &from.plugins {
+            for (key, value) in keys {
+                if other.plugins.get(plugin).and_then(|k| k.get(key)) != Some(value) {
+                    out.insert((plugin.clone(), key.clone()));
+                }
+            }
+        }
+    }
+    out
+}
+
+fn keep_current(imported: &mut LayerFile, current: &LayerFile, plugin: &str, key: &str) {
+    let section = imported.plugins.entry(plugin.into()).or_default();
+    match current.plugins.get(plugin).and_then(|k| k.get(key)) {
+        Some(value) => section.insert(key.into(), value.clone()),
+        None => section.remove(key),
+    };
 }
 
 fn check_digest(parsed: &Value) -> Result<(), String> {

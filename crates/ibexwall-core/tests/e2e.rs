@@ -422,6 +422,76 @@ async fn the_state_file_round_trips_and_refuses_edits_and_org_layers() {
 }
 
 #[tokio::test]
+async fn an_import_lists_every_difference_and_keeps_locked_keys() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let etc = sandbox.root.join("etc/ibexwall");
+    std::fs::create_dir_all(etc.join("profiles.d")).unwrap();
+    let write = |name: &str, body: &str| std::fs::write(etc.join(name), body).unwrap();
+    write(
+        "config.toml",
+        "[plugins.\"dev.echo\"]\npinned = \"file\"\nsame = 1\n",
+    );
+    write(
+        "profiles.d/active.toml",
+        "[plugins.\"dev.echo\"]\nfrom_profile = \"file\"\n",
+    );
+    let (core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+    let file = client
+        .call("com.ibexwall.Core.ExportState", json!({}))
+        .await
+        .unwrap()["file"]
+        .clone();
+    let text = serde_json::to_string(&file).unwrap();
+
+    // The machine moves on: a key the file does not have, a changed profile
+    // value, and a key the organization now locks.
+    write(
+        "config.toml",
+        "[plugins.\"dev.echo\"]\npinned = \"local\"\nsame = 1\nadded = true\n",
+    );
+    write(
+        "profiles.d/active.toml",
+        "[plugins.\"dev.echo\"]\nfrom_profile = \"local\"\n",
+    );
+    write("org.toml", "lock = [\"dev.echo.pinned\"]\n");
+
+    let run = client
+        .call(
+            "com.ibexwall.Core.ImportState",
+            json!({ "file": text, "apply": false }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        run["settings"],
+        json!([
+            { "plugin": "dev.echo", "key": "added" },
+            { "plugin": "dev.echo", "key": "from_profile" },
+        ])
+    );
+    assert_eq!(run["locked"], json!(["dev.echo.pinned (dev.echo.pinned)"]));
+
+    let done = client
+        .call(
+            "com.ibexwall.Core.ImportState",
+            json!({ "file": text, "apply": true }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(done["settings"], 2);
+    assert_eq!(done["locked_kept"], 1);
+    let config = core.config.read().unwrap();
+    let user = &config.user.plugins["dev.echo"];
+    assert_eq!(user["pinned"], "local", "a locked key keeps its value");
+    assert!(!user.contains_key("added"));
+    assert_eq!(config.profile.plugins["dev.echo"]["from_profile"], "file");
+}
+
+#[tokio::test]
 async fn full_flow_plan_apply_rollback_confirm_and_gates() {
     if plugin_binary().is_none() {
         eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");

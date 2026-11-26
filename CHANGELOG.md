@@ -13,6 +13,10 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
 - Desktop app: the History screen failed to load, and restore points could
   not be used from it, since 0.4.0: the window was never allowed to call the
   restore point commands.
+- Importing a state file: the dry run now lists every setting that differs,
+  including profile settings and settings the file would remove, and
+  `ibexctl import` counts them correctly and names the locked ones. A setting
+  the organization locks keeps the value this machine has.
 
 ## 0.5.0 (2026-11-26)
 

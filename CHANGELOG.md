@@ -23,6 +23,9 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
   including profile settings and settings the file would remove, and
   `ibexctl import` counts them correctly and names the locked ones. A setting
   the organization locks keeps the value this machine has.
+- Packages: no more AppArmor refusal while installing on Debian and Ubuntu
+  (the daemon briefly started unconfined), and no SELinux refusal while
+  removing on Fedora.
 
 ## 0.5.0 (2026-11-26)
 

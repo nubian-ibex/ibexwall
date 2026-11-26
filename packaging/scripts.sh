@@ -31,6 +31,10 @@ post_install() {
     [ -d /var/lib/ibexwall ] || fresh_install=yes
     systemd-sysusers /usr/lib/sysusers.d/ibexwall.conf /usr/lib/sysusers.d/ibexwall-dns.conf >/dev/null 2>&1 || true
     systemd-tmpfiles --create /usr/lib/tmpfiles.d/ibexwall.conf >/dev/null 2>&1 || true
+    # The profiles must be loaded before the first unit starts, or it starts
+    # unconfined. ibexwall-apparmor is configured after this package, but in
+    # the same transaction its files are already unpacked.
+    [ ! -e "$apparmor_share/usr.bin.ibexwalld" ] || apparmor_load
     if have_systemd; then
         systemctl daemon-reload >/dev/null 2>&1 || true
         # shellcheck disable=SC2046
@@ -119,7 +123,7 @@ apparmor_active() {
     [ -x /usr/sbin/apparmor_parser ] && [ "$(cat /sys/module/apparmor/parameters/enabled 2>/dev/null)" = Y ]
 }
 
-apparmor_install() {
+apparmor_load() {
     [ -d /etc/apparmor.d ] || return 0
     ln -sfn "$apparmor_share/ibexwall" /etc/apparmor.d/ibexwall
     for profile in $apparmor_profiles; do
@@ -128,6 +132,10 @@ apparmor_install() {
             apparmor_parser -r -T -W "/etc/apparmor.d/$profile" || echo "ibexwall-apparmor: $profile did not load" >&2
         fi
     done
+}
+
+apparmor_install() {
+    apparmor_load
     # The services already running are put under their profiles.
     if have_systemd && apparmor_active; then
         systemctl try-restart ibexwalld.service ibexwall-dns.service ibexwall-mcp.service >/dev/null 2>&1 || true

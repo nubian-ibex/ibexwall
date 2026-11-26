@@ -29,15 +29,13 @@ the Ubuntu VM. Public docs deployed. What it fixed and added over 0.5.0:
 
 **Open:**
 
-- v0.6, system snapshots with snapper (approved 2026-11-26): implemented on
-  the local branch `v0.6-snapshots`, rebased on this `main`, not merged. Its
-  matrix: `snapshots` on Fedora and Arch, `f10` and `desktop` on five distros;
-  10 of 12 runs passed and the two that failed (an AppArmor removal message,
-  fixed here; a guest reset on Debian) passed when repeated. Left: the
-  maintainer's call on merge and release; AppArmor with a btrfs root on
-  Ubuntu or Debian is not verified; the new UI was not seen on a real VM.
-- Local `main` has an unpushed packaging fix: removing the AppArmor package
-  restarted the daemon and logged a refused profile change.
+- v0.6, system snapshots with snapper (approved 2026-11-26): on the local
+  branch `v0.6-snapshots`, not merged, installed on the three maintainer VMs
+  and checked there (real snapper on btrfs, the app on Ubuntu). Details in
+  its plan. Left: the maintainer's check, then merge and release.
+- The Hardening screen can show stale findings right after "Undo" (the core
+  re-runs the checks in the background and the app reads at once); reopening
+  the screen shows the right state. It predates v0.6.
 - **Test VMs fail without a known cause** (2026-11-25/26): on Arch 7.3.4 a
   kernel panic (double fault) and a hang during `f6`; on Fedora 45 a guest
   that stopped answering during `snapshots`; on Debian 13 a guest that reset

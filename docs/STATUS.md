@@ -32,7 +32,7 @@ the Ubuntu VM. Public docs deployed. What it fixed and added over 0.5.0:
 - v0.6, system snapshots with snapper (approved 2026-11-26): implemented on
   the local branch `v0.6-snapshots`, rebased on this `main`, not merged. Its
   matrix: `snapshots` on Fedora and Arch, `f10` and `desktop` on five distros;
-  19 of 21 runs passed and the two that failed (an AppArmor removal message,
+  10 of 12 runs passed and the two that failed (an AppArmor removal message,
   fixed here; a guest reset on Debian) passed when repeated. Left: the
   maintainer's call on merge and release; AppArmor with a btrfs root on
   Ubuntu or Debian is not verified; the new UI was not seen on a real VM.

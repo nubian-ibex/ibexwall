@@ -63,6 +63,8 @@ const CORE_TYPES: &[&str] = &[
     "Prompt",
     "ProposalStatus",
     "Proposal",
+    "SystemSnapshot",
+    "SystemSnapshotStatus",
 ];
 
 const CORE_METHODS: &str = "\
@@ -117,12 +119,18 @@ method GetFirewall() -> (firewall: FirewallState)
 # Added in v1 (additive): turn the connection monitor unit on or off.
 method SetMonitorEnabled(enabled: bool, allowInteractiveAuthentication: ?bool) -> ()
 
+# Added in v1 (additive): system snapshots around risky changes (ADR-0050).
+# Apply also replies system_snapshot, and warning when the second one failed.
+method GetSystemSnapshots() -> (status: SystemSnapshotStatus)
+method SetSystemSnapshots(enabled: bool, allowInteractiveAuthentication: ?bool) -> ()
+
 error PermissionDenied (action: string)
 error AuthenticationRequired (action: string, interactive_possible: bool)
 error NotFound (kind: string, id: string)
 error Locked (keys: []string, source: string)
 error PlanExpired (plan_id: string)
 error PlanStale (plan_id: string)
+error SnapshotFailed (reason: string)
 error Conflict (reason: string)
 error InvalidArgument (field: string, reason: string)
 ";

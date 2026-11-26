@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The numbers of the system snapshots taken around one change.",
+  "properties": {
+    "post": {
+      "description": "Absent when the snapshot after the change failed.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "pre": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "pre"
+  ],
+  "title": "SystemSnapshot",
+  "type": "object"
+}

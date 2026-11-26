@@ -22,6 +22,7 @@ use crate::state::TxStatus;
 use crate::{Core, TxRow};
 
 mod state_file;
+mod system_snapshots;
 mod transactions;
 mod views;
 
@@ -573,6 +574,8 @@ async fn dispatch(
         "Rollback" => rollback(core, &parameters, &actor).await,
         "ExportState" => state_file::export(core).await,
         "ImportState" => state_file::import(core, &parameters, &actor).await,
+        "GetSystemSnapshots" => system_snapshots::status(core).await,
+        "SetSystemSnapshots" => system_snapshots::set(core, &parameters, &actor).await,
         "CreateRestorePoint" => create_restore_point(core, &parameters, &actor).await,
         "ListRestorePoints" => list_restore_points(core).await,
         "RestorePoint" => restore_point(core, &parameters, &actor).await,
@@ -583,11 +586,16 @@ async fn dispatch(
                 .unwrap_or(50)
                 .min(500) as usize;
             let rows = core.state.list_transactions(limit).map_err(internal)?;
+            let snapshots = core.state.transaction_snapshots().map_err(internal)?;
             let entries: Vec<Value> = rows
                 .into_iter()
                 .enumerate()
                 .map(|(seq, (id, plugin, state))| {
-                    json!({ "seq": seq + 1, "ts": "", "actor": "", "plugin": plugin, "transaction": id, "result": state })
+                    let mut entry = json!({ "seq": seq + 1, "ts": "", "actor": "", "plugin": plugin, "transaction": id, "result": state });
+                    if let Some(snapshot) = snapshots.get(&id) {
+                        entry["system_snapshot"] = json!(snapshot);
+                    }
+                    entry
                 })
                 .collect();
             Ok(Reply::result(json!({ "entries": entries })))
@@ -1024,8 +1032,11 @@ fn polkit_action(method: &str, parameters: &Value) -> Option<&'static str> {
         | "ListAudit"
         | "ListComplianceProfiles"
         | "GetCompliance"
-        | "ExportCompliance" => names::POLKIT_READ,
-        "SetPluginEnabled" | "SetMonitorEnabled" => names::POLKIT_PLUGINS_MANAGE,
+        | "ExportCompliance"
+        | "GetSystemSnapshots" => names::POLKIT_READ,
+        "SetPluginEnabled" | "SetMonitorEnabled" | "SetSystemSnapshots" => {
+            names::POLKIT_PLUGINS_MANAGE
+        }
         "SetAppMode" | "SetDefaultMode" | "AnswerPrompt" => names::POLKIT_APPS_DECIDE,
         "PlanChange" => names::POLKIT_PLAN,
         "ListProposals" => names::POLKIT_READ,
@@ -1253,11 +1264,7 @@ async fn build_plan(
         ops_json: serde_json::to_string(&ops).map_err(internal)?,
         requires_confirm,
         confirm_timeout_s: CONFIRM_TIMEOUT_S,
-        fingerprint: core
-            .config
-            .read()
-            .expect("config lock poisoned")
-            .fingerprint(),
+        fingerprint: system_snapshots::plan_fingerprint(core).map_err(internal)?,
         expires_at: expires_at.clone(),
         created_at: now,
     };
@@ -1288,6 +1295,10 @@ async fn build_plan(
         },
         requires_confirm,
         expires_at,
+        system_snapshot: system_snapshots::wanted(
+            core.state.system_snapshots_enabled().map_err(internal)?,
+            &risk,
+        ),
     };
     core.audit(
         actor,
@@ -1331,13 +1342,7 @@ async fn apply(core: &Arc<Core>, parameters: &Value, actor: &str) -> Result<Repl
     // Expiry and staleness (spec §4.5). The config is re-read so a
     // change since the plan was made actually fires PlanStale.
     reload_config_blocking(core).await;
-    if core
-        .config
-        .read()
-        .expect("config lock poisoned")
-        .fingerprint()
-        != plan.fingerprint
-    {
+    if system_snapshots::plan_fingerprint(core).map_err(internal)? != plan.fingerprint {
         return Err(err("PlanStale", json!({ "plan_id": plan_id })));
     }
     if ibexwall_sys::RealClock.unix_now() > parse_unix(&plan.expires_at) {
@@ -1399,6 +1404,31 @@ async fn apply(core: &Arc<Core>, parameters: &Value, actor: &str) -> Result<Repl
         ));
     }
 
+    // The system snapshot the review promised (ADR-0050) comes before
+    // anything changes; without it, nothing does.
+    let wanted = system_snapshots::wanted(
+        core.state.system_snapshots_enabled().map_err(internal)?,
+        &flags,
+    );
+    let system_pre = if wanted {
+        match system_snapshots::take_pre(core, &tx_id).await {
+            Ok(number) => Some(number),
+            Err(reason) => {
+                let _ = core.state.mark_transaction(&tx_id, TxStatus::RolledBack);
+                core.audit(
+                    actor,
+                    &plan.plugin,
+                    Some(&tx_id),
+                    &crate::audit::ops_digest(&ops),
+                    "system-snapshot-failed",
+                );
+                return Err(err("SnapshotFailed", json!({ "reason": reason })));
+            }
+        }
+    } else {
+        None
+    };
+
     // Snapshot, then execute (spec §4.5 order). Execs the manifest marked
     // symmetric are re-run by the rollback once the files are back.
     let reload_execs: Vec<(String, Vec<String>)> = manifest
@@ -1449,6 +1479,9 @@ async fn apply(core: &Arc<Core>, parameters: &Value, actor: &str) -> Result<Repl
                 &crate::audit::ops_digest(&ops),
                 "apply-failed",
             );
+            if let Some(pre) = system_pre {
+                let _ = system_snapshots::take_post(core, &tx_id, pre).await;
+            }
             return Err(err("Conflict", json!({ "reason": format!("{e:#}") })));
         }
     };
@@ -1479,6 +1512,9 @@ async fn apply(core: &Arc<Core>, parameters: &Value, actor: &str) -> Result<Repl
             &crate::audit::ops_digest(&ops),
             "verify-failed",
         );
+        if let Some(pre) = system_pre {
+            let _ = system_snapshots::take_post(core, &tx_id, pre).await;
+        }
         return Err(err(
             "Conflict",
             json!({ "reason": "plugin verification failed" }),
@@ -1526,9 +1562,28 @@ async fn apply(core: &Arc<Core>, parameters: &Value, actor: &str) -> Result<Repl
             restore_point,
         }
     };
+    let mut reply = json!({ "transaction": transaction });
+    if let Some(pre) = system_pre {
+        match system_snapshots::take_post(core, &tx_id, pre).await {
+            Ok(post) => reply["system_snapshot"] = json!({ "pre": pre, "post": post }),
+            Err(reason) => {
+                core.audit(
+                    actor,
+                    &plan.plugin,
+                    Some(&tx_id),
+                    &crate::audit::ops_digest(&ops),
+                    "system-snapshot-post-failed",
+                );
+                reply["system_snapshot"] = json!({ "pre": pre });
+                reply["warning"] = json!(format!(
+                    "the change is in place, but the snapshot after it failed: {reason}"
+                ));
+            }
+        }
+    }
     core.refresh_plugin_findings(None);
     core.publish_transaction_event(&transaction);
-    Ok(Reply::result(json!({ "transaction": transaction })))
+    Ok(Reply::result(reply))
 }
 
 #[cfg(test)]

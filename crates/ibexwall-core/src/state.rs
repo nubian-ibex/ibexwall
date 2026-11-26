@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use anyhow::{Context, Result};
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension as _};
 
 use ibexwall_proto::TransactionState;
 use ibexwall_sys::Clock;
@@ -164,6 +164,11 @@ const MIGRATIONS: &[(&str, &str)] = &[
     (
         "0010_restore_points",
         "CREATE TABLE restore_points (\n             name TEXT PRIMARY KEY,\n             tx TEXT NOT NULL,\n             created_at INTEGER NOT NULL\n         );",
+    ),
+    (
+        "0011_system_snapshots",
+        "ALTER TABLE transactions ADD COLUMN snapshot_pre INTEGER;
+         ALTER TABLE transactions ADD COLUMN snapshot_post INTEGER;",
     ),
 ];
 
@@ -590,6 +595,62 @@ impl State {
                 out.push(row?);
             }
             Ok(out)
+        })
+    }
+
+    // system snapshots (ADR-0050) ---------------------------------------
+    pub fn system_snapshots_enabled(&self) -> Result<bool> {
+        self.with_conn(|conn| {
+            let value: Option<i64> = conn
+                .query_row(
+                    "SELECT value FROM config WHERE key = 'system_snapshots'",
+                    [],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            Ok(value == Some(1))
+        })
+    }
+
+    pub fn set_system_snapshots(&self, enabled: bool) -> Result<()> {
+        self.with_conn(|conn| {
+            conn.execute(
+                "INSERT OR REPLACE INTO config (key, value) VALUES ('system_snapshots', ?1)",
+                rusqlite::params![i64::from(enabled)],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn set_transaction_snapshot(&self, tx: &str, pre: u32, post: Option<u32>) -> Result<()> {
+        self.with_conn(|conn| {
+            conn.execute(
+                "UPDATE transactions SET snapshot_pre = ?2, snapshot_post = ?3 WHERE id = ?1",
+                rusqlite::params![tx, pre, post],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// The system snapshots of the transactions that have them.
+    pub fn transaction_snapshots(
+        &self,
+    ) -> Result<std::collections::HashMap<String, ibexwall_proto::SystemSnapshot>> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, snapshot_pre, snapshot_post FROM transactions
+                 WHERE snapshot_pre IS NOT NULL",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    ibexwall_proto::SystemSnapshot {
+                        pre: row.get(1)?,
+                        post: row.get(2)?,
+                    },
+                ))
+            })?;
+            Ok(rows.collect::<rusqlite::Result<_>>()?)
         })
     }
 

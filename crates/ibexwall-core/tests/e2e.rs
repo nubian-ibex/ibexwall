@@ -173,18 +173,26 @@ fn test_service_info() -> ibexwall_varlink::ServiceInfo {
 }
 
 async fn spawn_daemon(sandbox: &Sandbox, polkit: FakePolkit) -> (Arc<Core>, Client) {
-    let core = Arc::new(
-        Core::open(
-            sandbox.root.clone(),
-            Some(
-                sandbox
-                    .root
-                    .join("usr/lib/ibexwall/plugins/dev.echo/dev.pub"),
-            ),
-        )
-        .await
-        .unwrap(),
-    );
+    spawn_daemon_with(sandbox, polkit, |_| {}).await
+}
+
+async fn spawn_daemon_with(
+    sandbox: &Sandbox,
+    polkit: FakePolkit,
+    prepare: impl FnOnce(&mut Core),
+) -> (Arc<Core>, Client) {
+    let mut core = Core::open(
+        sandbox.root.clone(),
+        Some(
+            sandbox
+                .root
+                .join("usr/lib/ibexwall/plugins/dev.echo/dev.pub"),
+        ),
+    )
+    .await
+    .unwrap();
+    prepare(&mut core);
+    let core = Arc::new(core);
     let api = Api::with_polkit(Arc::clone(&core), Arc::new(polkit));
     // Fresh socket per daemon (the crash-recovery test runs two).
     static DAEMONS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -489,6 +497,155 @@ async fn an_import_lists_every_difference_and_keeps_locked_keys() {
     assert_eq!(user["pinned"], "local", "a locked key keeps its value");
     assert!(!user.contains_key("added"));
     assert_eq!(config.profile.plugins["dev.echo"]["from_profile"], "file");
+}
+
+/// Plans one dev.echo template and returns the plan.
+async fn echo_plan(client: &mut Client, template: &str) -> serde_json::Value {
+    client
+        .call(
+            "com.ibexwall.Core.PlanChange",
+            json!({ "plugin": "dev.echo", "patch": { "template": template } }),
+        )
+        .await
+        .unwrap()["plan"]
+        .clone()
+}
+
+#[tokio::test]
+async fn system_snapshots_surround_risky_changes_only() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let fake = Arc::new(ibexwall_sys::FakeSnapshots::default());
+    let (core, mut client) = spawn_daemon_with(&sandbox, all_actions_polkit(), |core| {
+        core.snapshots = fake.clone();
+    })
+    .await;
+    client
+        .call(
+            "com.ibexwall.Core.SetPluginEnabled",
+            json!({ "id": "dev.echo", "enabled": true }),
+        )
+        .await
+        .unwrap();
+    let artifact = sandbox.root.join("etc/sysctl.d/90-ibexwall-net-test.conf");
+    let apply = |id: &serde_json::Value| json!({ "plan_id": id });
+    let switch = |on: bool| json!({ "enabled": on });
+
+    // Off by default, and a machine without snapper cannot turn it on.
+    let early = echo_plan(&mut client, "network").await;
+    assert_eq!(early["system_snapshot"], false);
+    fake.set_unavailable(Some("snapper is not installed"));
+    let error = client
+        .call("com.ibexwall.Core.SetSystemSnapshots", switch(true))
+        .await
+        .unwrap_err();
+    assert_eq!(error.name, "com.ibexwall.Core.InvalidArgument");
+    let status = client
+        .call("com.ibexwall.Core.GetSystemSnapshots", json!({}))
+        .await
+        .unwrap()["status"]
+        .clone();
+    assert_eq!(
+        status,
+        json!({ "enabled": false, "available": false, "reason": "snapper is not installed" })
+    );
+    fake.set_unavailable(None);
+    client
+        .call("com.ibexwall.Core.SetSystemSnapshots", switch(true))
+        .await
+        .unwrap();
+
+    // A plan reviewed before the switch moved is stale.
+    let error = client
+        .call("com.ibexwall.Core.Apply", apply(&early["id"]))
+        .await
+        .unwrap_err();
+    assert_eq!(error.name, "com.ibexwall.Core.PlanStale");
+
+    // No risk, no snapshot.
+    let calm = echo_plan(&mut client, "dropin_file").await;
+    assert_eq!(calm["system_snapshot"], false);
+    let done = client
+        .call("com.ibexwall.Core.Apply", apply(&calm["id"]))
+        .await
+        .unwrap();
+    assert!(done.get("system_snapshot").is_none());
+    assert!(fake.log.is_empty());
+
+    // The first snapshot fails: nothing changes, and the reason is given.
+    fake.set_failing(Some("no space left"));
+    let risky = echo_plan(&mut client, "network").await;
+    assert_eq!(risky["system_snapshot"], true);
+    let error = client
+        .call("com.ibexwall.Core.Apply", apply(&risky["id"]))
+        .await
+        .unwrap_err();
+    assert_eq!(error.name, "com.ibexwall.Core.SnapshotFailed");
+    assert_eq!(error.parameters["reason"], "no space left");
+    assert!(!artifact.exists(), "nothing may change");
+    fake.set_failing(None);
+
+    // The pair surrounds the change, and History carries its numbers.
+    let risky = echo_plan(&mut client, "network").await;
+    let done = client
+        .call("com.ibexwall.Core.Apply", apply(&risky["id"]))
+        .await
+        .unwrap();
+    assert!(artifact.exists());
+    assert_eq!(done["system_snapshot"], json!({ "pre": 1, "post": 2 }));
+    let tx = done["transaction"]["id"].as_str().unwrap().to_string();
+    assert_eq!(
+        fake.log.snapshot(),
+        [format!("Pre {tx} -> 1"), format!("Post(1) {tx} -> 2")]
+    );
+    let history = client
+        .call("com.ibexwall.Core.History", json!({}))
+        .await
+        .unwrap();
+    let entry = history["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["transaction"] == tx.as_str())
+        .unwrap();
+    assert_eq!(entry["system_snapshot"], json!({ "pre": 1, "post": 2 }));
+    let export: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(sandbox.root.join("etc/ibexwall/state-export.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(export["schema"], 1);
+    client
+        .call("com.ibexwall.Core.Rollback", json!({ "target": tx }))
+        .await
+        .unwrap();
+
+    // The second snapshot fails: the change stays and the reply says so.
+    fake.set_failing_post(Some("snapperd went away"));
+    let risky = echo_plan(&mut client, "network").await;
+    let done = client
+        .call("com.ibexwall.Core.Apply", apply(&risky["id"]))
+        .await
+        .unwrap();
+    assert!(artifact.exists());
+    assert_eq!(done["system_snapshot"], json!({ "pre": 3 }));
+    assert!(
+        done["warning"]
+            .as_str()
+            .unwrap()
+            .contains("snapperd went away")
+    );
+    let tx = done["transaction"]["id"].as_str().unwrap();
+    assert_eq!(core.state.transaction_snapshots().unwrap()[tx].post, None);
+
+    // Turning it off works even with a broken snapper.
+    fake.set_unavailable(Some("gone"));
+    client
+        .call("com.ibexwall.Core.SetSystemSnapshots", switch(false))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]

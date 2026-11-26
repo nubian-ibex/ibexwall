@@ -90,6 +90,11 @@
         "$ref": "#/$defs/RiskFlag"
       },
       "type": "array"
+    },
+    "system_snapshot": {
+      "default": false,
+      "description": "A system snapshot is taken before applying (ADR-0050); if it fails,\nnothing is changed.",
+      "type": "boolean"
     }
   },
   "required": [

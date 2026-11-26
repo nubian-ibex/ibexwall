@@ -33,7 +33,8 @@ pub use types::{
     AppDestination, AppEntry, CheckOutcome, CheckReport, CheckResult, DnsStatus, Event, Finding,
     FindingStatus, FirewallNetwork, FirewallPort, FirewallState, HistoryEntry, Info, MonitorStatus,
     OpPreview, Plan, PluginInfo, Posture, Prompt, Proposal, ProposalStatus, ProtectionStatus,
-    Reference, Remediation, Severity, Transaction, TransactionState, posture_score,
+    Reference, Remediation, Severity, SystemSnapshot, SystemSnapshotStatus, Transaction,
+    TransactionState, posture_score,
 };
 
 /// Schema export support used by `cargo xtask schemas`.
@@ -102,6 +103,8 @@ pub mod export {
         "RestorePoint" => crate::types::RestorePoint,
         "StateFile" => crate::types::StateFile,
         "ImportSummary" => crate::types::ImportSummary,
+        "SystemSnapshot" => crate::types::SystemSnapshot,
+        "SystemSnapshotStatus" => crate::types::SystemSnapshotStatus,
         "RestorePointPlanEntry" => crate::types::RestorePointPlanEntry,
         "Event" => crate::types::Event,
         "ProposalStatus" => crate::types::ProposalStatus,

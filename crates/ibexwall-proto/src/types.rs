@@ -355,6 +355,10 @@ pub struct Plan {
     pub may_affect_keys: Vec<String>,
     pub requires_confirm: bool,
     pub expires_at: String,
+    /// A system snapshot is taken before applying (ADR-0050); if it fails,
+    /// nothing is changed.
+    #[serde(default)]
+    pub system_snapshot: bool,
 }
 
 /// Change-engine transaction states (spec §4.5).
@@ -472,6 +476,29 @@ pub struct HistoryEntry {
     #[serde(default)]
     pub transaction: Option<String>,
     pub result: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_snapshot: Option<SystemSnapshot>,
+}
+
+/// The numbers of the system snapshots taken around one change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SystemSnapshot {
+    pub pre: u32,
+    /// Absent when the snapshot after the change failed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub post: Option<u32>,
+}
+
+/// Whether system snapshots are on, and whether they can be taken here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SystemSnapshotStatus {
+    pub enabled: bool,
+    pub available: bool,
+    /// Why they cannot be taken, when they cannot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 /// Event on the bus. `data` is structured by source; `untrusted` carries

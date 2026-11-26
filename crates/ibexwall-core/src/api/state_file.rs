@@ -27,7 +27,7 @@ pub(crate) async fn export(core: &Arc<Core>) -> Result<Reply, VarlinkError> {
 
 /// The file's content: `digest` covers the canonical form of everything
 /// else, so a hand edit or a truncation is caught at import.
-fn build(core: &Core) -> Result<Value> {
+pub(super) fn build(core: &Core) -> Result<Value> {
     let config = core.config.read().expect("config lock poisoned");
     let plugins: Vec<Value> = core
         .plugins

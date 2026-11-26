@@ -57,6 +57,16 @@
           "minimum": 0,
           "type": "integer"
         },
+        "system_snapshot": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SystemSnapshot"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "transaction": {
           "default": null,
           "type": [
@@ -102,6 +112,30 @@
         "plugin",
         "state",
         "summary_key"
+      ],
+      "type": "object"
+    },
+    "SystemSnapshot": {
+      "additionalProperties": false,
+      "description": "The numbers of the system snapshots taken around one change.",
+      "properties": {
+        "post": {
+          "description": "Absent when the snapshot after the change failed.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "pre": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "pre"
       ],
       "type": "object"
     }

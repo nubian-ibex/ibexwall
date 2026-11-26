@@ -45,6 +45,8 @@ pub struct Core {
     pub monitor: monitor::Monitor,
     /// The root the daemon works under (`/`, or a sandbox).
     pub root: PathBuf,
+    /// The system's snapshot tool (ADR-0050).
+    pub snapshots: Arc<dyn ibexwall_sys::SystemSnapshots>,
     /// Serializes every engine and state mutation: apply, confirm,
     /// rollback, the confirmation watchdog and proposal decisions run
     /// one at a time, so a snapshot can never capture another change
@@ -221,6 +223,9 @@ impl Core {
             plugins,
             events,
             monitor: monitor::Monitor::new(root.clone()),
+            snapshots: Arc::new(ibexwall_sys::RealSnapper::new(
+                root == std::path::Path::new("/"),
+            )),
             root,
             tx_sem: Arc::new(tokio::sync::Semaphore::new(1)),
         };

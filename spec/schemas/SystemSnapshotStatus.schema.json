@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Whether system snapshots are on, and whether they can be taken here.",
+  "properties": {
+    "available": {
+      "type": "boolean"
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "reason": {
+      "description": "Why they cannot be taken, when they cannot.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "enabled",
+    "available"
+  ],
+  "title": "SystemSnapshotStatus",
+  "type": "object"
+}

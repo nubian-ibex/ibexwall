@@ -13,10 +13,10 @@ type PluginInfo (compatible: bool, conflicts: []string, enabled: bool, id: strin
 type RiskFlag (network, auth, boot, reboot_to_revert, irreversible)
 type Reversible (immediate, reboot, irreversible)
 type OpPreview (diff: ?string, op: string, risk: ?[]RiskFlag, target: string)
-type Plan (expires_at: string, id: string, may_affect_keys: ?[]string, ops: []OpPreview, plugin: string, requires_confirm: bool, reversible: Reversible, risk: ?[]RiskFlag)
+type Plan (expires_at: string, id: string, may_affect_keys: ?[]string, ops: []OpPreview, plugin: string, requires_confirm: bool, reversible: Reversible, risk: ?[]RiskFlag, system_snapshot: ?bool)
 type TransactionState (planned, approved, applying, applied, pending_confirm, committed, rolled_back, failed)
 type Transaction (confirm_deadline: ?string, id: string, plan_id: string, restore_point: string, started_at: string, state: TransactionState)
-type HistoryEntry (actor: string, plugin: string, result: string, seq: int, transaction: ?string, ts: string)
+type HistoryEntry (actor: string, plugin: string, result: string, seq: int, system_snapshot: ?SystemSnapshot, transaction: ?string, ts: string)
 type Event (app: ?string, data: ?object, kind: string, severity: Severity, source: string, ts: string, untrusted: ?object)
 type FirewallNetwork (kind: string, name: string, recommended: string, warning: ?string)
 type FirewallPort (port: int, proto: string)
@@ -27,6 +27,8 @@ type AppDestination (count: int, destination: string, first_seen: string, last_s
 type Prompt (address: string, app: string, created: string, destination: string, exe_path: ?string, expires: string, id: string, kind: string, port: int)
 type ProposalStatus (pending, approved, rejected, expired)
 type Proposal (client: string, created_at: string, decided_at: ?string, id: string, justification: string, may_affect_keys: []string, patch: object, plan_id: string, plugin: string, preview: []OpPreview, requires_confirm: bool, reversible: Reversible, risk: ?[]RiskFlag, status: ProposalStatus)
+type SystemSnapshot (post: ?int, pre: int)
+type SystemSnapshotStatus (available: bool, enabled: bool, reason: ?string)
 
 # Client-facing API. Subscribe is called with "more": true for streaming.
 # allowInteractiveAuthentication (additive, ADR-0045): when true, a method
@@ -79,11 +81,17 @@ method GetFirewall() -> (firewall: FirewallState)
 # Added in v1 (additive): turn the connection monitor unit on or off.
 method SetMonitorEnabled(enabled: bool, allowInteractiveAuthentication: ?bool) -> ()
 
+# Added in v1 (additive): system snapshots around risky changes (ADR-0050).
+# Apply also replies system_snapshot, and warning when the second one failed.
+method GetSystemSnapshots() -> (status: SystemSnapshotStatus)
+method SetSystemSnapshots(enabled: bool, allowInteractiveAuthentication: ?bool) -> ()
+
 error PermissionDenied (action: string)
 error AuthenticationRequired (action: string, interactive_possible: bool)
 error NotFound (kind: string, id: string)
 error Locked (keys: []string, source: string)
 error PlanExpired (plan_id: string)
 error PlanStale (plan_id: string)
+error SnapshotFailed (reason: string)
 error Conflict (reason: string)
 error InvalidArgument (field: string, reason: string)

@@ -622,32 +622,6 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
         Command::Import { file, yes, dry_run } => {
             let text = std::fs::read_to_string(file.as_str())
                 .with_context(|| format!("reading {file}"))?;
-            let summarize = |v: &serde_json::Value| {
-                println!(
-                    "settings: {} · plugin states: {} · kept locked: {}",
-                    v["settings"].as_u64().unwrap_or(0),
-                    v["plugins"].as_u64().unwrap_or(0),
-                    v["locked_kept"].as_u64().unwrap_or(0),
-                );
-                for row in v["settings"].as_array().cloned().unwrap_or_default() {
-                    println!(
-                        "  {} · {}",
-                        row["plugin"].as_str().unwrap_or("?"),
-                        row["key"].as_str().unwrap_or("?")
-                    );
-                }
-                for row in v["plugins"].as_array().cloned().unwrap_or_default() {
-                    println!(
-                        "  {} -> {}",
-                        row["id"].as_str().unwrap_or("?"),
-                        if row["enabled"].as_bool() == Some(true) {
-                            "on"
-                        } else {
-                            "off"
-                        }
-                    );
-                }
-            };
             // The dry run is always the first thing: what differs, what the
             // organization keeps locked, and that the machine stays.
             let value = client
@@ -660,7 +634,7 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
             if json {
                 return Ok(Finish::Done);
             }
-            summarize(&value);
+            print!("{}", import_summary(&value));
             if *dry_run {
                 println!("dry run: nothing was written");
                 return Ok(Finish::Done);
@@ -688,7 +662,7 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
                 .await?;
             emit(value.clone(), json);
             if !json {
-                summarize(&value);
+                print!("{}", import_summary(&value));
             }
             Ok(Finish::Done)
         }

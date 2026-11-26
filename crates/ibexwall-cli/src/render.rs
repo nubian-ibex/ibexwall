@@ -20,6 +20,45 @@ pub(crate) fn ports_line(value: &serde_json::Value) -> String {
     }
 }
 
+/// The `ImportState` reply: a dry run lists what differs, an apply counts it.
+pub(crate) fn import_summary(reply: &serde_json::Value) -> String {
+    let list = |key: &str| reply[key].as_array().cloned().unwrap_or_default();
+    let count = |key: &str| {
+        reply[key]
+            .as_u64()
+            .unwrap_or_else(|| list(key).len() as u64)
+    };
+    let kept = if reply["locked"].is_array() {
+        count("locked")
+    } else {
+        count("locked_kept")
+    };
+    let mut out = format!(
+        "settings: {} · plugin states: {} · kept locked: {kept}\n",
+        count("settings"),
+        count("plugins"),
+    );
+    for row in list("settings") {
+        out.push_str(&format!(
+            "  {} · {}\n",
+            text(&row["plugin"]),
+            text(&row["key"])
+        ));
+    }
+    for row in list("plugins") {
+        let state = if row["enabled"].as_bool() == Some(true) {
+            "on"
+        } else {
+            "off"
+        };
+        out.push_str(&format!("  {} -> {state}\n", text(&row["id"])));
+    }
+    for row in list("locked") {
+        out.push_str(&format!("  locked, kept: {}\n", text(&row)));
+    }
+    out
+}
+
 pub(crate) fn render_firewall(state: &serde_json::Value) -> String {
     let manager = text(&state["backend"]);
     let status = match state["active"].as_bool() {

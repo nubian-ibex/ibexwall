@@ -118,3 +118,25 @@ fn the_firewall_status_is_readable_and_terminal_safe() {
     assert!(bare.contains("nftables (not active)"));
     assert!(bare.contains("allowed ports:    none"));
 }
+
+#[test]
+fn the_import_summary_counts_a_dry_run_and_an_apply() {
+    use serde_json::json;
+    let dry = import_summary(&json!({
+        "dry_run": true,
+        "settings": [{ "plugin": "net.dns", "key": "provider" }],
+        "plugins": [{ "id": "net.vpn", "enabled": false }],
+        "locked": ["net.firewall.mode (net.firewall.*)"],
+    }));
+    assert_eq!(
+        dry.lines().collect::<Vec<_>>(),
+        [
+            "settings: 1 · plugin states: 1 · kept locked: 1",
+            "  net.dns · provider",
+            "  net.vpn -> off",
+            "  locked, kept: net.firewall.mode (net.firewall.*)",
+        ]
+    );
+    let applied = import_summary(&json!({ "settings": 2, "plugins": 0, "locked_kept": 1 }));
+    assert_eq!(applied, "settings: 2 · plugin states: 0 · kept locked: 1\n");
+}

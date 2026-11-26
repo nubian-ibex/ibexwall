@@ -29,18 +29,23 @@ the Ubuntu VM. Public docs deployed. What it fixed and added over 0.5.0:
 
 **Open:**
 
-- `f6` on Arch (7.3.4-arch1-2): one guest kernel panic during `m5` (double
-  fault, stack guard page, in `swapper`) and one hang in `m4`, both on
-  2026-11-25/26; every other run passed (13 in a row afterwards). **Cause
-  unknown.** Two Fedora 45 test VMs logged double faults on 2026-11-10,
-  before `m5` existed, so a host or KVM cause is possible and unproven.
-  Serial log of the panic:
-  `~/.cache/ibexwall/vm/work-1795658638/serial.log`.
 - v0.6, system snapshots with snapper (approved 2026-11-26): implemented on
-  the local branch `v0.6-snapshots`, not merged. See
-  `docs/plans/v0.6-system-snapshots.md` on that branch.
-- One Fedora 45 test VM also stopped answering during the `snapshots` phase
-  (no console captured); the SSH keepalive ended the scenario as meant.
+  the local branch `v0.6-snapshots`, rebased on this `main`, not merged. Its
+  matrix: `snapshots` on Fedora and Arch, `f10` and `desktop` on five distros;
+  19 of 21 runs passed and the two that failed (an AppArmor removal message,
+  fixed here; a guest reset on Debian) passed when repeated. Left: the
+  maintainer's call on merge and release; AppArmor with a btrfs root on
+  Ubuntu or Debian is not verified; the new UI was not seen on a real VM.
+- Local `main` has an unpushed packaging fix: removing the AppArmor package
+  restarted the daemon and logged a refused profile change.
+- **Test VMs fail without a known cause** (2026-11-25/26): on Arch 7.3.4 a
+  kernel panic (double fault) and a hang during `f6`; on Fedora 45 a guest
+  that stopped answering during `snapshots`; on Debian 13 a guest that reset
+  mid-scenario with nothing on the console. Eight later `f6` runs on Arch
+  passed. Three kernels and different tests point at the host (Ryzen 9
+  3900X, VirtualBox loaded next to KVM) more than at IbexWall, unproven.
+  Panic console:
+  `~/.cache/ibexwall/vm/work-1795658638/serial.log`.
 - COPR and AUR publishing waits for the maintainer's accounts.
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:

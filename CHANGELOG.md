@@ -18,6 +18,13 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
   never changes the machine: the person then reviews and applies as
   usual. The organization layer and its locks are refused in the file.
 
+### Fixed
+
+- Ask mode with thousands of connections waiting at once could let some of
+  them out unasked, even with the fallback set to block: the table that
+  remembers who is being asked was smaller than the range of connection ids,
+  and dropped the oldest entry. It now covers the whole range.
+
 ## 0.4.1 (2026-11-20)
 
 ### Fixed

@@ -33,6 +33,10 @@ the Ubuntu VM. Public docs deployed. What it fixed and added over 0.5.0:
   branch `v0.6-snapshots`, not merged, installed on the three maintainer VMs
   and checked there (real snapper on btrfs, the app on Ubuntu). Details in
   its plan. Left: the maintainer's check, then merge and release.
+- The published v0.5.1 app shows a white window in a VirtualBox or VMware
+  guest under X11 (seen on the EndeavourOS maintainer VM). Fixed on local
+  `main` (unpushed) and checked there; ships with the next release. The
+  maintainer's tests on the Fedora and Ubuntu VMs passed (2026-11-26).
 - The Hardening screen can show stale findings right after "Undo" (the core
   re-runs the checks in the background and the app reads at once); reopening
   the screen shows the right state. It predates v0.6.

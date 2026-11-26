@@ -212,4 +212,30 @@ describe('ReviewPanel', () => {
     await fireEvent.click(screen.getByRole('button', { name: /^Apply/ }));
     expect(await screen.findByRole('alert')).toHaveTextContent('snapperd went away');
   });
+
+  it('applies the changes that take a snapshot first, and does not claim too much', async () => {
+    const t = transport();
+    let n = 0;
+    t.planChange = (async (plugin: string) => ({
+      id: `p${++n}`,
+      plugin,
+      ops: [op],
+      system_snapshot: plugin !== 'system.modules',
+    })) as never;
+    const order: string[] = [];
+    t.apply = (async (id: string) => {
+      order.push(id);
+      if (order.length === 2) {
+        throw new TransportError('com.ibexwall.Core.SnapshotFailed', { reason: 'no space left' });
+      }
+      return { id: `tx-${id}`, state: 'committed' };
+    }) as never;
+    await open([{ plugin: 'system.modules' }, { plugin: 'system.sysctl' }, { plugin: 'net.dns' }]);
+    await fireEvent.click(screen.getByRole('button', { name: /^Apply/ }));
+    const alert = await screen.findByRole('alert');
+    // The two that take a snapshot go before the one that does not.
+    expect(order).toEqual(['p2', 'p3']);
+    expect(alert).toHaveTextContent('this change was not made');
+    expect(alert).not.toHaveTextContent('Nothing was changed');
+  });
 });

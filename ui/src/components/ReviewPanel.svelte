@@ -51,7 +51,9 @@
   function describe(error: unknown): string {
     if (error instanceof TransportError) {
       if (error.code.endsWith('.SnapshotFailed')) {
-        return t('change-snapshot-failed', { reason: String(error.parameters['reason'] ?? '') });
+        const key =
+          applied.length > 0 ? 'change-snapshot-failed-partial' : 'change-snapshot-failed';
+        return t(key, { reason: String(error.parameters['reason'] ?? '') });
       }
       const reason = error.parameters['reason'];
       const field = error.parameters['field'];
@@ -69,7 +71,9 @@
         const made: Plan[] = [];
         for (const draft of drafts)
           made.push(await app.transport.planChange(draft.plugin, draft.patch));
-        plans = made;
+        // The changes that take a system snapshot go first, so the snapshot
+        // comes before every change of this review (ADR-0050).
+        plans = made.sort((a, b) => Number(!!b.system_snapshot) - Number(!!a.system_snapshot));
       } catch (error) {
         failure = describe(error);
       } finally {

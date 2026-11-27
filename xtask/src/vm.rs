@@ -169,18 +169,7 @@ fn fetch_verified_image(cache: &Path, image: &Image) -> Result<PathBuf> {
     let target = cache.join(image.file);
     if !target.is_file() {
         println!("downloading {} ...", image.file);
-        run_capture(
-            "curl",
-            [
-                "-fL",
-                "--progress-bar",
-                "-o",
-                &target.to_string_lossy(),
-                &format!("{}/{}", image.base_url, image.file),
-            ],
-            None,
-            "downloading cloud image",
-        )?;
+        download(&format!("{}/{}", image.base_url, image.file), &target)?;
     }
     let output = run_capture(
         image.hasher,
@@ -202,6 +191,19 @@ fn fetch_verified_image(cache: &Path, image: &Image) -> Result<PathBuf> {
         );
     }
     Ok(target)
+}
+
+/// Downloads to a file of this process and renames it, so a run in
+/// parallel never reads (or deletes) a half written image.
+fn download(url: &str, target: &Path) -> Result<()> {
+    let part = target.with_extension(format!("part-{}", std::process::id()));
+    run_capture(
+        "curl",
+        ["-fL", "--progress-bar", "-o", &part.to_string_lossy(), url],
+        None,
+        "downloading cloud image",
+    )?;
+    std::fs::rename(&part, target).context("keeping the downloaded image")
 }
 
 /// Finds `file` in a `sha*sum` style list (`<hash>  <file>` or
@@ -380,9 +382,11 @@ impl Vm {
 }
 
 fn start_vm(cache: &Path, base: &Path) -> Result<Vm> {
+    // The process id keeps two runs started in the same second apart.
     let work = cache.join(format!(
-        "work-{}",
-        SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs()
+        "work-{}-{}",
+        SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
+        std::process::id()
     ));
     std::fs::create_dir_all(&work)?;
     let key = work.join("id_ed25519");
@@ -563,18 +567,7 @@ fn ensure_fedora_image(cache: &Path) -> Result<PathBuf> {
             let target = cache.join(&file);
             if !target.is_file() {
                 println!("downloading {file} (~700 MB) from {mirror}...");
-                run_capture(
-                    "curl",
-                    [
-                        "-fL",
-                        "--progress-bar",
-                        "-o",
-                        &target.to_string_lossy(),
-                        &format!("{dir}{file}"),
-                    ],
-                    None,
-                    "downloading cloud image",
-                )?;
+                download(&format!("{dir}{file}"), &target)?;
             }
             let actual = run_capture(
                 "sha256sum",

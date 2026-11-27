@@ -29,6 +29,7 @@ mod fixtures;
 mod idl;
 mod mac;
 mod plugin_units;
+mod publish;
 mod release;
 mod schemas;
 mod snapshots;
@@ -43,9 +44,12 @@ Usage: cargo xtask <COMMAND>
 Commands:
   schemas [--check]  Export JSON Schemas and varlink IDL to spec/
                      (--check fails if committed files differ)
-  vm-test [--distro <distro>] [--phase f0|f1|f2|f3|f4|f5|f6|f7|f8|f9|f10|f11a|f11b|fixtures]
+  vm-test [--distro <distro>] [--phase f0|f1|f2|f3|f4|f5|f6|f7|f8|f9|f10|f11a|f11b|fixtures|
+                     aur|copr]
                      Boot a QEMU/KVM VM; phase f0 runs the smoke test,
-                     f1 provisions the daemon and runs acceptance tests
+                     f1 provisions the daemon and runs acceptance tests;
+                     aur (arch) and copr (fedora) check the repository
+                     packages of this version's published release
   ebpf               Build the eBPF programs into target/bpf/ (nightly,
                      rust-src and bpf-linker required)
   stage              Lay IbexWall out as installed under one directory, for the
@@ -61,6 +65,10 @@ Commands:
                      Check the checksums and signatures of a release
   repro [--key-dir D] [--with-desktop]
                      Build twice from copies of HEAD and compare every file
+  aur --version V [--pkgrel N] [--out DIR]
+                     Write the AUR directory (PKGBUILD, .SRCINFO) of a
+                     published release, after checking its signature; pushes
+                     nothing (DIR defaults to target/aur)
   plugin-units       Write the systemd socket and service unit of every plugin
                      (--out DIR, default target/plugin-units)
   releasekey --out DIR
@@ -106,7 +114,9 @@ fn main() {
                 | Some("f5") | Some("f6") | Some("f7") | Some("f8") | Some("f9") | Some("f10")
                 | Some("f11a") | Some("f11b") | Some("desktop") | Some("firewall-on")
                 | Some("audit") | Some("selinux") | Some("snapshots") | Some("dns-nm")
-                | Some("fixtures") => vm::run(&distro, phase.as_deref()),
+                | Some("fixtures") | Some("aur") | Some("copr") => {
+                    vm::run(&distro, phase.as_deref())
+                }
                 Some(other) => {
                     eprintln!("error: unknown phase `{other}`");
                     std::process::exit(2);
@@ -198,6 +208,36 @@ fn main() {
                 std::process::exit(2);
             }
             if let Err(err) = release::run_release(&options) {
+                eprintln!("error: {err:#}");
+                std::process::exit(1);
+            }
+        }
+        Some("aur") => {
+            let (mut version, mut pkgrel) = (String::new(), 1u32);
+            let mut out = std::path::PathBuf::from("target/aur");
+            while let Some(arg) = args.next() {
+                match arg.as_str() {
+                    "--version" => version = args.next().unwrap_or_default(),
+                    "--pkgrel" => {
+                        let value = args.next().unwrap_or_default();
+                        let Ok(number) = value.parse() else {
+                            eprintln!("error: --pkgrel needs a number, not `{value}`");
+                            std::process::exit(2);
+                        };
+                        pkgrel = number;
+                    }
+                    "--out" => out = args.next().unwrap_or_default().into(),
+                    other => {
+                        eprintln!("error: unknown aur flag `{other}`");
+                        std::process::exit(2);
+                    }
+                }
+            }
+            if version.is_empty() {
+                eprintln!("error: --version is required");
+                std::process::exit(2);
+            }
+            if let Err(err) = publish::aur(&version, pkgrel, &out) {
                 eprintln!("error: {err:#}");
                 std::process::exit(1);
             }

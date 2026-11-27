@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+pkgbase = ibexwall-bin
+	pkgver = @VERSION@
+	pkgrel = @PKGREL@
+	url = https://github.com/nubian-ibex/ibexwall
+	arch = x86_64
+	license = GPL-3.0-or-later
+	noextract = ibexwall-@VERSION@-1-x86_64.pkg.tar.zst
+	noextract = ibexwall-desktop-@VERSION@-1-x86_64.pkg.tar.zst
+	noextract = ibexwall-mcp-@VERSION@-1-x86_64.pkg.tar.zst
+	options = !strip
+	options = !debug
+	source = https://github.com/nubian-ibex/ibexwall/releases/download/v@VERSION@/ibexwall-@VERSION@-1-x86_64.pkg.tar.zst
+	source = https://github.com/nubian-ibex/ibexwall/releases/download/v@VERSION@/ibexwall-desktop-@VERSION@-1-x86_64.pkg.tar.zst
+	source = https://github.com/nubian-ibex/ibexwall/releases/download/v@VERSION@/ibexwall-mcp-@VERSION@-1-x86_64.pkg.tar.zst
+	sha256sums = @SHA256_CORE@
+	sha256sums = @SHA256_DESKTOP@
+	sha256sums = @SHA256_MCP@
+
+pkgname = ibexwall-bin
+	pkgdesc = Security center for Linux: daemon, command line, resolver and plugins
+	install = ibexwall.install
+	depends = nftables
+	depends = polkit
+	depends = systemd
+	optdepends = chrony: authenticated time (NTS)
+	optdepends = ufw: firewall manager
+	optdepends = firewalld: firewall manager
+	provides = ibexwall=@VERSION@
+	conflicts = ibexwall
+
+pkgname = ibexwall-desktop-bin
+	pkgdesc = IbexWall desktop app and session agent
+	depends = ibexwall-bin=@VERSION@-@PKGREL@
+	depends = webkit2gtk-4.1
+	depends = gtk3
+	optdepends = libayatana-appindicator: tray icon
+	provides = ibexwall-desktop=@VERSION@
+	conflicts = ibexwall-desktop
+
+pkgname = ibexwall-mcp-bin
+	pkgdesc = IbexWall MCP server for AI assistants
+	depends = ibexwall-bin=@VERSION@-@PKGREL@
+	provides = ibexwall-mcp=@VERSION@
+	conflicts = ibexwall-mcp

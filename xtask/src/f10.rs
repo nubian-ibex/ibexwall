@@ -17,7 +17,7 @@ use super::vm::Vm;
 
 /// Shared by the scenarios: which package family this machine is, and where
 /// the built packages are.
-const LIB: &str = r#"
+pub(crate) const LIB: &str = r#"
 set -eE
 if command -v dnf >/dev/null; then FAM=rpm
 elif command -v apt-get >/dev/null; then FAM=deb

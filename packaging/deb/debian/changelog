@@ -1,3 +1,10 @@
+ibexwall (0.7.0) unstable; urgency=medium
+
+  * Secure DNS on NetworkManager without systemd-resolved; the app reports
+    when applied DNS no longer fits the machine; see CHANGELOG.md.
+
+ -- Nubian Ibex <maintainers@nubian-ibex.invalid> Thu, 27 Nov 2026 06:30:00 +0000
+
 ibexwall (0.6.0) unstable; urgency=medium
 
   * System snapshots with snapper around risky changes; see CHANGELOG.md.

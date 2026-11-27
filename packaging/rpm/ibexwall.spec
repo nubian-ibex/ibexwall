@@ -14,7 +14,7 @@
 %global __strip /bin/true
 
 Name:           ibexwall
-Version:        0.6.0
+Version:        0.7.0
 Release:        1%{?dist}
 Summary:        Security center for Linux
 License:        GPL-3.0-or-later
@@ -168,7 +168,7 @@ if [ "$1" -ge 1 ]; then
 fi
 
 %changelog
-* Thu Nov 26 2026 Nubian Ibex <maintainers@nubian-ibex.invalid> - 0.6.0-1
+* Thu Nov 26 2026 Nubian Ibex <maintainers@nubian-ibex.invalid> - 0.7.0-1
 - System snapshots with snapper around risky changes; see CHANGELOG.md.
 
 * Thu Nov 26 2026 Nubian Ibex <maintainers@nubian-ibex.invalid> - 0.5.1-1

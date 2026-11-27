@@ -234,6 +234,7 @@ impl Systemd for RealSystemd {
 #[derive(Debug, Default)]
 pub struct FakeSystemd {
     units: Mutex<BTreeMap<String, UnitSnapshot>>,
+    gone: Mutex<std::collections::BTreeSet<String>>,
     pub log: OpLog,
 }
 
@@ -247,6 +248,18 @@ impl FakeSystemd {
             .lock()
             .expect("lock poisoned")
             .insert(unit.into(), snapshot);
+    }
+
+    /// Removes `unit` from the machine: systemd refuses any action on it.
+    pub fn uninstall(&self, unit: &str) {
+        self.seed(
+            unit,
+            UnitSnapshot {
+                enabled: Enabled::NotFound,
+                active: false,
+            },
+        );
+        self.gone.lock().expect("lock poisoned").insert(unit.into());
     }
 
     pub fn get(&self, unit: &str) -> UnitSnapshot {
@@ -281,6 +294,10 @@ impl Systemd for FakeSystemd {
     fn apply(&self, unit: &str, action: UnitAction, now: bool) -> anyhow::Result<()> {
         self.log.push(format!("{action:?} {unit} now={now}"));
         let mut units = self.units.lock().expect("lock poisoned");
+        anyhow::ensure!(
+            !self.gone.lock().expect("lock poisoned").contains(unit),
+            "Unit {unit} not found."
+        );
         let snapshot = units.entry(unit.into()).or_default();
         match action {
             UnitAction::Start => snapshot.active = true,

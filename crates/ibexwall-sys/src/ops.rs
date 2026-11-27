@@ -529,6 +529,16 @@ fn leave_alone(unit: &str, purpose: RollbackFor) -> bool {
     purpose == RollbackFor::Uninstall && unit.starts_with("ibexwall")
 }
 
+/// Whether the system had `unit` when it was changed and has it no more.
+fn uninstalled(sys: &crate::SysBundle, unit: &str, before: &str) -> bool {
+    serde_json::from_str::<crate::Enabled>(before)
+        .is_ok_and(|before| before != crate::Enabled::NotFound)
+        && sys
+            .systemd
+            .snapshot(unit)
+            .is_ok_and(|now| now.enabled == crate::Enabled::NotFound)
+}
+
 pub fn apply_snapshot_inverses_for(
     sys: &crate::SysBundle,
     snapshot_root: &Path,
@@ -546,6 +556,19 @@ pub fn apply_snapshot_inverses_for(
             match $step {
                 Ok(()) => {}
                 Err(err) => errors.push(format!("{}: {:#}", $what, err)),
+            }
+        };
+    }
+
+    // A unit uninstalled since the change (systemd-resolved, removed after
+    // Secure DNS was applied) has no state to put back: that failure must not
+    // keep the rest of the undo from being recorded.
+    macro_rules! unless_uninstalled {
+        ($what:expr, $unit:expr, $before:expr, $step:expr) => {
+            if let Err(err) = $step
+                && !uninstalled(sys, $unit, $before)
+            {
+                errors.push(format!("{}: {:#}", $what, err));
             }
         };
     }
@@ -587,8 +610,10 @@ pub fn apply_snapshot_inverses_for(
                 active,
                 ..
             } if !leave_alone(unit, purpose) => {
-                attempt!(
+                unless_uninstalled!(
                     format!("restore unit {unit}"),
+                    unit,
+                    enabled,
                     (|| -> Result<()> {
                         let enabled: crate::Enabled = serde_json::from_str(enabled)?;
                         // Put back only what the transaction changed: touching the
@@ -669,13 +694,16 @@ pub fn apply_snapshot_inverses_for(
         match entry {
             SnapshotEntry::Unit {
                 unit,
+                enabled,
                 active: true,
                 restarted: true,
                 ..
             } if !leave_alone(unit, purpose) => {
                 sys.systemd.reset_failed(unit);
-                attempt!(
+                unless_uninstalled!(
                     format!("restart {unit}"),
+                    unit,
+                    enabled,
                     sys.systemd.apply(unit, UnitAction::Restart, false)
                 );
             }
@@ -1101,6 +1129,39 @@ mod tests {
             .to_string();
         assert!(error.contains("turn ufw on again"), "{error}");
         assert!(error.contains("reload also failed"), "{error}");
+    }
+
+    #[test]
+    fn a_unit_uninstalled_since_the_change_is_left_out_of_the_undo() {
+        use std::sync::Arc;
+        let systemd = Arc::new(crate::FakeSystemd::new());
+        let sys = crate::SysBundle {
+            fs: Arc::new(crate::FakeFs::new()),
+            runner: Arc::new(crate::firewall::FakeRunner::new()),
+            systemd: systemd.clone(),
+            sysctl: Arc::new(crate::FakeSysctl::new()),
+            clock: Arc::new(crate::FakeClock::new(1_793_534_400)),
+            nft: Arc::new(crate::FakeNft::new()),
+            allow_system_executors: false,
+            use_transient_executor: false,
+            executor_work_dir: None,
+        };
+        systemd.uninstall("gone.service");
+        let manifest = SnapshotManifest {
+            tx: "tx1".into(),
+            entries: vec![SnapshotEntry::Unit {
+                op_index: 0,
+                unit: "gone.service".into(),
+                enabled: serde_json::to_string(&crate::Enabled::Enabled).unwrap(),
+                active: true,
+                restarted: true,
+            }],
+        };
+        apply_snapshot_inverses(&sys, Path::new("/nonexistent"), &manifest).unwrap();
+        assert_eq!(
+            systemd.get("gone.service").enabled,
+            crate::Enabled::NotFound
+        );
     }
 
     #[test]

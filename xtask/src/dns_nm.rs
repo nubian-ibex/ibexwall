@@ -252,6 +252,7 @@ fn reboot(vm: &Vm) -> Result<()> {
             return Ok(());
         }
     }
+    crate::vm::keep_work_on_fail();
     bail!("the guest did not come back from a reboot");
 }
 

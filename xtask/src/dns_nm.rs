@@ -61,6 +61,8 @@ if [ "$FAM" = rpm ]; then echo "METRIC: SELinux $(getenforce)"; fi
 "#;
 
 const FAILSAFE_RESOLVED: &str = r#"
+# Whatever happens below, the next scenario starts from a clean machine.
+trap 'sudo systemctl reset-failed ibexwall-dns.service ibexwall-dns-failsafe.service >/dev/null 2>&1; [ -n "${TX:-}" ] && sudo ibexctl rollback "$TX" >/dev/null 2>&1; sudo rm -f /etc/systemd/resolved.conf.d/50-ibexwall.conf; sudo systemctl restart systemd-resolved' EXIT
 apply_dns
 resolvectl status | grep -q 127.0.0.153 || { echo "RESOLVED DOES NOT USE THE RESOLVER"; why; exit 1; }
 kill_resolver_until_it_gives_up
@@ -73,6 +75,15 @@ sudo ibexctl rollback "$TX" >/dev/null || { echo "UNDO AFTER THE FAILSAFE FAILED
 resolves || { echo "NO NAMES AFTER THE UNDO"; why; exit 1; }
 refusals
 echo "METRIC: with the packages, the failsafe restores systemd-resolved"
+"#;
+
+// The cloud image restores its own /etc/resolv.conf on every boot, which
+// would undo the switch. This takes effect at the next boot, so the SSH
+// session is never cut half way.
+const NO_CLOUD_RESOLV: &str = r#"
+sudo install -d -m 0755 /etc/cloud/cloud.cfg.d
+printf 'manage_resolv_conf: false\n' | sudo tee /etc/cloud/cloud.cfg.d/99-ibexwall.cfg >/dev/null
+sudo rm -f /etc/resolv.conf
 "#;
 
 // Takes effect at the next boot, so the SSH session is never cut half way.
@@ -147,6 +158,7 @@ echo "METRIC: kept across a reboot; the undo restores the network's servers"
 "#;
 
 const NM_FAILSAFE: &str = r#"
+trap 'sudo systemctl reset-failed ibexwall-dns.service ibexwall-dns-failsafe.service >/dev/null 2>&1; [ -n "${TX:-}" ] && sudo ibexctl rollback "$TX" >/dev/null 2>&1; sudo rm -f /etc/NetworkManager/conf.d/50-ibexwall-dns.conf /etc/systemd/resolved.conf.d/50-ibexwall.conf; nmcli general reload >/dev/null 2>&1' EXIT
 apply_dns
 kill_resolver_until_it_gives_up
 for _ in $(seq 1 40); do [ ! -e /etc/NetworkManager/conf.d/50-ibexwall-dns.conf ] && break; sleep 1; done
@@ -175,6 +187,7 @@ sudo systemctl restart NetworkManager
 "#;
 
 const STALE: &str = r#"
+sudo rm -f /etc/NetworkManager/conf.d/50-ibexwall-dns.conf
 if getent hosts example.com >/dev/null 2>&1; then echo "METRIC: names still resolve here"; else echo "METRIC: no name resolves, as found on a real machine"; fi
 # No check is asked for: the daemon's own, after the boot, must say it.
 sudo ibexctl --json findings | grep -q 'dns.stale_settings' || { echo "NOT SAID AFTER THE BOOT"; sudo ibexctl findings; why; exit 1; }
@@ -246,6 +259,10 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
     scenario!(
         "m3 the packaged failsafe restores systemd-resolved",
         FAILSAFE_RESOLVED
+    );
+    scenario!(
+        "m4a stop the cloud image from managing resolv.conf",
+        NO_CLOUD_RESOLV
     );
     scenario!(
         "m4 switch the guest to NetworkManager alone",

@@ -6,6 +6,19 @@
 Versions follow [Semantic Versioning](https://semver.org). The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## Unreleased
+
+### Added
+
+- Desktop app: the sidebar keeps every screen and shows a small dot with
+  each plugin's state; Hardening, posture and firewall fold away what is
+  already in place, so the screens open on what still needs attention.
+
+### Fixed
+
+- Desktop app: the overview card named the exposed-services check by its
+  internal key, which no language had translated.
+
 ## 0.7.0 (2026-11-27)
 
 ### Added

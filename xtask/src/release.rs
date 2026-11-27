@@ -690,22 +690,28 @@ pub fn sign_release(dir: &Path, version: &str, key_dir: &Path) -> Result<()> {
     verify(dir, &dir.join("ibexwall-release.pub"))
 }
 
+/// A minisign signature of `data` by the key in `public_key`.
+pub fn check_signature(public_key: &str, data: &[u8], signature: &str) -> Result<()> {
+    let key = minisign_verify::PublicKey::decode(public_key)
+        .map_err(|e| anyhow::anyhow!("public key: {e}"))?;
+    let signature = minisign_verify::Signature::decode(signature)
+        .map_err(|e| anyhow::anyhow!("signature file: {e}"))?;
+    key.verify(data, &signature, false)
+        .map_err(|e| anyhow::anyhow!("the signature does not verify: {e}"))
+}
+
 /// What anyone does with a release: the checksums match the files, and every
 /// signature is by the key they hold.
 pub fn verify(dir: &Path, public_key: &Path) -> Result<()> {
-    let key = minisign_verify::PublicKey::decode(&std::fs::read_to_string(public_key)?)
-        .map_err(|e| anyhow::anyhow!("public key: {e}"))?;
-    let check_signature = |name: &str| -> Result<()> {
+    let key = std::fs::read_to_string(public_key)?;
+    let check = |name: &str| -> Result<()> {
         let data = std::fs::read(dir.join(name)).with_context(|| name.to_string())?;
-        let text = std::fs::read_to_string(dir.join(format!("{name}.minisig")))
+        let signature = std::fs::read_to_string(dir.join(format!("{name}.minisig")))
             .with_context(|| format!("{name}.minisig"))?;
-        let signature = minisign_verify::Signature::decode(&text)
-            .map_err(|e| anyhow::anyhow!("{name}.minisig: {e}"))?;
-        key.verify(&data, &signature, false)
-            .map_err(|e| anyhow::anyhow!("{name}: the signature does not verify: {e}"))
+        check_signature(&key, &data, &signature).map_err(|e| anyhow::anyhow!("{name}: {e:#}"))
     };
     // The list of checksums is signed first: nothing in it is believed before that.
-    check_signature("SHA256SUMS")?;
+    check("SHA256SUMS")?;
     let sums = std::fs::read_to_string(dir.join("SHA256SUMS")).context("SHA256SUMS")?;
     let mut names = Vec::new();
     for line in sums.lines() {
@@ -714,7 +720,7 @@ pub fn verify(dir: &Path, public_key: &Path) -> Result<()> {
         if sha256_hex(&data) != sum {
             bail!("{name}: the checksum does not match");
         }
-        check_signature(name)?;
+        check(name)?;
         names.push(name.to_string());
     }
     println!(

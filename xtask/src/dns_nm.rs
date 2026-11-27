@@ -65,7 +65,14 @@ refusals() {
 const TOOLS: &str = r#"
 case $FAM in
 rpm) sudo dnf install -y -q tcpdump nftables >/tmp/tools.log 2>&1 ;;
-arch) sudo pacman -S --noconfirm --needed networkmanager tcpdump nftables >/tmp/tools.log 2>&1 ;;
+arch)
+  sudo pacman -S --noconfirm --needed networkmanager tcpdump nftables >/tmp/tools.log 2>&1
+  # The image leaves sshd to systemd-ssh-generator, which only opens the TCP
+  # socket when a network address already exists at generation time, early in
+  # the boot. Once networkd is switched off, nothing does: enable the service.
+  sudo systemctl enable sshd.service
+  echo "METRIC: sshd $(systemctl is-enabled sshd.service 2>&1)"
+  ;;
 esac || { tail -20 /tmp/tools.log; exit 1; }
 systemctl is-active --quiet systemd-resolved || sudo systemctl enable --now systemd-resolved
 resolves || { echo "NO NAMES BEFORE ANYTHING"; why; exit 1; }

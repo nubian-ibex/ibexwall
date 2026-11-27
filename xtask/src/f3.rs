@@ -50,6 +50,11 @@ pub fn run(vm: &Vm, workspace: &Path, install: &str) -> Result<()> {
         &workspace.join("target/release/ibexwall-dns"),
         "/usr/bin/ibexwall-dns",
     )?;
+    install_binary(
+        vm,
+        &workspace.join("target/release/ibexwall-dns-failsafe"),
+        "/usr/bin/ibexwall-dns-failsafe",
+    )?;
     pipe_file(
         vm,
         &workspace.join("target/release/examples/bench"),

@@ -27,6 +27,9 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
   result from before a reboot is no longer shown as current.
 - Findings and posture read right after a change (an Undo, for example) now
   wait for the new checks instead of showing the old ones.
+- The DNS failsafe works with SELinux: it runs from its own binary in a
+  permissive domain of its own (ibexwall-selinux), so restoring the person's
+  DNS is never blocked by policy.
 
 ## 0.6.0 (2026-11-26)
 

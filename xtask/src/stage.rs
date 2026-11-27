@@ -162,6 +162,7 @@ pub fn run_stage(options: &Options) -> Result<()> {
         ("ibexctl", Package::Core),
         ("ibexwall-exec", Package::Core),
         ("ibexwall-dns", Package::Core),
+        ("ibexwall-dns-failsafe", Package::Core),
         ("ibexwall-ebpf-loader", Package::Core),
         ("ibexwall-mcp", Package::Mcp),
         ("ibexwall-agent", Package::Desktop),

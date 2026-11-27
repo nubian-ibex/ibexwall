@@ -18,6 +18,10 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
 
 ### Fixed
 
+- The kill switch kept containers, VMs and hotspot clients from reaching
+  even the hosts on the allow list: the replies to an accepted flow were
+  dropped, because the forward chain had no rule for established
+  connections.
 - Secure DNS: when the computer stops using the DNS setup the changes were
   made for, the app says lookups may be blocked and points to the undo,
   instead of showing the last result or "cannot be checked".

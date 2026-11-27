@@ -337,6 +337,10 @@ fn the_kill_switch_lets_the_tunnel_and_its_server_through_and_drops_the_rest() {
             .iter()
             .any(|r| r.oif_prefix.as_deref() == Some("wg"))
     );
+    // Replies to an accepted flow come back with the answer's address,
+    // which is not on the allow list: only connection state lets them
+    // through.
+    assert!(fwd.rules[0].ct_established);
     assert_eq!(fwd.rules.last().unwrap().verdict, Verdict::Drop);
     assert!(chain.rules.iter().any(|r| r.daddr == ["10.0.2.2"]));
     assert_eq!(chain.rules.last().unwrap().verdict, Verdict::Drop);

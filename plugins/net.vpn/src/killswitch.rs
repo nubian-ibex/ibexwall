@@ -117,7 +117,7 @@ pub(crate) fn plan_killswitch(sandbox: &Sandbox, config: &Config) -> Result<Vec<
     // Containers, VMs and hotspots send through FORWARD, not OUTPUT: let
     // only what goes into or comes back from the tunnel, plus the same
     // explicit allow list, and drop the rest.
-    let mut forward = vec![];
+    let mut forward = vec![rule(|r| r.ct_established = true)];
     for prefix in &interfaces {
         forward.push(rule(|r| r.oif_prefix = Some(prefix.clone())));
         forward.push(rule(|r| r.iif_prefix = Some(prefix.clone())));

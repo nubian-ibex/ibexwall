@@ -381,6 +381,7 @@ pub(crate) fn run_script(vm: &Vm, name: &str, script: &str) -> bool {
         }
         true
     } else {
+        crate::vm::keep_work_on_fail();
         eprintln!(
             "FAIL: {name} (exit {})\n--- stdout ---\n{}\n--- stderr ---\n{}",
             output.status,

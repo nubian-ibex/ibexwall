@@ -360,6 +360,14 @@ impl Vm {
     }
 }
 
+/// Set when a scenario fails, so the work directory (the serial console
+/// above all) survives for the investigation.
+pub static KEEP_ON_FAIL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn keep_work_on_fail() {
+    KEEP_ON_FAIL.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
 impl Drop for Vm {
     fn drop(&mut self) {
         let _ = self.ssh("sudo poweroff");
@@ -372,7 +380,11 @@ impl Drop for Vm {
         }
         let _ = self.qemu.kill();
         let _ = self.qmu_wait();
-        let _ = std::fs::remove_dir_all(&self.work);
+        if KEEP_ON_FAIL.load(std::sync::atomic::Ordering::Relaxed) {
+            println!("kept for investigation: {}", self.work.display());
+        } else {
+            let _ = std::fs::remove_dir_all(&self.work);
+        }
     }
 }
 

@@ -270,7 +270,7 @@ dns-browser-policy-body = Com a sua aprovação, grava a política que impede Fi
 
 dns-provider-adguard = AdGuard DNS
 dns-provider-adguard-logs = não processa dados pessoais; apenas estatísticas de uso
-dns-provider-dns4eu = DNS4EU (protective)
+dns-provider-dns4eu = DNS4EU (protetivo)
 dns-provider-dns4eu-logs = consulte a documentação de privacidade do provedor
 
 dns-counters-title = Desde que o resolvedor iniciou

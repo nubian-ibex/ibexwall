@@ -1,10 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Nubian Ibex and IbexWall contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Two ways to build:
+# Three ways to build:
 #   from source:   rpmbuild -ba ibexwall.spec   (runs `cargo xtask stage`)
 #   from a staged tree, as CI does for a release it has already built:
 #   rpmbuild -bb --define 'prebuilt_stage /path/to/stage' ibexwall.spec
+#   from the published release packages, as COPR does: srpm.sh makes the SRPM
+#   (it sets from_release); only the SELinux policy is built on the builder.
 # The stage directory holds `root/` (the installed layout) and `stage-lists/`
 # (which package owns which file); see `cargo xtask stage`.
 
@@ -17,8 +19,19 @@ Release:        1%{?dist}
 Summary:        Security center for Linux
 License:        GPL-3.0-or-later
 URL:            https://github.com/nubian-ibex/ibexwall
+%if 0%{?from_release}
+# %%define, not %%global: _builddir is read where it is used.
+%define prebuilt_stage %{_builddir}/stage
+Source0:        %{name}-%{version}.tar.gz
+Source1:        %{name}-%{version}.release.rpm
+Source2:        %{name}-desktop-%{version}.release.rpm
+Source3:        %{name}-mcp-%{version}.release.rpm
+BuildRequires:  cpio
+ExclusiveArch:  x86_64
+%endif
 %{!?prebuilt_stage:Source0: %{name}-%{version}.tar.gz}
 %{!?prebuilt_stage:BuildRequires: cargo, rust, systemd-rpm-macros}
+BuildRequires:  make
 BuildRequires:  systemd-rpm-macros
 Requires:       nftables
 Requires:       polkit
@@ -69,6 +82,22 @@ turn it on.
 %prep
 %if 0%{!?prebuilt_stage:1}
 %autosetup
+%endif
+%if 0%{?from_release}
+%setup -q
+# The published packages' files become the staged tree %%install reads.
+mkdir -p %{prebuilt_stage}/root %{prebuilt_stage}/stage-lists
+for pkg in ibexwall ibexwall-desktop ibexwall-mcp; do
+    rpm=%{_sourcedir}/$pkg-%{version}.release.rpm
+    lists=%{prebuilt_stage}/stage-lists/$pkg
+    rpm2cpio $rpm > $pkg.cpio
+    (cd %{prebuilt_stage}/root && cpio -idm --quiet) < $pkg.cpio
+    rm $pkg.cpio
+    rpm -qp --qf '[%%{FILEMODES:perms} %%{FILENAMES}\n]' $rpm > $pkg.contents
+    awk '$1 ~ /^d/ { print $2 }' $pkg.contents > $lists.dirs
+    awk '$1 !~ /^d/ { print $2 }' $pkg.contents > $lists.list
+    test -s $lists.list
+done
 %endif
 
 %build

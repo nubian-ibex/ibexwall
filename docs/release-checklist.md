@@ -24,8 +24,12 @@ maintainer or a decision.
       with one page per hardening setting.
 - [x] `ibexwall-plugin-index` with schema, generation and CI.
 - [x] This checklist.
-- [ ] Packages in COPR, PPA, OBS and AUR. Written and ready, but publishing
-      needs the maintainer's accounts on each and the official release key.
+- [ ] Packages in COPR, PPA, OBS and AUR. The AUR directory is generated
+      (`cargo xtask aur`, a `-bin` package from the release's Arch packages)
+      and COPR has its "make srpm" method (`packaging/rpm/srpm.sh` with
+      `.copr/Makefile`); both are checked in VMs (`vm-test --phase aur`,
+      `--phase copr`) but publishing needs the maintainer's accounts and the
+      official release key.
 
 ## Acceptance
 

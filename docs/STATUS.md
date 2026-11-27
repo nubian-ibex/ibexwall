@@ -7,45 +7,23 @@ Last updated: 2026-11-27 (0.7.0 in development)
 
 ## Current phase
 
-**Now: 0.7.0 in development on branch `v0.7.0-dev`** (autonomous session,
-2026-11-26/27; the maintainer approved 0.6.1 and 0.7 to ship together, and is
-away: nothing is pushed, tagged or published until they sign). Merged on the
-branch, all green (fmt, clippy, 827 tests, schemas, cargo-deny, UI lint+check+
-tests+build):
+**Now: 0.7.0 published 2026-11-27** (latest release). Verified before
+publishing: CI green on main; the 24-run release matrix on the release
+commit (`f10` and `desktop` on five distros, `snapshots` on three,
+`firewall-on`/`f5`/`audit` on two, `f3` on three, `dns-nm` on Fedora and
+Arch); release checksums and signatures (16 and 17); upgrades in place on
+the three maintainer VMs with history and audit chain kept, no refusal, the
+app opened on each and its checks refreshed at start. Public docs deployed
+with the NetworkManager guide and the pt-BR/es/fr/de translations. Over 0.6.0:
 
-- Checks run once after boot, and reads of findings and posture wait for the
-  new checks: no result from before a reboot is shown as current, and the
-  Hardening screen no longer shows a setting as applied right after its undo.
-- Secure DNS on NetworkManager without systemd-resolved (ADR-0051, spike in
-  the ADR): own file in `/etc/NetworkManager/conf.d`, applied by a reload the
-  undo repeats; refusals with reasons (`dns=dnsmasq`, `rc-manager`, a static
-  `resolv.conf`, a foreign global DNS).
-- Secure DNS applied to a setup the machine left: the check fails with a
-  high-severity finding, the app says lookups may be blocked and opens
-  History. Nothing is undone by itself (v0.6.1 plan).
-- The undo survives a service that was uninstalled since the change.
-- The DNS failsafe works under SELinux: it is its own binary
-  (`ibexwall-dns-failsafe`) in a permissive domain of its own, and it goes on
-  past one refusing service.
-- The `dns-nm` VM phase: green on Fedora and Arch (14 scenarios each, with
-  the packages installed): failsafe on both backends, no clear DNS on the
-  wire, kept across a reboot and a NetworkManager restart, removal.
-- `f3` (systemd-resolved) green on Fedora: no regression.
-- Dependency updates from the open Dependabot PRs applied locally (11).
-- The audit phase gained VM scenarios for the items only a machine can
-  answer: the mount verdicts against PID 1's table (A-25, and A-24 in its
-  light), `authorized_keys` whose accounts may sign in (A-03), a
-  password-dialog hang-up (A-01), the kill switch with containers and with a
-  DHCP lease (A-29). Green on Fedora 45 and Ubuntu 26.04. They found and
-  fixed two defects: kill-switch replies to an allowed container flow were
-  dropped, and blocking a module group was planned while one of its file
-  systems was mounted under `/home` or `/tmp`, which the plugin's sandbox
-  cannot see. Left as a metric, for the maintainer to decide: with docker,
-  a host connection to a published container port stays blocked under the
-  kill switch (docker-proxy connects into the container's subnet).
-- The app strings gained the new DNS texts in five locales; the docs guides
-  gained the NetworkManager text and the pt-BR/es/fr/de translations
-  (ibexwall-docs, branch `v0.7.0-dev`).
+- Secure DNS on NetworkManager without systemd-resolved (ADR-0051); the app
+  reports when applied DNS no longer fits the machine (v0.6.1 plan).
+- The DNS failsafe works under SELinux; checks refresh at boot; the undo
+  survives an uninstalled unit.
+- The audit phase gained the VM scenarios for A-25/A-24, A-03, A-01 and
+  A-29, which found and fixed two defects (kill-switch replies; module
+  group with a file system mounted in the plugin's private view).
+- AUR/COPR automation (`cargo xtask aur`); eleven dependency updates.
 
 **Open:**
 

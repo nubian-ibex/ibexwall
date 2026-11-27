@@ -176,4 +176,6 @@ selinux_remove() {
         systemctl stop ibexwall-dns.service ibexwall-mcp.service >/dev/null 2>&1 || true
         systemctl stop 'ibexwall-plugin-*.service' >/dev/null 2>&1 || true
     fi
+    # The drop-in belongs to the policy package.
+    rm -f /usr/lib/systemd/system/ibexwall-dns-failsafe.service.d/10-selinux.conf
 }

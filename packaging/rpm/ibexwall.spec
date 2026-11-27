@@ -91,12 +91,15 @@ for pkg in ibexwall ibexwall-desktop ibexwall-mcp; do
 done
 
 install -Dm644 %{selinux_src}/ibexwall.pp %{buildroot}%{_datadir}/selinux/packages/ibexwall.pp
+install -Dm644 %{selinux_src}/ibexwall-dns-failsafe.service.d/10-selinux.conf %{buildroot}%{_unitdir}/ibexwall-dns-failsafe.service.d/10-selinux.conf
 
 %files -f %{_builddir}/ibexwall.files
 %files desktop -f %{_builddir}/ibexwall-desktop.files
 %files mcp -f %{_builddir}/ibexwall-mcp.files
 %files selinux
 %{_datadir}/selinux/packages/ibexwall.pp
+%dir %{_unitdir}/ibexwall-dns-failsafe.service.d
+%{_unitdir}/ibexwall-dns-failsafe.service.d/10-selinux.conf
 
 %post
 . /usr/lib/ibexwall/package-scripts.sh

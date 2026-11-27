@@ -35,6 +35,18 @@ why() {
 resolves() { for _ in $(seq 1 20); do getent hosts "${1:-example.com}" >/dev/null && return 0; sleep 1; done; return 1; }
 servers() { grep -E '^nameserver' /etc/resolv.conf | sort | tr '\n' ' '; }
 guard() { sudo nft list chain inet ibexwall net_dns_guard >/dev/null 2>&1; }
+# The guest image restores the resolved symlink on every boot (even with
+# manage_resolv_conf false): noise of the test guest, not the product. With
+# resolved down the link is dangling, so nobody can resolve; hand the file
+# to NetworkManager instead.
+clear_stale_link() {
+  echo "METRIC: resolv.conf: $(ls -l /etc/resolv.conf 2>&1), resolved $(systemctl is-active systemd-resolved 2>&1)"
+  if [ ! -f /etc/resolv.conf ]; then
+    sudo rm -f /etc/resolv.conf
+    sudo systemctl restart NetworkManager
+    sleep 5
+  fi
+}
 kill_resolver_until_it_gives_up() {
   for _ in 1 2 3 4 5 6; do
     for _ in $(seq 1 6); do systemctl is-active --quiet ibexwall-dns && break; sleep 1; done
@@ -100,6 +112,7 @@ fi
 "#;
 
 const NM_BASELINE: &str = r#"
+clear_stale_link
 systemctl is-active --quiet NetworkManager || { echo "NETWORKMANAGER IS NOT RUNNING"; why; exit 1; }
 if systemctl is-active --quiet systemd-resolved; then echo "RESOLVED STILL RUNS"; exit 1; fi
 resolves || { echo "NO NAMES WITH NETWORKMANAGER ALONE"; why; exit 1; }
@@ -108,6 +121,7 @@ echo "METRIC: NetworkManager alone, $(NetworkManager --version), servers: $(cat 
 "#;
 
 const NM_APPLY: &str = r#"
+clear_stale_link
 sudo ibexctl plugins enable net.dns >/dev/null
 sudo ibexctl check net.dns --json | grep -q detect-dns-nm-plain || { echo "NOT DETECTED AS NETWORKMANAGER"; sudo ibexctl check net.dns --json; why; exit 1; }
 apply_dns
@@ -145,6 +159,7 @@ echo "METRIC: no clear DNS on the wire, refused for others, kept across a Networ
 "#;
 
 const NM_AFTER_REBOOT: &str = r#"
+clear_stale_link
 [ "$(servers)" = "nameserver 127.0.0.153 " ] || { echo "A REBOOT LOST IT: $(servers)"; why; exit 1; }
 resolves || { echo "NO NAMES AFTER THE REBOOT"; why; exit 1; }
 [ "$(check_outcome)" = pass ] || { echo "THE CHECK DOES NOT PASS AFTER THE REBOOT"; why; exit 1; }
@@ -203,6 +218,7 @@ echo "METRIC: leaving the setup is reported after a boot, and the undo restores 
 "#;
 
 const REMOVE: &str = r#"
+clear_stale_link
 sudo systemctl disable --now systemd-resolved.service >/dev/null 2>&1 || true
 sudo rm -f /etc/resolv.conf
 sudo systemctl restart NetworkManager

@@ -3,7 +3,7 @@
 
 # STATUS
 
-Last updated: 2026-11-26 (v0.6.0 published)
+Last updated: 2026-11-27 (AUR and COPR automation, checked in VMs)
 
 ## Current phase
 
@@ -42,7 +42,18 @@ Public docs deployed. Over 0.5.1:
   (Ryzen 9 3900X, VirtualBox loaded next to KVM) more than at IbexWall,
   unproven. Panic console:
   `~/.cache/ibexwall/vm/work-1795658638/serial.log`.
-- COPR and AUR publishing waits for the maintainer's accounts.
+- COPR and AUR publishing waits for the maintainer's accounts. Everything
+  before publishing is automated now (2026-11-27): `cargo xtask aur` writes
+  the AUR directory of a published release from its signed checksums, the
+  repository carries COPR's "make srpm" method (`.copr/Makefile` and
+  `packaging/rpm/srpm.sh`, which refuses a foreign key), and the VM phases
+  `aur` (arch) and `copr` (fedora) verified both end to end on the 0.6.0
+  release: makepkg install, diff against the release's packages, mock builds
+  on Fedora 45 and 44 with the right dist tags, install, removal with no
+  residue. A maintainer only reviews, pushes the AUR directory and points
+  COPR at the repository. The rpm dist-tag debt is resolved for the
+  repositories (COPR stamps each chroot's tag; the release's own RPMs keep
+  the builder's `fc45`, explained in `packaging/README.md`).
 
 F0 to F10 and F10b are delivered. The F10 acceptance items are verified:
 package install, upgrade and remove with no residue across the five

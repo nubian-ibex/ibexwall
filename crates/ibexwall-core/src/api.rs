@@ -278,7 +278,10 @@ async fn dispatch(
 
     match method {
         "GetInfo" => Ok(Reply::result(info(core))),
-        "GetPosture" => Ok(Reply::result(posture(core))),
+        "GetPosture" => {
+            core.findings_settled().await;
+            Ok(Reply::result(posture(core)))
+        }
         "GetDnsStatus" => Ok(Reply::result(dns_status(core).await)),
         "GetFirewall" => Ok(Reply::result(
             json!({ "firewall": crate::firewall::state(core).await }),
@@ -530,6 +533,7 @@ async fn dispatch(
             .await
         }
         "ListFindings" => {
+            core.findings_settled().await;
             let plugin = opt_str_field(&parameters, "plugin")?.unwrap_or_default();
             let findings = core
                 .state

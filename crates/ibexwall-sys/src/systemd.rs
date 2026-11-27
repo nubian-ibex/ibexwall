@@ -47,6 +47,8 @@ pub trait Systemd: Send + Sync {
     /// deliberate start: restarts made by the changes it undoes must not
     /// count against the start limit meant to catch a crash loop.
     fn reset_failed(&self, _unit: &str) {}
+    /// Blocks until the boot has finished, successfully or not.
+    fn wait_for_boot(&self) {}
     /// Runs the executor helper for one transaction in a transient unit
     /// (ADR-0026): `ReadWritePaths` limited to `dirs`, hardened like the
     /// daemon, and the call blocks until the unit finishes.
@@ -107,6 +109,16 @@ fn systemctl(args: &[&str]) -> anyhow::Result<String> {
 }
 
 impl Systemd for RealSystemd {
+    fn wait_for_boot(&self) {
+        if self.enabled {
+            // It exits non-zero after a degraded boot, which is over too, and
+            // any other failure only means the checks run a little early.
+            let _ = Command::new("systemctl")
+                .args(["is-system-running", "--wait", "--quiet"])
+                .output();
+        }
+    }
+
     fn run_transient_executor(
         &self,
         unit: &str,

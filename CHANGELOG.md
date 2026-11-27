@@ -6,6 +6,15 @@
 Versions follow [Semantic Versioning](https://semver.org). The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## Unreleased
+
+### Fixed
+
+- Checks run again when the service starts, once the machine has booted, so a
+  result from before a reboot is no longer shown as current.
+- Findings and posture read right after a change (an Undo, for example) now
+  wait for the new checks instead of showing the old ones.
+
 ## 0.6.0 (2026-11-26)
 
 ### Added

@@ -1042,6 +1042,27 @@ async fn unsigned_plugins_are_refused_on_use() {
     );
 }
 
+/// A read that follows a re-check, whether a change or the start of the
+/// daemon asked for it, waits for it instead of answering with old findings.
+#[tokio::test]
+async fn findings_are_read_after_a_recheck_under_way() {
+    if plugin_binary().is_none() {
+        eprintln!("skipping e2e: build ibexwall-plugin-echo first (cargo build --workspace)");
+        return;
+    }
+    let sandbox = prepare_sandbox();
+    let (core, mut client) = spawn_daemon(&sandbox, all_actions_polkit()).await;
+
+    core.refresh_findings_after_boot();
+    // Let the start up task reach the point where it asks for the checks.
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    let findings = client
+        .call("com.ibexwall.Core.ListFindings", json!({}))
+        .await
+        .unwrap();
+    assert_eq!(findings["findings"].as_array().map(Vec::len), Some(1));
+}
+
 #[tokio::test]
 async fn read_methods_and_error_paths() {
     if plugin_binary().is_none() {

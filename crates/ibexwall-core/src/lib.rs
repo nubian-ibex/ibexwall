@@ -52,7 +52,18 @@ pub struct Core {
     /// one at a time, so a snapshot can never capture another change
     /// mid-flight and a rollback can never interleave with an apply.
     pub tx_sem: Arc<tokio::sync::Semaphore>,
+    /// How many background re-checks have not finished yet.
+    refreshes: tokio::sync::watch::Sender<usize>,
+    /// Re-checks take turns, so an older result never overwrites a newer.
+    refresh_turn: tokio::sync::Mutex<()>,
 }
+
+/// How long a read waits for a re-check: a plugin that hangs must not hang
+/// the screens with it.
+const REFRESH_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// How long the first checks wait for the boot to finish.
+const BOOT_WAIT: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// Serves the varlink API on `socket` (dev/tests) until the process is
 /// stopped.
@@ -92,6 +103,7 @@ async fn serve_listener(listener: UnixListener, dev_key: Option<PathBuf>) -> Res
         None => api::Api::new(core),
     };
     start_monitor(api.core());
+    api.core().refresh_findings_after_boot();
     serve_varlink(listener, service_info(), Arc::new(api)).await
 }
 
@@ -228,6 +240,8 @@ impl Core {
             )),
             root,
             tx_sem: Arc::new(tokio::sync::Semaphore::new(1)),
+            refreshes: tokio::sync::watch::Sender::new(0),
+            refresh_turn: tokio::sync::Mutex::new(()),
         };
         core.recover_pending_transactions()?;
         if restored_ok {
@@ -385,15 +399,12 @@ impl Core {
         Ok(self.plugins.manifest(plugin)?.clone())
     }
 
-    /// Re-runs one plugin's check so the stored findings follow the
-    /// machine: a screen that re-reads right after applying must not show
-    /// yesterday's state. Best effort: a failure is logged, the change
-    /// that triggered it is not undone.
     /// Re-runs the checks so the stored findings follow the machine: a
     /// screen that re-reads right after applying must not show yesterday's
     /// state. `Some(plugin)` refreshes one; `None` refreshes every enabled
     /// plugin, because a check plugin such as `system.hardening` observes
-    /// the targets of another plugin's change. Best effort: a failure is
+    /// the targets of another plugin's change. It runs in the background and
+    /// [`Core::findings_settled`] waits for it. Best effort: a failure is
     /// logged, the change that triggered it is not undone.
     pub fn refresh_plugin_findings(self: &Arc<Self>, plugin: Option<&str>) {
         let core = Arc::clone(self);
@@ -405,7 +416,9 @@ impl Core {
                 .map(|e| e.manifest.id.clone())
                 .collect(),
         };
+        self.refreshes.send_modify(|running| *running += 1);
         tokio::spawn(async move {
+            let turn = core.refresh_turn.lock().await;
             for plugin in plugins {
                 if !core.state.plugin_enabled(&plugin).unwrap_or(false) {
                     continue;
@@ -420,10 +433,34 @@ impl Core {
                         }
                     }
                     Err(error) => {
-                        tracing::warn!(plugin, error = %format!("{error:#}"), "re-checking after a change failed");
+                        tracing::warn!(plugin, error = %format!("{error:#}"), "re-checking failed");
                     }
                 }
             }
+            drop(turn);
+            core.refreshes.send_modify(|running| *running -= 1);
+        });
+    }
+
+    /// Waits for the re-checks under way, so a read right after a change
+    /// does not answer with the findings from before it.
+    pub async fn findings_settled(&self) {
+        let mut running = self.refreshes.subscribe();
+        let _ = tokio::time::timeout(REFRESH_WAIT, running.wait_for(|n| *n == 0)).await;
+    }
+
+    /// Checks every enabled plugin once the machine has finished booting, so
+    /// that no answer stored before a reboot or an upgrade passes for
+    /// current. The daemon itself starts before the network.
+    pub fn refresh_findings_after_boot(self: &Arc<Self>) {
+        let core = Arc::clone(self);
+        let systemd = Arc::clone(&self.engine.sys.systemd);
+        tokio::spawn(async move {
+            let booted = tokio::task::spawn_blocking(move || systemd.wait_for_boot());
+            if tokio::time::timeout(BOOT_WAIT, booted).await.is_err() {
+                tracing::warn!("the boot has not finished; checking anyway");
+            }
+            core.refresh_plugin_findings(None);
         });
     }
 

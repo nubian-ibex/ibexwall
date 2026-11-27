@@ -11,6 +11,7 @@ detect-dns-title = Cómo funciona hoy tu DNS
 detect-dns-ibexwall = El DNS seguro ya está en marcha: las consultas salen cifradas de este equipo, a través del resolvedor de IbexWall.
 detect-dns-resolved-tls = Tu sistema usa { $stack } y ya cifra las consultas con TLS. Servidores en uso: { $servers }.
 detect-dns-resolved-plain = Tu sistema usa { $stack } y envía las consultas sin cifrar a: { $servers }. Más abajo tienes una configuración sugerida lista para revisar.
+detect-dns-nm-plain = Tu sistema usa { $stack } y envía las consultas sin cifrar a: { $servers }. Más abajo tienes una configuración sugerida lista para revisar. Con el DNS seguro activado, los dominios de búsqueda que ofrece tu red no se usan.
 detect-dns-other = Tu sistema usa { $stack } para el DNS. IbexWall aún no puede gestionar esa configuración, así que no se sugiere nada. Servidores en uso: { $servers }.
 detect-dns-proxy =
     Tu DNS ya sale de este equipo cifrado a través de { $proxy }, que escucha en { $listen }. Resolvedores: { $resolvers }. { $dnssec ->

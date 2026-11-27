@@ -11,6 +11,7 @@ detect-dns-title = How your DNS works today
 detect-dns-ibexwall = Secure DNS is already running: lookups leave this computer encrypted, through IbexWall's resolver.
 detect-dns-resolved-tls = Your system uses { $stack } and already encrypts lookups with TLS. Servers in use: { $servers }.
 detect-dns-resolved-plain = Your system uses { $stack } and sends lookups without encryption to: { $servers }. A suggested setup is ready to review below.
+detect-dns-nm-plain = Your system uses { $stack } and sends lookups without encryption to: { $servers }. A suggested setup is ready to review below. While Secure DNS is on, the search domains your network offers are not used.
 detect-dns-other = Your system uses { $stack } for DNS. IbexWall cannot manage that setup yet, so nothing is suggested. Servers in use: { $servers }.
 detect-dns-proxy =
     Your DNS already leaves this computer encrypted through { $proxy }, listening on { $listen }. Resolvers: { $resolvers }. It { $dnssec ->

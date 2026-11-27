@@ -8,8 +8,18 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
 
 ## Unreleased
 
+### Added
+
+- Secure DNS on machines where NetworkManager writes `/etc/resolv.conf` and
+  systemd-resolved is not used (ADR-0051): IbexWall adds its own file in
+  `/etc/NetworkManager/conf.d` and removes it on undo, failure or uninstall.
+  `dns=dnsmasq`, `rc-manager=unmanaged`, a static `resolv.conf` and another
+  global DNS setting are refused with the reason.
+
 ### Fixed
 
+- Undoing a change no longer fails for good because a service it restarted
+  has been uninstalled.
 - Checks run again when the service starts, once the machine has booted, so a
   result from before a reboot is no longer shown as current.
 - Findings and posture read right after a change (an Undo, for example) now

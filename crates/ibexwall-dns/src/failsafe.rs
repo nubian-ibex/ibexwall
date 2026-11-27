@@ -8,9 +8,9 @@
 //!
 //! It removes only IbexWall's own artifacts: first the nftables chain that
 //! blocks clear DNS (otherwise the machine would have no DNS at all), then
-//! the resolved drop-in, then it restarts the system resolver. The core
-//! sees the drift and the user is told (the session agent reports it in a
-//! later step).
+//! the drop-in for systemd-resolved or NetworkManager, then it tells that
+//! service to read its configuration again. The core sees the drift and the
+//! user is told (the session agent reports it in a later step).
 
 use std::io;
 use std::path::Path;
@@ -19,10 +19,11 @@ use std::process::Command;
 use ibexwall_proto::names;
 use ibexwall_sys::{Nft, RealNft};
 
-/// Removes the drop-in under `root`. Returns whether a file was removed;
-/// a missing file is success (the failsafe must be safe to repeat).
-pub fn remove_dropin(root: &Path) -> io::Result<bool> {
-    let path = names::path_under(root, names::ARTIFACT_RESOLVED);
+/// Removes one of IbexWall's drop-ins under `root`. Returns whether a file
+/// was removed; a missing file is success (the failsafe must be safe to
+/// repeat).
+pub fn remove_dropin(root: &Path, artifact: &str) -> io::Result<bool> {
+    let path = names::path_under(root, artifact);
     match std::fs::remove_file(&path) {
         Ok(()) => Ok(true),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
@@ -62,25 +63,34 @@ pub fn run(root: &Path) -> io::Result<()> {
             .restore(names::DNS_NFT_CHAIN, None)
             .map_err(|e| io::Error::other(format!("removing the DNS guard chain: {e:#}")))?;
     }
-    let removed = remove_dropin(root)?;
+    let resolved = remove_dropin(root, names::ARTIFACT_RESOLVED)?;
+    let network_manager = remove_dropin(root, names::ARTIFACT_NM_DNS)?;
     if root == Path::new("/") {
-        // A burst of transaction restarts can trip resolved's own start
-        // limit; clear it or the failsafe fails exactly when it matters.
-        let _ = Command::new("systemctl")
-            .args(["reset-failed", "systemd-resolved.service"])
-            .status();
-        let status = Command::new("systemctl")
-            .args(["restart", "systemd-resolved.service"])
-            .status()?;
-        if !status.success() {
-            return Err(io::Error::other(format!(
-                "systemctl restart failed: {status}"
-            )));
+        if network_manager {
+            systemctl(&["reload", "NetworkManager.service"])?;
+        }
+        if resolved || !network_manager {
+            // A burst of transaction restarts can trip resolved's own start
+            // limit; clear it or the failsafe fails exactly when it matters.
+            // Nothing to clear is not an error.
+            let _ = systemctl(&["reset-failed", "systemd-resolved.service"]);
+            systemctl(&["restart", "systemd-resolved.service"])?;
         }
     }
     eprintln!(
-        "ibexwall-dns failsafe: previous DNS configuration restored (drop-in removed: {removed})"
+        "ibexwall-dns failsafe: previous DNS configuration restored (resolved drop-in removed: {resolved}, NetworkManager drop-in removed: {network_manager})"
     );
+    Ok(())
+}
+
+fn systemctl(args: &[&str]) -> io::Result<()> {
+    let status = Command::new("systemctl").args(args).status()?;
+    if !status.success() {
+        return Err(io::Error::other(format!(
+            "systemctl {} failed: {status}",
+            args.join(" ")
+        )));
+    }
     Ok(())
 }
 
@@ -102,10 +112,10 @@ mod tests {
         std::fs::write(dir.join("50-ibexwall.conf"), "[Resolve]\nDNS=127.0.0.153\n").unwrap();
         std::fs::write(dir.join("10-corporate.conf"), "[Resolve]\nDNS=192.0.2.53\n").unwrap();
 
-        assert!(remove_dropin(&root).unwrap());
+        assert!(remove_dropin(&root, names::ARTIFACT_RESOLVED).unwrap());
         assert!(!dir.join("50-ibexwall.conf").exists());
         assert!(dir.join("10-corporate.conf").exists());
-        assert!(!remove_dropin(&root).unwrap());
+        assert!(!remove_dropin(&root, names::ARTIFACT_RESOLVED).unwrap());
     }
 
     #[test]
@@ -123,7 +133,7 @@ mod tests {
         // The real root is what switches on systemctl; a sandbox run of
         // `run` still proves the mode gate by leaving the file in place.
         assert_eq!(failure_mode(&root), crate::config::FailureMode::Block);
-        remove_dropin(&root).unwrap(); // restore mode would do this
+        remove_dropin(&root, names::ARTIFACT_RESOLVED).unwrap(); // restore mode would do this
         assert!(!dir.join("50-ibexwall.conf").exists());
         std::fs::write(dir.join("50-ibexwall.conf"), "[Resolve]\nDNS=127.0.0.153\n").unwrap();
         // Block mode: run() returns before touching anything.
@@ -139,6 +149,18 @@ mod tests {
         std::fs::create_dir_all(root.join("etc/ibexwall/dns")).unwrap();
         std::fs::write(root.join("etc/ibexwall/dns/resolver.json"), "{ not json").unwrap();
         assert_eq!(failure_mode(&root), FailureMode::Block);
+    }
+
+    #[test]
+    fn restore_mode_removes_whichever_dropin_is_there() {
+        let root = root("nm");
+        let dir = root.join("etc/NetworkManager/conf.d");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("50-ibexwall-dns.conf"), "[global-dns]\n").unwrap();
+        std::fs::write(dir.join("10-local.conf"), "[main]\n").unwrap();
+        run(&root).unwrap();
+        assert!(!dir.join("50-ibexwall-dns.conf").exists());
+        assert!(dir.join("10-local.conf").exists());
     }
 
     #[test]

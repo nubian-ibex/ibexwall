@@ -27,6 +27,7 @@ de = "Verschlüsselt DNS-Abfragen, blockiert Tracker und Malware-Domains und hin
 write_paths = [
   "/etc/ibexwall/dns",
   "/etc/systemd/resolved.conf", "/etc/systemd/resolved.conf.d", "/usr/sbin", "/usr/bin",
+  "/etc/NetworkManager/conf.d",
   "/etc/firefox/policies",
   "/etc/opt/chrome/policies/managed",
   "/etc/chromium/policies/managed",
@@ -38,10 +39,16 @@ units = ["ibexwall-dns.service", "systemd-resolved.service"]
 unit_actions = ["start", "stop", "restart", "enable", "disable"]
 nft_prefix = "net_dns"
 
+# NetworkManager reads its drop-in again; the rollback repeats it.
+[[privileges.exec]]
+path = "/usr/bin/nmcli"
+args = ["general", "reload"]
+symmetric = true
+
 [sandbox]
 user = "dynamic"
 capabilities = []
-read_paths = ["/etc/resolv.conf", "/etc/systemd/resolved.conf", "/etc/systemd/resolved.conf.d", "/usr/sbin", "/run/systemd/resolve", "/run/systemd/netif", "/run/NetworkManager", "/etc/ibexwall/dns", "/proc/net/udp", "/etc/passwd", "/usr/bin", "/etc/os-release", "/etc/dnscrypt-proxy", "/etc/dnscrypt-proxy.toml", "/run/systemd/units", "/etc/systemd/system", "/usr/lib/systemd/system/dnscrypt-proxy.socket"]
+read_paths = ["/etc/resolv.conf", "/etc/systemd/resolved.conf", "/etc/systemd/resolved.conf.d", "/usr/sbin", "/run/systemd/resolve", "/run/systemd/netif", "/run/NetworkManager", "/etc/NetworkManager", "/usr/lib/NetworkManager/conf.d", "/var/lib/NetworkManager/NetworkManager-intern.conf", "/etc/ibexwall/dns", "/proc/net/udp", "/etc/passwd", "/usr/bin", "/etc/os-release", "/etc/dnscrypt-proxy", "/etc/dnscrypt-proxy.toml", "/run/systemd/units", "/etc/systemd/system", "/usr/lib/systemd/system/dnscrypt-proxy.socket"]
 network = false
 
 [risk]

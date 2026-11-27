@@ -9,9 +9,7 @@ use ibexwall_proto::Finding;
 use ibexwall_sdk::{Sandbox, detect::detected};
 use serde_json::json;
 
-use super::{
-    Backend, backend, dropin_points_at_resolver, network_servers, proxy, resolver_listening,
-};
+use super::{Backend, backend, network_servers, protected, proxy};
 
 /// Whether systemd-resolved is told to use TLS (`yes` or `opportunistic`).
 fn resolved_uses_tls(sandbox: &Sandbox) -> bool {
@@ -54,10 +52,9 @@ pub fn dns(sandbox: &Sandbox, at: &str) -> Finding {
     let servers = network_servers(sandbox).join(", ");
     let mut args = BTreeMap::from([("servers".to_string(), servers)]);
     let local_proxy = proxy::local_encrypting_proxy(sandbox);
-    let case = match backend::detect(sandbox) {
-        Backend::Resolved if dropin_points_at_resolver(sandbox) && resolver_listening(sandbox) => {
-            "ibexwall"
-        }
+    let backend = backend::detect(sandbox);
+    let case = match backend {
+        _ if protected(sandbox, backend) => "ibexwall",
         _ if local_proxy.is_some() => {
             let proxy = local_proxy.as_ref().expect("checked above");
             let yes_no = |v: Option<bool>| match v {
@@ -88,6 +85,10 @@ pub fn dns(sandbox: &Sandbox, at: &str) -> Finding {
             args.insert("stack".into(), "systemd-resolved".into());
             "resolved-plain"
         }
+        Backend::NetworkManager => {
+            args.insert("stack".into(), "NetworkManager".into());
+            "nm-plain"
+        }
         Backend::Unsupported(_) => {
             args.insert("stack".into(), other_stack(sandbox).into());
             "other"
@@ -95,7 +96,7 @@ pub fn dns(sandbox: &Sandbox, at: &str) -> Finding {
     };
     // The suggestion is only the starting point of a review: the person
     // still sees the plan and applies it.
-    let patch = (case == "resolved-plain")
+    let patch = matches!(case, "resolved-plain" | "nm-plain")
         .then(|| json!({ "provider": "quad9", "transport": "tls", "enforcement": false }));
     detected("net.dns", "dns", case, args, patch, at)
 }

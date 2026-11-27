@@ -30,6 +30,7 @@ const ID: &str = "net.dns";
 const SERVICE: &str = "ibexwall-dns.service";
 const RESOLVED: &str = "systemd-resolved.service";
 const CHECK_ID: &str = "dns.secure_resolver";
+const NMCLI: &str = "/usr/bin/nmcli";
 
 /// Known DNS-over-HTTPS endpoints, so browsers cannot route around the
 /// stub while it is on (HaGeZi's Encrypted DNS Bypass list, GPL-3.0,
@@ -203,10 +204,19 @@ impl Plugin for SecureDns {
     }
 
     async fn verify(&self, _transaction: &str, _ops: &[Op]) -> bool {
-        evaluate(&Sandbox::system())
-            .results
-            .iter()
-            .all(|r| r.outcome == CheckOutcome::Pass)
+        // NetworkManager rewrites resolv.conf shortly after being told to.
+        for _ in 0..25 {
+            let report = evaluate(&Sandbox::system());
+            if report
+                .results
+                .iter()
+                .all(|r| r.outcome == CheckOutcome::Pass)
+            {
+                return true;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        }
+        false
     }
 }
 
@@ -218,6 +228,25 @@ fn dropin_content() -> String {
          [Resolve]\nDNS={}\nDomains=~.\nFallbackDNS=\n",
         names::DNS_BIND_ADDR
     )
+}
+
+/// NetworkManager's global DNS overrides what each connection and router
+/// advertisement offers (NetworkManager.conf(5), "global-dns section").
+fn nm_dropin_content() -> String {
+    format!(
+        "# Managed by IbexWall (net.dns). Remove this file and reload NetworkManager to restore the previous behavior.\n\
+         [global-dns]\n\n[global-dns-domain-*]\nservers={}\n",
+        names::DNS_BIND_ADDR
+    )
+}
+
+/// Tells NetworkManager to read its configuration again. The manifest marks
+/// it symmetric, so a rollback runs it again once the files are back.
+fn reload_network_manager() -> Op {
+    Op::Exec {
+        path: NMCLI.into(),
+        args: vec!["general".into(), "reload".into()],
+    }
 }
 
 fn plan(sandbox: &Sandbox, config: Config) -> Result<Vec<Op>, PluginError> {
@@ -235,10 +264,11 @@ fn plan(sandbox: &Sandbox, config: Config) -> Result<Vec<Op>, PluginError> {
             ),
         ));
     }
-    match backend::detect(sandbox) {
-        Backend::Resolved => {}
-        Backend::Unsupported(reason) => return Err(PluginError::invalid("backend", reason)),
+    let backend = backend::detect(sandbox);
+    if let Backend::Unsupported(reason) = backend {
+        return Err(PluginError::invalid("backend", reason));
     }
+    let through_nm = backend == Backend::NetworkManager;
     let settings = config.settings()?;
     let settings_json = serde_json::to_string_pretty(&settings)
         .map_err(|e| PluginError::invalid("settings", e.to_string()))?;
@@ -250,10 +280,26 @@ fn plan(sandbox: &Sandbox, config: Config) -> Result<Vec<Op>, PluginError> {
         owner: "root".into(),
         group: "root".into(),
     };
-    let mut ops = vec![
-        write(settings_path, format!("{settings_json}\n")),
-        write(names::ARTIFACT_RESOLVED.into(), dropin_content()),
-        // The resolver must be up before resolved is pointed at it.
+    let (dropin, other) = if through_nm {
+        (
+            write(names::ARTIFACT_NM_DNS.into(), nm_dropin_content()),
+            names::ARTIFACT_RESOLVED,
+        )
+    } else {
+        (
+            write(names::ARTIFACT_RESOLVED.into(), dropin_content()),
+            names::ARTIFACT_NM_DNS,
+        )
+    };
+    let mut ops = vec![write(settings_path, format!("{settings_json}\n")), dropin];
+    // The machine changed its DNS setup since the last time: the file made
+    // for the previous one goes.
+    let leftover = sandbox.exists(other);
+    if leftover {
+        ops.push(Op::FileRemove { path: other.into() });
+    }
+    ops.extend([
+        // The resolver must be up before the system is pointed at it.
         // Enabled for the next boot only: the restart below is the one
         // start. The resolver reads its settings only when it starts, and
         // `enable --now` leaves a running one as it is, so a change of
@@ -270,12 +316,19 @@ fn plan(sandbox: &Sandbox, config: Config) -> Result<Vec<Op>, PluginError> {
             action: UnitAction::Restart,
             now: None,
         },
-        Op::SystemdUnit {
+    ]);
+    if through_nm {
+        ops.push(reload_network_manager());
+    } else {
+        if leftover && backend::running(sandbox, "NetworkManager.service") {
+            ops.push(reload_network_manager());
+        }
+        ops.push(Op::SystemdUnit {
             unit: RESOLVED.into(),
             action: UnitAction::Restart,
             now: None,
-        },
-    ];
+        });
+    }
     // Last, so a failure above can never leave clear DNS blocked with no
     // resolver to answer.
     if config.enforcement {
@@ -468,6 +521,29 @@ fn network_servers(sandbox: &Sandbox) -> Vec<String> {
     out
 }
 
+fn nm_points_at_resolver(sandbox: &Sandbox) -> bool {
+    let ours = sandbox.exists(names::ARTIFACT_NM_DNS);
+    // The file alone proves nothing: a later setting can override it.
+    let servers: Vec<String> = sandbox
+        .read("/etc/resolv.conf")
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("nameserver"))
+        .map(|address| address.trim().to_string())
+        .collect();
+    ours && servers == [names::DNS_BIND_ADDR]
+}
+
+/// Whether lookups go through IbexWall's resolver right now.
+fn protected(sandbox: &Sandbox, backend: Backend) -> bool {
+    let pointed = match backend {
+        Backend::Resolved => dropin_points_at_resolver(sandbox),
+        Backend::NetworkManager => nm_points_at_resolver(sandbox),
+        Backend::Unsupported(_) => false,
+    };
+    pointed && resolver_listening(sandbox)
+}
+
 /// Upstreams in IbexWall's own settings that are not encrypted.
 fn plain_upstreams(sandbox: &Sandbox) -> Vec<String> {
     let Some(text) = sandbox.read(names::ARTIFACT_DNS_SETTINGS) else {
@@ -494,10 +570,8 @@ fn evaluate(sandbox: &Sandbox) -> CheckReport {
         // A proxy that encrypts is protection the person set up themselves.
         _ if encrypted_by_proxy => CheckOutcome::Pass,
         Backend::Unsupported(_) => CheckOutcome::NotAssessed,
-        Backend::Resolved if dropin_points_at_resolver(sandbox) && resolver_listening(sandbox) => {
-            CheckOutcome::Pass
-        }
-        Backend::Resolved => CheckOutcome::Fail,
+        _ if protected(sandbox, backend) => CheckOutcome::Pass,
+        _ => CheckOutcome::Fail,
     };
     let mut findings = vec![detect::dns(sandbox, "1970-01-01T00:00:00Z")];
     // What the person should know about where their DNS goes, said plainly

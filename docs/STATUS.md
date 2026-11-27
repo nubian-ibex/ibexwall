@@ -32,6 +32,17 @@ tests+build):
   wire, kept across a reboot and a NetworkManager restart, removal.
 - `f3` (systemd-resolved) green on Fedora: no regression.
 - Dependency updates from the open Dependabot PRs applied locally (11).
+- The audit phase gained VM scenarios for the items only a machine can
+  answer: the mount verdicts against PID 1's table (A-25, and A-24 in its
+  light), `authorized_keys` whose accounts may sign in (A-03), a
+  password-dialog hang-up (A-01), the kill switch with containers and with a
+  DHCP lease (A-29). Green on Fedora 45 and Ubuntu 26.04. They found and
+  fixed two defects: kill-switch replies to an allowed container flow were
+  dropped, and blocking a module group was planned while one of its file
+  systems was mounted under `/home` or `/tmp`, which the plugin's sandbox
+  cannot see. Left as a metric, for the maintainer to decide: with docker,
+  a host connection to a published container port stays blocked under the
+  kill switch (docker-proxy connects into the container's subnet).
 - The app strings gained the new DNS texts in five locales; the docs guides
   gained the NetworkManager text and the pt-BR/es/fr/de translations
   (ibexwall-docs, branch `v0.7.0-dev`).

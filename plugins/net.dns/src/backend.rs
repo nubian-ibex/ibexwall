@@ -136,9 +136,10 @@ impl Config {
                     && !line.starts_with('#')
                     && let Some((key, value)) = line.split_once('=')
                 {
-                    config
-                        .main
-                        .insert(key.trim().to_string(), value.trim().to_string());
+                    config.main.insert(
+                        key.trim().to_ascii_lowercase(),
+                        value.trim().to_ascii_lowercase(),
+                    );
                 }
             }
         }

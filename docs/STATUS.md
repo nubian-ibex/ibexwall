@@ -3,25 +3,31 @@
 
 # STATUS
 
-Last updated: 2026-11-26 (releasing v0.6.0)
+Last updated: 2026-11-26 (v0.6.0 published)
 
 ## Current phase
 
-**Now: releasing v0.6.0** (2026-11-26). Over the published v0.5.1:
+**Now: v0.6.0 published 2026-11-26** (latest release). Verified before
+publishing: CI; 21 of 21 VM runs on the release commit (`f10` and `desktop`
+on five distros, `snapshots`, `firewall-on`, `f5`, `f3`, `audit`); release
+checksums and signatures; an upgrade in place on the three maintainer VMs
+with history and audit chain kept, no refusal, and the app opened on each.
+Public docs deployed. Over 0.5.1:
 
 - System snapshots with snapper around risky changes (ADR-0050), off by
   default: `docs/plans/v0.6-system-snapshots.md`.
 - The app no longer opens a white window in VMware and VirtualBox guests
-  under X11 (seen on the EndeavourOS maintainer VM; 0.5.1 has the defect).
+  under X11.
 - Where Secure DNS cannot manage the machine (no systemd-resolved), the
   screen says so up front.
 - Removing the packages no longer logs an AppArmor refusal.
 
-The maintainer tested the branch build on the Fedora, Ubuntu and
-EndeavourOS VMs, Secure DNS included.
-
 **Open:**
 
+- Removing systemd-resolved while Secure DNS is applied leaves no name
+  resolving, and the app shows an old result (since 0.1.0, seen on the
+  EndeavourOS VM, undone there with `ibexctl rollback`). Fix proposed in
+  `docs/plans/v0.6.1-dns-stack-changed.md`, not approved. The docs warn.
 - Secure DNS needs systemd-resolved; NetworkManager without it is proposed
   for v0.7 (`docs/plans/v0.7-dns-networkmanager.md`), not approved. The
   EndeavourOS VM was moved to systemd-resolved by hand.

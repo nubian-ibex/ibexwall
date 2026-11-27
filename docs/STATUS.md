@@ -3,27 +3,50 @@
 
 # STATUS
 
-Last updated: 2026-11-27 (AUR and COPR automation, checked in VMs)
+Last updated: 2026-11-27 (0.7.0 in development)
 
 ## Current phase
 
-**Now: v0.6.0 published 2026-11-26** (latest release). Verified before
-publishing: CI; 21 of 21 VM runs on the release commit (`f10` and `desktop`
-on five distros, `snapshots`, `firewall-on`, `f5`, `f3`, `audit`); release
-checksums and signatures; an upgrade in place on the three maintainer VMs
-with history and audit chain kept, no refusal, and the app opened on each.
-Public docs deployed. Over 0.5.1:
+**Now: 0.7.0 in development on branch `v0.7.0-dev`** (autonomous session,
+2026-11-26/27; the maintainer approved 0.6.1 and 0.7 to ship together, and is
+away: nothing is pushed, tagged or published until they sign). Merged on the
+branch, all green (fmt, clippy, 827 tests, schemas, cargo-deny, UI lint+check+
+tests+build):
 
-- System snapshots with snapper around risky changes (ADR-0050), off by
-  default: `docs/plans/v0.6-system-snapshots.md`.
-- The app no longer opens a white window in VMware and VirtualBox guests
-  under X11.
-- Where Secure DNS cannot manage the machine (no systemd-resolved), the
-  screen says so up front.
-- Removing the packages no longer logs an AppArmor refusal.
+- Checks run once after boot, and reads of findings and posture wait for the
+  new checks: no result from before a reboot is shown as current, and the
+  Hardening screen no longer shows a setting as applied right after its undo.
+- Secure DNS on NetworkManager without systemd-resolved (ADR-0051, spike in
+  the ADR): own file in `/etc/NetworkManager/conf.d`, applied by a reload the
+  undo repeats; refusals with reasons (`dns=dnsmasq`, `rc-manager`, a static
+  `resolv.conf`, a foreign global DNS).
+- Secure DNS applied to a setup the machine left: the check fails with a
+  high-severity finding, the app says lookups may be blocked and opens
+  History. Nothing is undone by itself (v0.6.1 plan).
+- The undo survives a service that was uninstalled since the change.
+- The DNS failsafe works under SELinux: it is its own binary
+  (`ibexwall-dns-failsafe`) in a permissive domain of its own, and it goes on
+  past one refusing service.
+- The `dns-nm` VM phase: green on Fedora and Arch (14 scenarios each, with
+  the packages installed): failsafe on both backends, no clear DNS on the
+  wire, kept across a reboot and a NetworkManager restart, removal.
+- `f3` (systemd-resolved) green on Fedora: no regression.
+- Dependency updates from the open Dependabot PRs applied locally (11).
+- The app strings gained the new DNS texts in five locales; the docs guides
+  gained the NetworkManager text and the pt-BR/es/fr/de translations
+  (ibexwall-docs, branch `v0.7.0-dev`).
 
 **Open:**
 
+**Open:**
+
+- AUR/COPR: `cargo xtask aur --version V` renders a binary `-bin` package
+  from the signed release (verified with `makepkg` in an Arch VM, byte
+  identical to the 0.6.0 packages); the COPR path builds the SRPM the way
+  COPR does and rebuilds it under `mock` on Fedora 44 and 45, stamped with
+  each chroot's own dist tag (verified with the packages installed and
+  nothing left behind). Pushing to the AUR and creating the COPR project
+  stay with the maintainer (accounts).
 - Removing systemd-resolved while Secure DNS is applied leaves no name
   resolving, and the app shows an old result (since 0.1.0, seen on the
   EndeavourOS VM, undone there with `ibexctl rollback`). Fix proposed in

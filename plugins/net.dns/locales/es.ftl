@@ -1,5 +1,7 @@
 dns-unprotected-title = IbexWall no cifra las consultas DNS
 dns-unprotected-summary = Tu equipo envía las consultas DNS a través del servidor propio de la red, que puede verlas y modificarlas. Activa el DNS seguro para cifrarlas.
+dns-stale-title = El DNS seguro ya no corresponde a este equipo
+dns-stale-summary = Los cambios de DNS de IbexWall siguen aplicados, pero este equipo ahora gestiona el DNS de otra forma, y las consultas pueden estar bloqueadas o sin protección. Deshaz los cambios del DNS seguro en el Historial, del más reciente al más antiguo.
 dns-may-affect-captive = Las páginas de inicio de sesión de portales cautivos (hoteles, aeropuertos) pueden no cargarse.
 dns-may-affect-vpn = Los clientes VPN que establecen su propio DNS pueden ser anulados.
 dns-may-affect-split = El DNS dividido corporativo (nombres internos) puede dejar de resolverse.
@@ -12,6 +14,7 @@ detect-dns-ibexwall = El DNS seguro ya está en marcha: las consultas salen cifr
 detect-dns-resolved-tls = Tu sistema usa { $stack } y ya cifra las consultas con TLS. Servidores en uso: { $servers }.
 detect-dns-resolved-plain = Tu sistema usa { $stack } y envía las consultas sin cifrar a: { $servers }. Más abajo tienes una configuración sugerida lista para revisar.
 detect-dns-nm-plain = Tu sistema usa { $stack } y envía las consultas sin cifrar a: { $servers }. Más abajo tienes una configuración sugerida lista para revisar. Con el DNS seguro activado, los dominios de búsqueda que ofrece tu red no se usan.
+detect-dns-stale = Los ajustes de DNS de IbexWall están aplicados, pero este equipo ya no usa la configuración para la que se hicieron. Servidores en uso: { $servers }.
 detect-dns-other = Tu sistema usa { $stack } para el DNS. IbexWall aún no puede gestionar esa configuración, así que no se sugiere nada. Servidores en uso: { $servers }.
 detect-dns-proxy =
     Tu DNS ya sale de este equipo cifrado a través de { $proxy }, que escucha en { $listen }. Resolvedores: { $resolvers }. { $dnssec ->

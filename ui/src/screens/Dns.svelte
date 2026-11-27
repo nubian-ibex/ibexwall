@@ -109,7 +109,7 @@
   $effect(() => {
     changes.setSource(
       'dns',
-      changedTotal > 0 && problems.length === 0 && !unsupported
+      changedTotal > 0 && problems.length === 0 && !unsupported && !stale
         ? [
             {
               id: 'dns-form',
@@ -143,8 +143,11 @@
   const plugin = $derived(
     app.plugins.status === 'ready' ? app.plugins.data.find((p) => p.id === 'net.dns') : undefined,
   );
+  /** IbexWall's DNS changes are applied to a setup the machine left. */
+  const stale = $derived(plugin?.enabled && notes.some((f) => f.id === 'dns.stale_settings'));
   const outcome = $derived.by(() => {
     if (!plugin?.enabled) return 'off';
+    if (stale) return 'stale';
     if (app.posture.status !== 'ready') return 'unknown';
     const result = app.posture.data.results?.find((r) => r.id === 'dns.secure_resolver');
     return result?.outcome ?? 'unknown';
@@ -209,7 +212,18 @@
     />
   </section>
 
-  {#if unsupported}
+  {#if stale}
+    <section class="card blocked" aria-labelledby="dns-stale">
+      <h2 id="dns-stale">{t('dns-stale-title')}</h2>
+      <p>{t('dns-stale-body')}</p>
+      <div class="actions">
+        <Button variant="primary" onclick={() => (app.route = 'history')}>
+          {t('dns-stale-history')}
+        </Button>
+        <Button disabled={busy} onclick={checkAgain}>{t('dns-unsupported-recheck')}</Button>
+      </div>
+    </section>
+  {:else if unsupported}
     <section class="card blocked" aria-labelledby="dns-unsupported">
       <h2 id="dns-unsupported">{t('dns-unsupported-title')}</h2>
       <p>{t('dns-unsupported-body')}</p>
@@ -444,6 +458,11 @@
     gap: var(--space-3);
     margin-top: var(--space-4);
     overflow-wrap: anywhere;
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
   }
   .tabs {
     display: flex;

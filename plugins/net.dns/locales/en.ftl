@@ -1,5 +1,7 @@
 dns-unprotected-title = DNS lookups are not encrypted by IbexWall
 dns-unprotected-summary = Your computer sends DNS lookups through the network's own server, which can see and change them. Turn on Secure DNS to encrypt them.
+dns-stale-title = Secure DNS no longer matches this computer
+dns-stale-summary = IbexWall's DNS changes are still applied, but this computer now handles DNS another way, so lookups may be blocked or unprotected. Undo the Secure DNS changes in History, newest first.
 dns-may-affect-captive = Sign-in pages of captive portals (hotels, airports) may not load.
 dns-may-affect-vpn = VPN clients that set their own DNS may be overridden.
 dns-may-affect-split = Corporate split DNS (internal names) may stop resolving.
@@ -12,6 +14,7 @@ detect-dns-ibexwall = Secure DNS is already running: lookups leave this computer
 detect-dns-resolved-tls = Your system uses { $stack } and already encrypts lookups with TLS. Servers in use: { $servers }.
 detect-dns-resolved-plain = Your system uses { $stack } and sends lookups without encryption to: { $servers }. A suggested setup is ready to review below.
 detect-dns-nm-plain = Your system uses { $stack } and sends lookups without encryption to: { $servers }. A suggested setup is ready to review below. While Secure DNS is on, the search domains your network offers are not used.
+detect-dns-stale = IbexWall's DNS settings are applied, but this computer no longer uses the setup they were made for. Servers in use: { $servers }.
 detect-dns-other = Your system uses { $stack } for DNS. IbexWall cannot manage that setup yet, so nothing is suggested. Servers in use: { $servers }.
 detect-dns-proxy =
     Your DNS already leaves this computer encrypted through { $proxy }, listening on { $listen }. Resolvers: { $resolvers }. It { $dnssec ->

@@ -9,7 +9,7 @@ use ibexwall_proto::Finding;
 use ibexwall_sdk::{Sandbox, detect::detected};
 use serde_json::json;
 
-use super::{Backend, backend, network_servers, protected, proxy};
+use super::{Backend, applied_to_another_setup, backend, network_servers, protected, proxy};
 
 /// Whether systemd-resolved is told to use TLS (`yes` or `opportunistic`).
 fn resolved_uses_tls(sandbox: &Sandbox) -> bool {
@@ -54,6 +54,7 @@ pub fn dns(sandbox: &Sandbox, at: &str) -> Finding {
     let local_proxy = proxy::local_encrypting_proxy(sandbox);
     let backend = backend::detect(sandbox);
     let case = match backend {
+        _ if applied_to_another_setup(sandbox, backend) => "stale",
         _ if protected(sandbox, backend) => "ibexwall",
         _ if local_proxy.is_some() => {
             let proxy = local_proxy.as_ref().expect("checked above");

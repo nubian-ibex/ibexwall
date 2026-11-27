@@ -30,6 +30,7 @@ const ID: &str = "net.dns";
 const SERVICE: &str = "ibexwall-dns.service";
 const RESOLVED: &str = "systemd-resolved.service";
 const CHECK_ID: &str = "dns.secure_resolver";
+const STALE_ID: &str = "dns.stale_settings";
 const NMCLI: &str = "/usr/bin/nmcli";
 
 /// Known DNS-over-HTTPS endpoints, so browsers cannot route around the
@@ -544,6 +545,16 @@ fn protected(sandbox: &Sandbox, backend: Backend) -> bool {
     pointed && resolver_listening(sandbox)
 }
 
+/// IbexWall's DNS changes are applied, but the machine no longer uses the
+/// setup they were made for: the block on unencrypted DNS may be all that is
+/// left of them, and then no name resolves.
+fn applied_to_another_setup(sandbox: &Sandbox, backend: Backend) -> bool {
+    let resolved = sandbox.exists(names::ARTIFACT_RESOLVED)
+        && !(backend == Backend::Resolved && backend::running(sandbox, RESOLVED));
+    let nm = sandbox.exists(names::ARTIFACT_NM_DNS) && backend != Backend::NetworkManager;
+    resolved || nm
+}
+
 /// Upstreams in IbexWall's own settings that are not encrypted.
 fn plain_upstreams(sandbox: &Sandbox) -> Vec<String> {
     let Some(text) = sandbox.read(names::ARTIFACT_DNS_SETTINGS) else {
@@ -566,7 +577,9 @@ fn evaluate(sandbox: &Sandbox) -> CheckReport {
     let backend = backend::detect(sandbox);
     let encrypted_by_proxy =
         proxy::local_encrypting_proxy(sandbox).is_some_and(|proxy| proxy.in_use);
+    let stale = applied_to_another_setup(sandbox, backend);
     let outcome = match backend {
+        _ if stale => CheckOutcome::Fail,
         // A proxy that encrypts is protection the person set up themselves.
         _ if encrypted_by_proxy => CheckOutcome::Pass,
         Backend::Unsupported(_) => CheckOutcome::NotAssessed,
@@ -596,12 +609,27 @@ fn evaluate(sandbox: &Sandbox) -> CheckReport {
         ));
     }
     if outcome == CheckOutcome::Fail {
+        let (id, severity, title, summary) = if stale {
+            (
+                STALE_ID,
+                Severity::High,
+                "dns-stale-title",
+                "dns-stale-summary",
+            )
+        } else {
+            (
+                CHECK_ID,
+                Severity::Medium,
+                "dns-unprotected-title",
+                "dns-unprotected-summary",
+            )
+        };
         findings.push(Finding {
-            id: CHECK_ID.into(),
+            id: id.into(),
             plugin: ID.into(),
-            severity: Severity::Medium,
-            title_key: "dns-unprotected-title".into(),
-            summary_key: "dns-unprotected-summary".into(),
+            severity,
+            title_key: title.into(),
+            summary_key: summary.into(),
             args: BTreeMap::new(),
             references: vec![],
             remediation: None,

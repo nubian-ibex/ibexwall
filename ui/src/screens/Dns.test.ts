@@ -158,6 +158,36 @@ describe('Dns screen: a stack Secure DNS cannot manage', () => {
   });
 });
 
+describe('Dns screen: applied to a setup the computer left', () => {
+  beforeEach(() => i18n.set('en'));
+
+  it('says lookups may be blocked and sends the person to undo the changes', async () => {
+    const transport = new FixtureTransport('protected');
+    transport.listFindings = () =>
+      Promise.resolve([
+        {
+          id: 'dns.stale_settings',
+          plugin: 'net.dns',
+          severity: 'high' as const,
+          title_key: 'dns-stale-title',
+          summary_key: 'dns-stale-summary',
+          args: {},
+          references: [],
+          status: 'open' as const,
+          detected_at: '2026-11-26T12:00:00Z',
+        },
+      ]);
+    app.useTransport(transport);
+    renderScreen(Dns);
+    await app.refresh();
+    expect(await screen.findByRole('heading', { name: /lookups may be blocked/i })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: /are encrypted/i })).toBeNull();
+    expect(screen.queryByRole('tablist')).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: 'Open History' }));
+    expect(app.route).toBe('history');
+  });
+});
+
 describe('Dns screen: your own servers', () => {
   beforeEach(() => i18n.set('en'));
 

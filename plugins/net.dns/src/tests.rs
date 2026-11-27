@@ -23,6 +23,13 @@ fn resolved_tree(name: &str) -> (PathBuf, Sandbox) {
         root.join("etc/resolv.conf"),
     )
     .unwrap();
+    // The link systemd keeps while a unit runs.
+    std::fs::create_dir_all(root.join("run/systemd/units")).unwrap();
+    symlink(
+        "0123",
+        root.join("run/systemd/units/invocation:systemd-resolved.service"),
+    )
+    .unwrap();
     let sandbox = Sandbox::at(&root);
     (root, sandbox)
 }
@@ -585,6 +592,44 @@ fn networkmanager_passes_only_while_resolv_conf_names_the_resolver_alone() {
     );
     assert_eq!(evaluate(&sandbox).results[0].outcome, CheckOutcome::Fail);
     std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn dns_applied_to_a_setup_the_machine_left_is_a_failure_that_says_so() {
+    // Resolved disabled, resolv.conf replaced, as on the machine where this
+    // was found: not "cannot be assessed".
+    let (root, sandbox) = resolved_tree("stale-gone");
+    put(&root, names::ARTIFACT_RESOLVED, &dropin_content());
+    listening(&root);
+    assert_eq!(evaluate(&sandbox).results[0].outcome, CheckOutcome::Pass);
+    std::fs::remove_file(root.join("etc/resolv.conf")).unwrap();
+    put(&root, "/etc/resolv.conf", "nameserver 192.0.2.1\n");
+    let report = evaluate(&sandbox);
+    assert_eq!(report.results[0].outcome, CheckOutcome::Fail);
+    let found = problems(&report);
+    assert_eq!(found.len(), 1);
+    assert_eq!(
+        (found[0].id.as_str(), found[0].severity),
+        (STALE_ID, Severity::High)
+    );
+    let note = report
+        .findings
+        .iter()
+        .find(|f| f.id == "detect.dns")
+        .unwrap();
+    assert_eq!(note.summary_key, "detect-dns-stale");
+    assert!(!note.args.contains_key("patch"));
+
+    // Stopped, with the link left behind: the same.
+    let (stopped, sandbox) = resolved_tree("stale-stopped");
+    put(&stopped, names::ARTIFACT_RESOLVED, &dropin_content());
+    listening(&stopped);
+    std::fs::remove_file(stopped.join("run/systemd/units/invocation:systemd-resolved.service"))
+        .unwrap();
+    assert_eq!(problems(&evaluate(&sandbox))[0].id, STALE_ID);
+    for r in [root, stopped] {
+        std::fs::remove_dir_all(r).unwrap();
+    }
 }
 
 #[test]

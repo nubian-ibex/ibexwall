@@ -1,5 +1,7 @@
 dns-unprotected-title = DNS-Abfragen werden nicht von IbexWall verschlüsselt
 dns-unprotected-summary = Ihr Computer sendet DNS-Abfragen über den eigenen Server des Netzwerks, der sie sehen und verändern kann. Schalten Sie sicheres DNS ein, um sie zu verschlüsseln.
+dns-stale-title = Sicheres DNS passt nicht mehr zu diesem Computer
+dns-stale-summary = Die DNS-Änderungen von IbexWall sind noch aktiv, aber dieser Computer behandelt DNS jetzt anders, sodass Abfragen blockiert oder ungeschützt sein können. Machen Sie die Änderungen für sicheres DNS im Verlauf rückgängig, die neueste zuerst.
 dns-may-affect-captive = Anmeldeseiten von Captive Portals (Hotels, Flughäfen) werden möglicherweise nicht geladen.
 dns-may-affect-vpn = VPN-Clients, die ihr eigenes DNS setzen, werden möglicherweise überschrieben.
 dns-may-affect-split = Split-DNS in Firmennetzen (interne Namen) wird möglicherweise nicht mehr aufgelöst.
@@ -12,6 +14,7 @@ detect-dns-ibexwall = Sicheres DNS läuft bereits: Abfragen verlassen diesen Com
 detect-dns-resolved-tls = Ihr System verwendet { $stack } und verschlüsselt Abfragen bereits mit TLS. Verwendete Server: { $servers }.
 detect-dns-resolved-plain = Ihr System verwendet { $stack } und sendet Abfragen unverschlüsselt an: { $servers }. Eine vorgeschlagene Einrichtung steht unten zur Prüfung bereit.
 detect-dns-nm-plain = Ihr System verwendet { $stack } und sendet Abfragen unverschlüsselt an: { $servers }. Eine vorgeschlagene Einrichtung steht unten zur Prüfung bereit. Solange sicheres DNS an ist, werden die Suchdomänen Ihres Netzwerks nicht verwendet.
+detect-dns-stale = Die DNS-Einstellungen von IbexWall sind aktiv, aber dieser Computer verwendet die Konfiguration nicht mehr, für die sie erstellt wurden. Verwendete Server: { $servers }.
 detect-dns-other = Ihr System verwendet { $stack } für DNS. IbexWall kann diese Einrichtung noch nicht verwalten, daher wird nichts vorgeschlagen. Verwendete Server: { $servers }.
 detect-dns-proxy =
     Ihr DNS verlässt diesen Computer bereits verschlüsselt über { $proxy }, das auf { $listen } lauscht. Resolver: { $resolvers }. Es { $dnssec ->

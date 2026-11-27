@@ -1,5 +1,7 @@
 dns-unprotected-title = Les requêtes DNS ne sont pas chiffrées par IbexWall
 dns-unprotected-summary = Votre ordinateur envoie ses requêtes DNS par le serveur propre au réseau, qui peut les voir et les modifier. Activez le DNS sécurisé pour les chiffrer.
+dns-stale-title = Le DNS sécurisé ne correspond plus à cet ordinateur
+dns-stale-summary = Les changements DNS d'IbexWall sont toujours appliqués, mais cet ordinateur gère désormais le DNS autrement : les requêtes peuvent être bloquées ou non protégées. Annulez les changements du DNS sécurisé dans l'Historique, du plus récent au plus ancien.
 dns-may-affect-captive = Les pages de connexion des portails captifs (hôtels, aéroports) peuvent ne pas s'afficher.
 dns-may-affect-vpn = Les clients VPN qui définissent leur propre DNS peuvent être remplacés.
 dns-may-affect-split = Le DNS scindé d'entreprise (noms internes) peut cesser de résoudre.
@@ -12,6 +14,7 @@ detect-dns-ibexwall = Le DNS sécurisé fonctionne déjà : les requêtes quitte
 detect-dns-resolved-tls = Votre système utilise { $stack } et chiffre déjà les requêtes avec TLS. Serveurs utilisés : { $servers }.
 detect-dns-resolved-plain = Votre système utilise { $stack } et envoie les requêtes sans chiffrement à : { $servers }. Une configuration suggérée est prête à être examinée ci-dessous.
 detect-dns-nm-plain = Votre système utilise { $stack } et envoie les requêtes sans chiffrement à : { $servers }. Une configuration suggérée est prête à être examinée ci-dessous. Tant que le DNS sécurisé est activé, les domaines de recherche proposés par votre réseau ne sont pas utilisés.
+detect-dns-stale = Les réglages DNS d'IbexWall sont appliqués, mais cet ordinateur n'utilise plus la configuration pour laquelle ils ont été faits. Serveurs utilisés : { $servers }.
 detect-dns-other = Votre système utilise { $stack } pour le DNS. IbexWall ne peut pas encore gérer cette configuration, donc rien n'est suggéré. Serveurs utilisés : { $servers }.
 detect-dns-proxy =
     Votre DNS quitte déjà cet ordinateur chiffré via { $proxy }, qui écoute sur { $listen }. Résolveurs : { $resolvers }. Il { $dnssec ->

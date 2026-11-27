@@ -14,15 +14,14 @@ require {
 # Declarations
 #
 
-# The failsafe: a permissive domain of its own, chosen by the drop-in the
-# policy package installs on the unit. Whatever it must restore to keep the
-# person's names resolving is never blocked by policy, and every use is
-# logged.
+# The failsafe: a permissive domain of its own, entered through its own
+# binary. Whatever it must restore to keep the person's names resolving is
+# never blocked by policy, and every use is logged.
 type ibexwall_failsafe_t;
+type ibexwall_failsafe_exec_t;
+init_daemon_domain(ibexwall_failsafe_t, ibexwall_failsafe_exec_t)
 permissive ibexwall_failsafe_t;
-allow init_t ibexwall_failsafe_t:process transition;
 allow init_t ibexwall_failsafe_t:process2 { nnp_transition nosuid_transition };
-allow ibexwall_failsafe_t ibexwall_dns_exec_t:file entrypoint;
 
 # The secure DNS resolver.
 type ibexwall_dns_t;

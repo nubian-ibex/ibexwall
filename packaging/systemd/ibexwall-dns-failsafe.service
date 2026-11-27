@@ -4,7 +4,9 @@ Documentation=https://ibexwall.org
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/ibexwall-dns --failsafe
+# Its own binary, so the SELinux policy can enter it in a permissive
+# domain of its own (ibexwall-failsafe).
+ExecStart=/usr/bin/ibexwall-dns-failsafe
 
 # Needs to remove its drop-in and tell the system resolver or NetworkManager,
 # nothing else.

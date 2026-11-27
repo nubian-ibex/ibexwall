@@ -9,6 +9,7 @@
 mod audit;
 mod desktop;
 mod devkey;
+mod dns_nm;
 mod ebpf;
 mod egress;
 mod f1;
@@ -104,9 +105,8 @@ fn main() {
                 None | Some("f0") | Some("f1") | Some("f2") | Some("f3") | Some("f4")
                 | Some("f5") | Some("f6") | Some("f7") | Some("f8") | Some("f9") | Some("f10")
                 | Some("f11a") | Some("f11b") | Some("desktop") | Some("firewall-on")
-                | Some("audit") | Some("selinux") | Some("snapshots") | Some("fixtures") => {
-                    vm::run(&distro, phase.as_deref())
-                }
+                | Some("audit") | Some("selinux") | Some("snapshots") | Some("dns-nm")
+                | Some("fixtures") => vm::run(&distro, phase.as_deref()),
                 Some(other) => {
                     eprintln!("error: unknown phase `{other}`");
                     std::process::exit(2);

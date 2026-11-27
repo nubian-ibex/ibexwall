@@ -11,6 +11,10 @@ publish = false
 [lints]
 workspace = true
 
+[[bin]]
+name = "ibexwall-dns-failsafe"
+path = "src/bin/ibexwall-dns-failsafe.rs"
+
 [dependencies]
 ibexwall-proto.workspace = true
 ibexwall-sys.workspace = true

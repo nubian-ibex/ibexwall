@@ -136,7 +136,7 @@ set -e
 echo "METRIC: kernel cmdline: $(cat /proc/cmdline)"
 echo "METRIC: ip: $(ip -br a 2>&1 | tr '\n' ';')"
 for f in /etc/NetworkManager/NetworkManager.conf /etc/NetworkManager/conf.d/* /usr/lib/NetworkManager/conf.d/* /etc/systemd/network/* /etc/NetworkManager/system-connections/*; do
-  [ -e "$f" ] && awk -v f="$f" '{print "METRIC: " f ": " $0}' "$f"
+  [ -r "$f" ] && awk -v f="$f" '{print "METRIC: " f ": " $0}' "$f" || { [ -e "$f" ] && sudo awk -v f="$f" '{print "METRIC: " f ": " $0}' "$f"; }
 done
 echo "METRIC: unmanaged: $(cat /run/NetworkManager/no-auto-default.state 2>/dev/null; grep -r . /run/NetworkManager/conf.d 2>/dev/null)"
 

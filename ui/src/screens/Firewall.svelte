@@ -193,22 +193,25 @@
       {#if fw.ports.length === 0}
         <p class="muted">{t('firewall-none')}</p>
       {:else}
-        <ul class="rows">
-          {#each fw.ports as rule (format(rule))}
-            <li>
-              <span class="mono">{format(rule)}</span>
-              <button
-                type="button"
-                class="link"
-                disabled={!canAct}
-                aria-label={t('firewall-remove', { what: format(rule) })}
-                onclick={() => propose({ remove: format(rule) })}
-              >
-                {t('firewall-remove', { what: format(rule) })}
-              </button>
-            </li>
-          {/each}
-        </ul>
+        <details class="applied" open={fw.ports.length <= 5}>
+          <summary>{t('firewall-allowed-summary', { count: fw.ports.length })}</summary>
+          <ul class="rows">
+            {#each fw.ports as rule (format(rule))}
+              <li>
+                <span class="mono">{format(rule)}</span>
+                <button
+                  type="button"
+                  class="link"
+                  disabled={!canAct}
+                  aria-label={t('firewall-remove', { what: format(rule) })}
+                  onclick={() => propose({ remove: format(rule) })}
+                >
+                  {t('firewall-remove', { what: format(rule) })}
+                </button>
+              </li>
+            {/each}
+          </ul>
+        </details>
       {/if}
 
       <h3>{t('firewall-add-title')}</h3>
@@ -256,22 +259,25 @@
         {#if fw.services.length === 0}
           <p class="muted">{t('firewall-none')}</p>
         {:else}
-          <ul class="rows">
-            {#each fw.services as name (name)}
-              <li>
-                <span class="mono">{name}</span>
-                <button
-                  type="button"
-                  class="link"
-                  disabled={!canAct}
-                  aria-label={t('firewall-remove', { what: name })}
-                  onclick={() => propose({ remove_service: name })}
-                >
-                  {t('firewall-remove', { what: name })}
-                </button>
-              </li>
-            {/each}
-          </ul>
+          <details class="applied" open={fw.services.length <= 5}>
+            <summary>{t('firewall-allowed-summary', { count: fw.services.length })}</summary>
+            <ul class="rows">
+              {#each fw.services as name (name)}
+                <li>
+                  <span class="mono">{name}</span>
+                  <button
+                    type="button"
+                    class="link"
+                    disabled={!canAct}
+                    aria-label={t('firewall-remove', { what: name })}
+                    onclick={() => propose({ remove_service: name })}
+                  >
+                    {t('firewall-remove', { what: name })}
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          </details>
         {/if}
         <h3>{t('firewall-service-title')}</h3>
         <div class="form">
@@ -348,26 +354,32 @@
     </section>
 
     {#if unnamed.length > 0}
-      <section class="card" aria-labelledby="fw-listening">
-        <h2 id="fw-listening">{t('firewall-listening-title')}</h2>
+      <details class="card" aria-labelledby="fw-listening" open={unnamed.length <= 5}>
+        <summary>
+          <h2 id="fw-listening">
+            {t('firewall-listening-title')} ({unnamed.length})
+          </h2>
+        </summary>
         <p class="muted">{t('firewall-listening-body')}</p>
         <ul class="chips">
           {#each unnamed as rule (format(rule))}
             <li class="mono">{format(rule)}</li>
           {/each}
         </ul>
-      </section>
+      </details>
     {/if}
 
     {#if fw.other.length > 0}
-      <section class="card" aria-labelledby="fw-other">
-        <h2 id="fw-other">{t('firewall-other-title')}</h2>
+      <details class="card" aria-labelledby="fw-other" open={fw.other.length <= 5}>
+        <summary>
+          <h2 id="fw-other">{t('firewall-other-title')} ({fw.other.length})</h2>
+        </summary>
         <ul class="rows">
           {#each fw.other as line (line)}
             <li class="mono">{line}</li>
           {/each}
         </ul>
-      </section>
+      </details>
     {/if}
   {/if}
 {/if}
@@ -382,6 +394,23 @@
   h2 {
     font-size: 18px;
     margin: 0;
+  }
+  details.applied summary {
+    font-weight: 600;
+    min-height: var(--target);
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    margin-bottom: var(--space-2);
+  }
+  details.card > summary {
+    min-height: var(--target);
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+  }
+  details.card > summary h2 {
+    display: inline;
   }
   h3 {
     font-size: 16px;

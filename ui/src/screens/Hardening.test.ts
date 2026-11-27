@@ -21,6 +21,8 @@ describe('Hardening screen', () => {
   it('shows each setting with where it comes from, what it can break and whether it is in place', async () => {
     await open();
     expect(screen.getByText(/2 of 26 recommended settings are already in place/i)).toBeVisible();
+    // What is in place folds away; open it to read the same rows.
+    await fireEvent.click(screen.getByText('2 already in place'));
     const kptr = screen.getByText('Hide kernel addresses').closest('li') as HTMLElement;
     expect(within(kptr).getByText('In place')).toBeVisible();
     expect(within(kptr).getByRole('link', { name: /madaidans/i })).toHaveAttribute(
@@ -36,6 +38,8 @@ describe('Hardening screen', () => {
 
   it('starts with only what is safe and missing ticked, and never a risky or applied one', async () => {
     await open();
+    // The applied section holds one of the boxes this test inspects.
+    await fireEvent.click(screen.getByText('2 already in place'));
     const box = (name: RegExp) => screen.getByRole('checkbox', { name }) as HTMLInputElement;
     expect(box(/hide the kernel log|keep the kernel log/i).checked).toBe(true);
     expect(box(/hide kernel addresses/i).checked).toBe(false);
@@ -80,16 +84,21 @@ describe('Hardening screen', () => {
 
   it('links each setting to its page on the site', async () => {
     await open();
+    // The first item in place (the applied section) is the kernel one.
+    await fireEvent.click(screen.getByText('2 already in place'));
     const links = screen.getAllByRole('link', { name: /more about this setting/i });
     expect(links.length).toBeGreaterThan(5);
-    expect(links[0]).toHaveAttribute('href', 'https://ibexwall.com/hardening/kernel.kptr-restrict');
-    expect(links[0]).toHaveAttribute('rel', 'noopener noreferrer');
+    const kptr = screen.getByText('Hide kernel addresses').closest('li') as HTMLElement;
+    const link = within(kptr).getByRole('link', { name: /more about this setting/i });
+    expect(link).toHaveAttribute('href', 'https://ibexwall.com/hardening/kernel.kptr-restrict');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
   it('speaks Portuguese', async () => {
     i18n.set('pt-BR');
     await open();
     expect(screen.getByRole('heading', { level: 1, name: 'Hardening' })).toBeVisible();
+    await fireEvent.click(screen.getByText('2 já em vigor'));
     expect(screen.getByText('Esconder endereços do kernel')).toBeVisible();
   });
 });

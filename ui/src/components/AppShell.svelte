@@ -11,13 +11,21 @@
 
   let { children }: { children: Snippet } = $props();
 
-  const items: { route: Route; icon: string; key: string }[] = [
+  function pluginState(id: string | undefined): 'on' | 'off' | null {
+    if (!id || app.plugins.status !== 'ready') return null;
+    const plugin = app.plugins.data.find((p) => p.id === id);
+    return plugin ? (plugin.enabled ? 'on' : 'off') : null;
+  }
+
+  /** Screens that belong to one plugin carry a dot with its state, so the
+   * person sees what is on without visiting each screen. */
+  const items: { route: Route; icon: string; key: string; plugin?: string }[] = [
     { route: 'overview', icon: 'layout-grid', key: 'nav-overview' },
-    { route: 'apps', icon: 'monitor', key: 'nav-apps' },
-    { route: 'firewall', icon: 'brick-wall', key: 'nav-firewall' },
-    { route: 'dns', icon: 'globe', key: 'nav-dns' },
+    { route: 'apps', icon: 'monitor', key: 'nav-apps', plugin: 'apps.flatpak-network' },
+    { route: 'firewall', icon: 'brick-wall', key: 'nav-firewall', plugin: 'net.firewall' },
+    { route: 'dns', icon: 'globe', key: 'nav-dns', plugin: 'net.dns' },
     { route: 'posture', icon: 'shield-check', key: 'nav-posture' },
-    { route: 'hardening', icon: 'lock-keyhole', key: 'nav-hardening' },
+    { route: 'hardening', icon: 'lock-keyhole', key: 'nav-hardening', plugin: 'system.hardening' },
     { route: 'compliance', icon: 'badge-check', key: 'nav-compliance' },
     { route: 'organisation', icon: 'building-2', key: 'nav-organisation' },
     { route: 'plugins', icon: 'clipboard-list', key: 'nav-plugins' },
@@ -49,6 +57,14 @@
             >
               <Icon name={item.icon} size={20} />
               {t(item.key)}
+              {#if pluginState(item.plugin) !== null}
+                {@const state = pluginState(item.plugin)}
+                <span
+                  class={`state ${state}`}
+                  title={t(state === 'on' ? 'plugins-enabled' : 'plugins-disabled')}
+                  aria-hidden="true"
+                ></span>
+              {/if}
               {#if changes.countFor(item.route) > 0}
                 <span
                   class="badge"
@@ -157,6 +173,18 @@
   }
   nav button:hover {
     background: var(--surface-2);
+  }
+  nav .state {
+    width: 8px;
+    height: 8px;
+    margin-left: auto;
+    border-radius: 50%;
+  }
+  nav .state.on {
+    background: var(--primary-strong);
+  }
+  nav .state.off {
+    background: var(--muted);
   }
   nav .badge {
     margin-left: auto;

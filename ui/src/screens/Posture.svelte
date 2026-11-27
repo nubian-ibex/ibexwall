@@ -22,6 +22,11 @@
   const posture = $derived(app.posture);
   const results = $derived(posture.status === 'ready' ? (posture.data.results ?? []) : []);
   const findings = $derived(app.findings.status === 'ready' ? app.findings.data : []);
+  /** Groups whose every check passes fold away, so the screen shows what
+   * needs attention. */
+  const cards = $derived(cardsFrom(results));
+  const openCards = $derived(cards.filter((c) => c.checks.some((k) => k.outcome !== 'pass')));
+  const okCards = $derived(cards.filter((c) => c.checks.every((k) => k.outcome === 'pass')));
 </script>
 
 <header class="page-head">
@@ -76,7 +81,7 @@
 
   <h2 class="section">{t('posture-checks')}</h2>
   <div class="grid">
-    {#each cardsFrom(results) as card (card.id)}
+    {#each openCards as card (card.id)}
       <section class="card" aria-labelledby="group-{card.id}">
         <h3 id="group-{card.id}">{t(`card-${card.id}`)}</h3>
         <ul>
@@ -91,6 +96,28 @@
       </section>
     {/each}
   </div>
+
+  {#if okCards.length > 0}
+    <details class="ok" aria-labelledby="ok-title">
+      <summary id="ok-title">{t('posture-ok-summary', { count: okCards.length })}</summary>
+      <div class="grid">
+        {#each okCards as card (card.id)}
+          <section class="card" aria-labelledby="ok-{card.id}">
+            <h3 id="ok-{card.id}">{t(`card-${card.id}`)}</h3>
+            <ul>
+              {#each card.checks as check (check.id)}
+                {@const key = check.id.replace(/[._]/g, '-')}
+                <li>
+                  <span>{t(`${key}-name`)}</span>
+                  <span class="mono">{t(`outcome-${check.outcome.replace(/_/g, '-')}`)}</span>
+                </li>
+              {/each}
+            </ul>
+          </section>
+        {/each}
+      </div>
+    </details>
+  {/if}
 
   <h2 class="section">{t('posture-open-findings', { count: findings.length })}</h2>
   {#if findings.length === 0}
@@ -155,6 +182,23 @@
     display: grid;
     gap: var(--space-4);
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
+  .ok {
+    margin-top: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    background: var(--surface);
+    padding: var(--space-4);
+  }
+  .ok summary {
+    font-weight: 600;
+    min-height: var(--target);
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+  }
+  .ok .grid {
+    margin-top: var(--space-3);
   }
   .card {
     background: var(--surface);

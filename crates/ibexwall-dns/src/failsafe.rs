@@ -63,19 +63,27 @@ pub fn run(root: &Path) -> io::Result<()> {
             .restore(names::DNS_NFT_CHAIN, None)
             .map_err(|e| io::Error::other(format!("removing the DNS guard chain: {e:#}")))?;
     }
+    // One service refusing to cooperate must not stop the rest: the person
+    // keeps whatever DNS still comes out of this.
     let resolved = remove_dropin(root, names::ARTIFACT_RESOLVED)?;
     let network_manager = remove_dropin(root, names::ARTIFACT_NM_DNS)?;
+    let mut problems: Vec<String> = Vec::new();
     if root == Path::new("/") {
-        if network_manager {
-            systemctl(&["reload", "NetworkManager.service"])?;
+        if network_manager && let Err(error) = systemctl(&["reload", "NetworkManager.service"]) {
+            problems.push(format!("telling NetworkManager to re-read: {error}"));
         }
         if resolved || !network_manager {
             // A burst of transaction restarts can trip resolved's own start
             // limit; clear it or the failsafe fails exactly when it matters.
             // Nothing to clear is not an error.
             let _ = systemctl(&["reset-failed", "systemd-resolved.service"]);
-            systemctl(&["restart", "systemd-resolved.service"])?;
+            if let Err(error) = systemctl(&["restart", "systemd-resolved.service"]) {
+                problems.push(format!("restarting systemd-resolved: {error}"));
+            }
         }
+    }
+    for problem in problems {
+        eprintln!("ibexwall-dns failsafe: {problem}");
     }
     eprintln!(
         "ibexwall-dns failsafe: previous DNS configuration restored (resolved drop-in removed: {resolved}, NetworkManager drop-in removed: {network_manager})"

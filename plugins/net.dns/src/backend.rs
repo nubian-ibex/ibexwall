@@ -259,6 +259,11 @@ mod tests {
     fn settings_that_would_ignore_the_dropin_are_refused() {
         for (name, text, expected) in [
             ("dnsmasq", "[main]\ndns=dnsmasq\n", "dnsmasq"),
+            (
+                "uppercase",
+                "[main]\nDNS=DnsMasq\nRC-Manager=Unmanaged\n",
+                "dnsmasq",
+            ),
             ("none", "[main]\ndns = none\n", "dns="),
             ("resolved", "[main]\ndns=systemd-resolved\n", "dns="),
             ("unmanaged", "[main]\nrc-manager=unmanaged\n", "rc-manager"),

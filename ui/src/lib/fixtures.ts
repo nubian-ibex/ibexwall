@@ -609,8 +609,8 @@ export class FixtureTransport implements Transport {
     return this.gate(() => DESTINATIONS[appKey] ?? []);
   }
 
-  runChecks(plugin?: string) {
-    return this.listFindings(plugin);
+  async runChecks(plugin?: string) {
+    return { findings: await this.listFindings(plugin), failed: [] as string[] };
   }
 
   setPluginEnabled() {

@@ -142,7 +142,7 @@ describe('Dns screen: a stack Secure DNS cannot manage', () => {
     transport.listFindings = () => Promise.resolve([finding(stack)]);
     transport.runChecks = () => {
       stack = 'resolved-plain';
-      return Promise.resolve([]);
+      return Promise.resolve({ findings: [], failed: [] });
     };
     app.useTransport(transport);
     renderScreen(Dns);

@@ -114,8 +114,13 @@ export class TauriTransport implements Transport {
     return plugin ? all.filter((f) => f.plugin === plugin) : all;
   }
 
-  runChecks(): Promise<Finding[]> {
-    return unwrapped<Finding[]>('run_checks', 'findings');
+  async runChecks(): Promise<{ findings: Finding[]; failed: string[] }> {
+    // One reply, two fields; the helper takes a single key.
+    const reply = await invoke<Record<string, unknown>>('run_checks');
+    return {
+      findings: (reply.findings ?? []) as Finding[],
+      failed: (reply.failed ?? []) as string[],
+    };
   }
 
   async setPluginEnabled(id: string, enabled: boolean): Promise<void> {

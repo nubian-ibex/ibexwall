@@ -512,6 +512,13 @@ async fn dispatch(cli: &Cli, client: &mut ibexwall_varlink::Client) -> Result<Fi
             let params = serde_json::json!({ "plugin": plugin });
             let value = client.call("com.ibexwall.Core.RunChecks", params).await?;
             let count = value["findings"].as_array().map(Vec::len).unwrap_or(0);
+            if let Some(failed) = value["failed"].as_array().filter(|f| !f.is_empty()) {
+                let names: Vec<String> = failed
+                    .iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect();
+                eprintln!("could not be checked: {}", names.join(", "));
+            }
             show(&value, json, render_findings);
             Ok(if count > 0 {
                 Finish::Findings(count)

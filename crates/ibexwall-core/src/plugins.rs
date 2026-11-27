@@ -269,25 +269,31 @@ impl Supervisor {
 
 /// A plugin that never answers must not block a check or, worse, hold a
 /// transaction open past its confirmation window.
-const PLUGIN_CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+/// Plan and Verify answer in steps; Check runs the plugin's own work, and
+/// the plugins bound that themselves (`endpoint.integrity` verifies every
+/// installed package, which takes minutes).
+const CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+const CHECK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
 async fn call_with_timeout(
     socket: &Path,
     method: &str,
     parameters: serde_json::Value,
 ) -> Result<serde_json::Value> {
-    tokio::time::timeout(
-        PLUGIN_CALL_TIMEOUT,
-        ibexwall_varlink::call(socket, method, parameters),
-    )
-    .await
-    .map_err(|_| anyhow::anyhow!("plugin {method} call timed out"))?
-    // Keep the plugin's own error, so a refusal it explains (an invalid
-    // argument) can reach the person as such.
-    .map_err(|e| {
-        let text = format!("plugin {method} call failed: {e}");
-        anyhow::Error::new(e).context(text)
-    })
+    let limit = if method.ends_with(".Check") {
+        CHECK_TIMEOUT
+    } else {
+        CALL_TIMEOUT
+    };
+    tokio::time::timeout(limit, ibexwall_varlink::call(socket, method, parameters))
+        .await
+        .map_err(|_| anyhow::anyhow!("plugin {method} call timed out"))?
+        // Keep the plugin's own error, so a refusal it explains (an invalid
+        // argument) can reach the person as such.
+        .map_err(|e| {
+            let text = format!("plugin {method} call failed: {e}");
+            anyhow::Error::new(e).context(text)
+        })
 }
 
 fn resolve_binary(_marker: &Path, manifest: &Manifest) -> Result<PathBuf> {

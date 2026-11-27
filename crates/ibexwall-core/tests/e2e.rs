@@ -1092,10 +1092,11 @@ async fn read_methods_and_error_paths() {
         )
         .await
         .unwrap();
-    client
+    let run = client
         .call("com.ibexwall.Core.RunChecks", json!({}))
         .await
         .unwrap();
+    assert_eq!(run["failed"].as_array().map(Vec::len), Some(0));
 
     let findings = client
         .call("com.ibexwall.Core.ListFindings", json!({}))

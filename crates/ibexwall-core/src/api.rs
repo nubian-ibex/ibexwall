@@ -1174,15 +1174,21 @@ async fn run_checks(
             .collect(),
     };
     let mut findings = Vec::new();
+    let mut failed: Vec<String> = Vec::new();
     for id in targets {
         if !core.state.plugin_enabled(&id).map_err(internal)? {
             continue;
         }
-        let report = core
-            .plugins
-            .check(&id, serde_json::Value::Null)
-            .await
-            .map_err(|e| err("Conflict", json!({ "reason": format!("{e:#}") })))?;
+        // One plugin that hangs must not keep every other screen stale:
+        // the rest are still checked, and the person is told which one.
+        let report = match core.plugins.check(&id, serde_json::Value::Null).await {
+            Ok(report) => report,
+            Err(e) => {
+                tracing::warn!(plugin = %id, error = %format!("{e:#}"), "checking failed");
+                failed.push(id.clone());
+                continue;
+            }
+        };
         let checked_at = ibexwall_sys::RealClock.rfc3339_now();
         core.state
             .replace_check_run(&id, &report, &checked_at)
@@ -1190,7 +1196,9 @@ async fn run_checks(
         findings.extend(report.findings);
     }
     core.audit(actor, "core", None, "", "run-checks");
-    Ok(Reply::result(json!({ "findings": findings })))
+    Ok(Reply::result(
+        json!({ "findings": findings, "failed": failed }),
+    ))
 }
 
 /// Plans a change and stores the plan; returns it with its operations.

@@ -16,6 +16,10 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
 
 ### Fixed
 
+- "Check now" no longer fails as a whole when one plugin is slow: the rest
+  are still checked, the command line says which plugin could not be
+  checked, and a check now waits up to five minutes per plugin (a full
+  package-verification takes about a minute).
 - Desktop app: the overview card named the exposed-services check by its
   internal key, which no language had translated.
 

@@ -123,7 +123,7 @@ export interface Transport {
   answerPrompt(id: string, decision: 'allow' | 'block', scope: PromptScope): Promise<void>;
   listPlugins(): Promise<PluginInfo[]>;
   listFindings(plugin?: string): Promise<Finding[]>;
-  runChecks(plugin?: string): Promise<Finding[]>;
+  runChecks(plugin?: string): Promise<{ findings: Finding[]; failed: string[] }>;
   setPluginEnabled(id: string, enabled: boolean): Promise<void>;
   /** A plugin's configuration as applied now (all layers merged). */
   getConfig(plugin: string): Promise<{ effective: Record<string, unknown>; locks: string[] }>;

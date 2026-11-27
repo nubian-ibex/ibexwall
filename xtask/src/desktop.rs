@@ -22,13 +22,19 @@ use super::vm::Vm;
 
 /// Runs a command as the test user on a terminal, with or without an
 /// agent that answers the password prompt, and exits with its status.
-/// Usage: drive.py agent-ok|agent-wrong|no-agent COMMAND...
-const DRIVER: &str = r#"
+/// `hang-prompt` kills the command while the dialog waits and types the
+/// password afterwards; `hang-after:S` kills it S seconds after the
+/// password is typed. Both exit 0 once the command is dead.
+/// Usage: drive.py agent-ok|agent-wrong|no-agent|hang-prompt|hang-after:S COMMAND...
+pub(crate) const DRIVER: &str = r#"
 import os, pty, re, select, shlex, sys, time
 
 USER = "ibxuser"
 mode, command = sys.argv[1], sys.argv[2:]
+hang_after = float(mode.split(":")[1]) if mode.startswith("hang-after:") else None
 password = {"agent-ok": "ibx-Test-pass-1", "agent-wrong": "not-the-password"}.get(mode)
+if mode == "hang-prompt" or hang_after is not None:
+    password = "ibx-Test-pass-1"
 
 def spawn(argv):
     pid, fd = pty.fork()
@@ -63,6 +69,28 @@ agent = None
 if password is not None:
     agent = spawn(["sudo", "-u", USER, "pkttyagent", "--process", target])
 
+def kill_target():
+    os.system("sudo kill -9 " + target)
+
+def drain(fd, seconds):
+    got, end = b"", time.time() + seconds
+    while time.time() < end:
+        chunk = read(fd, end - time.time())
+        if not chunk:
+            break
+        got += chunk
+    return got
+
+def finish(code):
+    if agent:
+        try:
+            os.kill(agent[0], 15)
+        except ProcessLookupError:
+            pass
+    sys.stdout.write(out.decode(errors="replace"))
+    sys.stderr.write(agent_log.decode(errors="replace"))
+    sys.exit(code)
+
 agent_log = b""
 status = None
 deadline = time.time() + 90
@@ -78,8 +106,26 @@ while time.time() < deadline:
             out += chunk
         else:
             agent_log += chunk
+            if b"assword" in chunk and mode == "hang-prompt":
+                # The client dies with the dialog open; a while later the
+                # person types the password into whatever is left of it.
+                time.sleep(1)
+                kill_target()
+                after = drain(fd, 4)
+                agent_log += b"\n== client killed ==\n" + after
+                try:
+                    os.write(fd, password.encode() + b"\n")
+                except OSError:
+                    pass
+                agent_log += b"\n== password typed ==\n" + drain(fd, 4)
+                finish(0)
             if b"assword" in chunk:
                 os.write(fd, password.encode() + b"\n")
+                if hang_after is not None:
+                    time.sleep(hang_after)
+                    kill_target()
+                    agent_log += drain(fd, 3)
+                    finish(0)
     done, raw = os.waitpid(cpid, os.WNOHANG)
     if done:
         while True:
@@ -90,14 +136,7 @@ while time.time() < deadline:
         status = os.waitstatus_to_exitcode(raw)
         break
 
-if agent:
-    try:
-        os.kill(agent[0], 15)
-    except ProcessLookupError:
-        pass
-sys.stdout.write(out.decode(errors="replace"))
-sys.stderr.write(agent_log.decode(errors="replace"))
-sys.exit(124 if status is None else status)
+finish(124 if status is None else status)
 "#;
 
 /// A fresh install: a valid empty audit chain, no warning at start, and
@@ -116,7 +155,7 @@ echo "METRIC: fresh install: empty chain valid, no warning at start, answers soc
 "#;
 
 /// The test user and the rule that stands in for an active session.
-const PERSON: &str = r#"
+pub(crate) const PERSON: &str = r#"
 id ibxuser >/dev/null 2>&1 || sudo useradd -m ibxuser
 echo 'ibxuser:ibx-Test-pass-1' | sudo chpasswd
 command -v pkttyagent >/dev/null || { [ $FAM = deb ] && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq pkexec >/dev/null; }

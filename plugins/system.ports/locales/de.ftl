@@ -1,3 +1,4 @@
+ports-exposed-services-name = Exponierte Dienste
 ports-exposed-title = Ein Dienst nimmt Verbindungen von anderen Computern an
 ports-exposed-summary = { $process } lauscht auf { $proto }-Port { $port } auf allen Netzwerkschnittstellen.
 ports-exposed-unknown-process = Ein Programm

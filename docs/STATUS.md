@@ -30,7 +30,7 @@ Public docs deployed. Over 0.5.1:
   `docs/plans/v0.6.1-dns-stack-changed.md`, not approved. The docs warn.
 - Secure DNS needs systemd-resolved; NetworkManager without it is proposed
   for v0.7 (`docs/plans/v0.7-dns-networkmanager.md`), not approved. The
-  EndeavourOS VM was moved to systemd-resolved by hand.
+  EndeavourOS VM is back to NetworkManager alone, with Secure DNS undone.
 - The Hardening screen can show stale findings right after "Undo" (the core
   re-runs the checks in the background and the app reads at once); reopening
   the screen shows the right state.

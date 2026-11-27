@@ -62,7 +62,9 @@ if [ "$FAM" = rpm ]; then echo "METRIC: SELinux $(getenforce)"; fi
 
 const FAILSAFE_RESOLVED: &str = r#"
 # Whatever happens below, the next scenario starts from a clean machine.
-trap 'sudo systemctl reset-failed ibexwall-dns.service ibexwall-dns-failsafe.service >/dev/null 2>&1; [ -n "${TX:-}" ] && sudo ibexctl rollback "$TX" >/dev/null 2>&1; sudo rm -f /etc/systemd/resolved.conf.d/50-ibexwall.conf; sudo systemctl restart systemd-resolved' EXIT
+# set -e makes a failing trap command the scenario's exit status, so every
+# step in the cleanup may fail.
+trap 'sudo systemctl reset-failed ibexwall-dns.service ibexwall-dns-failsafe.service >/dev/null 2>&1 || true; if [ -n "${TX:-}" ]; then sudo ibexctl rollback "$TX" >/dev/null 2>&1 || true; fi; sudo rm -f /etc/systemd/resolved.conf.d/50-ibexwall.conf || true; sudo systemctl restart systemd-resolved || true' EXIT
 apply_dns
 resolvectl status | grep -q 127.0.0.153 || { echo "RESOLVED DOES NOT USE THE RESOLVER"; why; exit 1; }
 kill_resolver_until_it_gives_up
@@ -158,7 +160,7 @@ echo "METRIC: kept across a reboot; the undo restores the network's servers"
 "#;
 
 const NM_FAILSAFE: &str = r#"
-trap 'sudo systemctl reset-failed ibexwall-dns.service ibexwall-dns-failsafe.service >/dev/null 2>&1; [ -n "${TX:-}" ] && sudo ibexctl rollback "$TX" >/dev/null 2>&1; sudo rm -f /etc/NetworkManager/conf.d/50-ibexwall-dns.conf /etc/systemd/resolved.conf.d/50-ibexwall.conf; nmcli general reload >/dev/null 2>&1' EXIT
+trap 'sudo systemctl reset-failed ibexwall-dns.service ibexwall-dns-failsafe.service >/dev/null 2>&1 || true; if [ -n "${TX:-}" ]; then sudo ibexctl rollback "$TX" >/dev/null 2>&1 || true; fi; sudo rm -f /etc/NetworkManager/conf.d/50-ibexwall-dns.conf /etc/systemd/resolved.conf.d/50-ibexwall.conf || true; nmcli general reload >/dev/null 2>&1 || true' EXIT
 apply_dns
 kill_resolver_until_it_gives_up
 for _ in $(seq 1 40); do [ ! -e /etc/NetworkManager/conf.d/50-ibexwall-dns.conf ] && break; sleep 1; done

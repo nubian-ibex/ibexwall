@@ -32,9 +32,19 @@ cargo xtask stage --key-dir /path/keys  # sign with the release key (dev.pub, de
 
 ## Building a package
 
-From source, on the target distribution:
+The RPM spec builds three ways:
 
-- `rpm/ibexwall.spec`: `rpmbuild -ba rpm/ibexwall.spec` (runs `cargo xtask stage`).
+- from source: `rpmbuild -ba rpm/ibexwall.spec` (runs `cargo xtask stage`);
+- from a staged tree, as CI does for a release it has already built:
+  `rpmbuild -bb --define 'prebuilt_stage DIR' rpm/ibexwall.spec`;
+- from the published release packages, as COPR does: `rpm/srpm.sh` makes a
+  source RPM from the release's archive and RPMs (it refuses anything the
+  release key did not sign), and building that source RPM repackages them;
+  see `docs/release.md`.
+
+The Debian source package and the PKGBUILD build from source, on the target
+distribution:
+
 - `deb/debian/`: copy `deb/debian` next to the source as `debian/` and run
   `dpkg-buildpackage -b -us -uc`.
 - `arch/PKGBUILD`: `makepkg` in `packaging/arch`.
@@ -42,9 +52,28 @@ From source, on the target distribution:
 From a tree a release has already built, which is how CI packages a release
 and how the VM matrix tests the packages: set the staged tree with
 `--define 'prebuilt_stage DIR'` (rpm) or `IBEXWALL_STAGE=DIR` (deb, arch). The
-from-source builds are the shape the COPR, PPA, OBS and AUR builds will use;
+from-source builds are the shape the PPA, OBS and distribution builds use;
 they are not exercised here, because they need the toolchain and the eBPF
 object (`cargo xtask ebpf`, nightly Rust and `bpf-linker`) on the builder.
+
+The package repositories are fed from the release instead: the AUR directory
+comes from `cargo xtask aur` (a `-bin` package that repacks the release's
+Arch packages), COPR from `rpm/srpm.sh` and `.copr/Makefile`. Both verify the
+release's signature and push nothing; how they are checked in VMs is
+`docs/release.md`, and what stays with a maintainer is
+`docs/release-checklist.md`.
+
+### The RPM dist tag
+
+A package file name carries the dist tag of the machine that built it
+(`ibexwall-0.6.0-1.fc45.x86_64.rpm`): rpmbuild takes it from the chroot or
+system it runs on, and a release built on one builder cannot avoid it. This
+matters only for the packages published in the release itself: everyone else
+gets the tag of their own build. The repositories do not inherit it: COPR
+builds once per chroot and each build is stamped with its own tag, and the
+AUR installs the release's Arch packages, which have no dist tag. So the
+release's RPMs are tagged for the builder's Fedora, and the repositories are
+the way to install on any other Fedora release.
 
 ## What install, upgrade and removal do
 
@@ -75,7 +104,9 @@ that no unit, process, file or kernel setting is left.
 - `systemd/`: the units; the plugin units are generated.
 - `polkit/`, `sysusers.d/`, `tmpfiles.d/`: what the daemon needs on the system.
 - `desktop/`, `icons/`: the application entry.
-- `rpm/`, `deb/`, `arch/`: the three formats.
+- `rpm/`, `deb/`, `arch/`: the three formats; `arch/aur/` is the template
+  `cargo xtask aur` renders, and `rpm/srpm.sh` is what COPR's
+  "make srpm" method runs (`.copr/Makefile` calls it).
 - `scripts.sh`: the install, upgrade and removal steps.
 
 ## Mandatory access control

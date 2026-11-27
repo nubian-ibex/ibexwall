@@ -68,3 +68,41 @@ if `packaging/release.pub` is missing.
 names the build described above: `cargo xtask release` on the toolchain in
 `rust-toolchain.toml`, with the locked dependencies and no network access to
 anything but the registry's crates.
+
+## From a release to the package repositories
+
+The release packages feed the package repositories. Both paths below work from
+a published release, check its signature first, and push nothing: what a
+maintainer does with their output is listed in `docs/release-checklist.md`.
+
+The AUR: `cargo xtask aur --version V [--pkgrel N] [--out DIR]` writes an
+AUR-ready directory (`PKGBUILD`, `.SRCINFO`, the install script) whose packages
+repack the files of the release's Arch packages, which the PKGBUILD downloads
+and checks against the release's signed checksums. The version and every
+checksum come from the signed `SHA256SUMS`, so the directory cannot name
+artifacts the release does not hold. The maintainer reviews the directory and
+pushes it to the AUR (`ibexwall-bin` and friends); the VM phase
+`cargo xtask vm-test --distro arch --phase aur` does in a VM what a user does:
+`makepkg`, the diff against the release's packages, install, the daemon's
+answers and removal.
+
+COPR: the same repository holds `.copr/Makefile` and `packaging/rpm/srpm.sh`,
+which are the "make srpm" source method COPR can be pointed at. COPR runs the
+Makefile in a Fedora chroot; it fetches the release's source archive and its
+three RPMs, checks the signed checksums with the release key in the
+repository, and makes a source RPM whose build unpacks those packages and
+repackages them, so the builder compiles only the SELinux policy. A release
+signed by another key is refused. The source RPM then builds in COPR's chroots
+without network access, and each chroot stamps its own dist tag, so users of
+every Fedora release get packages tagged for it. The VM phase
+`cargo xtask vm-test --distro fedora --phase copr` runs the same steps under
+`mock`, including a build for the previous Fedora release and a refusal with a
+foreign key.
+
+Because the payload is the release's, a repository build is an attested
+repackaging, not a from-source build. A from-source COPR build would need the
+nightly toolchain, `bpf-linker` and the eBPF object on the builder; until that
+is realistic, the from-source spec path (`rpmbuild -ba`) remains the way a
+distribution packager builds from source, and the release packages stay the
+source of truth for what reaches the repositories.
+

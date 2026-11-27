@@ -22,6 +22,10 @@ Versions follow [Semantic Versioning](https://semver.org). The format follows
   even the hosts on the allow list: the replies to an accepted flow were
   dropped, because the forward chain had no rule for established
   connections.
+- Blocking a module group was allowed while one of its file systems was
+  mounted under `/home` or `/tmp`, which the plugin's own sandbox cannot
+  see; the refusal now reads the host's mount table, like the rest of the
+  checks.
 - Secure DNS: when the computer stops using the DNS setup the changes were
   made for, the app says lookups may be blocked and points to the undo,
   instead of showing the last result or "cannot be checked".

@@ -105,6 +105,17 @@ fn only_known_groups_are_accepted_and_no_module_name_comes_from_the_caller() {
 }
 
 #[test]
+fn a_mount_under_a_private_point_refuses_the_group_anyway() {
+    let (root, sandbox) = tree(&[(
+        "/proc/1/mountinfo",
+        "1 0 259:1 / / rw - ext4 /dev/sda1 rw\n2 1 0:44 / /home/udf rw,relatime - udf udf rw\n",
+    )]);
+    let error = plan(&sandbox, &config(&["rare-filesystems"], &[])).unwrap_err();
+    assert!(error.to_string().contains("udf"), "{error}");
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn a_group_that_a_mount_or_an_input_device_needs_is_refused_unless_confirmed() {
     let (root, sandbox) = tree(&[
         (

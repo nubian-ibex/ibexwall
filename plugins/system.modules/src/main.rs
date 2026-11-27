@@ -149,8 +149,11 @@ fn in_use(sandbox: &Sandbox, id: &str) -> Option<String> {
                 // A `noauto` entry is not mounted at boot.
                 (f.len() >= 4 && !f[3].split(',').any(|o| o == "noauto")).then(|| f[2])
             });
-        let mounts = sandbox.read("/proc/mounts").unwrap_or_default();
-        let mounted = mounts.lines().filter_map(|l| l.split_whitespace().nth(2));
+        // Not the plugin's own /proc/mounts: its sandbox predates the
+        // mount and hides /home and /tmp behind private tmpfs mounts, so
+        // only PID 1's table says what the host has now.
+        let mounted = sandbox.host_mounts().unwrap_or_default();
+        let mounted = mounted.lines().filter_map(|l| l.split_whitespace().nth(2));
         if let Some(found) = fstab_types.chain(mounted).find(|t| types.contains(t)) {
             return Some(format!(
                 "a `{found}` file system is mounted or in /etc/fstab"
